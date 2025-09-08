@@ -10,13 +10,13 @@ You can learn more about the products on the [product page](https://mapsplatform
 
 ### Places Insights
 
-[Demo](https://mapsplatform.google.com/demos/places-insights/)
-[Docs](https://developers.google.com/maps/documentation/placesinsights)
+- [Demo](https://mapsplatform.google.com/demos/places-insights/)
+- [Docs](https://developers.google.com/maps/documentation/placesinsights)
 
 ### Roads Management Insights
 
-[Demo](https://google-rmi-demo-1024202510105.us-central1.run.app/)
-[Doc](https://developers.google.com/maps/documentation/roads-management-insights)
+- [Demo](https://google-rmi-demo-1024202510105.us-central1.run.app/)
+- [Doc](https://developers.google.com/maps/documentation/roads-management-insights)
 
 
 
