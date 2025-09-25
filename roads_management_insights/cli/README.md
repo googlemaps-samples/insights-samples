@@ -113,5 +113,5 @@ Then, call the function with the path to your file:
 *   `rmi.sh`: Main entry point with high-level functions for RMI use cases.
 *   `services/auth.sh`: Contains shared functions for authentication and making API calls.
 *   `services/analyticshub_v1.sh`: A complete client library for the BigQuery Analytics Hub API.
-*   `services/road_selection.sh`: (Placeholder) Intended for the Road Selection API.
+*   `services/roads_selection.sh`: A client library for the Roads Management Insights Road Selection API v1.
 *   `services/roads_v2.sh`: (Placeholder) Intended for the Roads v2 API.
