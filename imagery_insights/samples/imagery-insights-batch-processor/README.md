@@ -115,7 +115,7 @@ Once you run the `shard` command, the rest of the pipeline is triggered and mana
         4.  Publish all the sharding messages to the topic, kicking off the entire process.
 
         ```bash
-        python src/populate_with_cloud_run.py --mode shard
+        python3 src/populate_with_cloud_run.py --mode shard
         ```
 
 ## Monitor the Queue

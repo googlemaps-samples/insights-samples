@@ -4,10 +4,13 @@
 
 set -e
 
+# Change to the parent directory of the script
+cd "$(dirname "$0")/.."
+
 echo "Deploying 'analyze-volume-images' service..."
 gcloud run deploy analyze-volume-images \
     --source . \
-    --command="python3","src/main.py" \
+    --command="python3","main.py" \
     --region us-central1 \
     --allow-unauthenticated \
     --max-instances=100 \
@@ -20,9 +23,10 @@ echo "SERVICE_URL=$SERVICE_URL" > .env
 echo "Deploying 'populate-tasks' service..."
 gcloud run deploy populate-tasks \
     --source . \
-    --command="python3","src/populate_with_cloud_run.py","--mode","serve" \
+    --command="python3","populate_with_cloud_run.py","--mode","serve" \
     --region us-central1 \
     --no-allow-unauthenticated \
+    --set-env-vars="SERVICE_URL=$SERVICE_URL" \
     --max-instances=100 \
     --memory=2Gi \
     --timeout=3600

@@ -11,6 +11,7 @@ from config import (
     BIGQUERY_SOURCE_DATASET,
     BIGQUERY_SOURCE_TABLE,
     BIGQUERY_SOURCE_QUERY,
+    BIGQUERY_COUNT_QUERY,
     TASK_QUEUE_PREFIX,
     SERVICE_ACCOUNT_EMAIL,
 )
@@ -53,7 +54,7 @@ def setup_and_shard():
     source_table_id = f"{GCP_PROJECT}.{BIGQUERY_SOURCE_DATASET}.{BIGQUERY_SOURCE_TABLE}"
     
     # Get the total number of rows
-    query = f"SELECT COUNT(*) as total_rows FROM `{source_table_id}`"
+    query = BIGQUERY_COUNT_QUERY.format(source_table=source_table_id)
     total_rows = next(bq_client.query(query).result()).total_rows
     
     # Create unique Pub/Sub resources for this run

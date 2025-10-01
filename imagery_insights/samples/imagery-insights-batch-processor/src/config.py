@@ -22,6 +22,14 @@ GROUP BY
   t1.asset_id,
   t1.location
 """
+BIGQUERY_COUNT_QUERY = """
+SELECT
+  COUNT(*) as total_rows
+FROM
+  `{source_table}` AS t1
+WHERE
+  t1.asset_type = 'ASSET_CLASS_UTILITY_POLE'
+"""
 
 # Cloud Tasks Configuration
 TASK_QUEUE_PREFIX = "image-analysis-queue-"
