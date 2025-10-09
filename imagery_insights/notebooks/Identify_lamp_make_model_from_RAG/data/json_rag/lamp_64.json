@@ -1,0 +1,12 @@
+{
+    "Fixture_Type": "Induction",
+    "Technology": "Induction",
+    "Specific_Model/Example_Identifier": "Generic Induction Fixture",
+    "Manufacturer": "N/A",
+    "Description/Key_Features": "Uses magnetic fields, very long lifespan (100k hrs), high efficiency (60-90 lm/W), good CRI (80-90). High initial cost, limited availability. Good for hard-to-reach places.",
+    "Dimensions (L x W x H or H x D)": "Highbay Example (TZ-HL-18): 540x540x545mm. Other types N/A.",
+    "Weight": "Highbay Example: 8KG. Other types N/A.",
+    "Mounting_Details": "Pole/Highbay Mount",
+    "Image_URL": "Data Not Available",
+    "Source_Document_ID": ""
+}

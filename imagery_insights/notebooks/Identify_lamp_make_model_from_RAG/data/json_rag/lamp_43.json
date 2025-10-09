@@ -1,0 +1,12 @@
+{
+    "Fixture_Type": "Bollard",
+    "Technology": "LED",
+    "Specific_Model/Example_Identifier": "Aluminium Solar Powered",
+    "Manufacturer": "BollardStreet",
+    "Description/Key_Features": "Solar powered, 12 Cree LEDs, ~100lm (630 Lux at source), Lithium battery, 360 deg light, Al construction, Polycarb diffuser, IP rated (not specified).",
+    "Dimensions (L x W x H or H x D)": "Small: 840mm H (above ground) x 150mm D. Large: 1040mm H x 150mm D. Top: 230mm D. Base: 215mm D.",
+    "Weight": "Small: 4.5 Kg. Large: 5 Kg.",
+    "Mounting_Details": "Ground Mount (implied)",
+    "Image_URL": "Data Not Available",
+    "Source_Document_ID": ""
+}
