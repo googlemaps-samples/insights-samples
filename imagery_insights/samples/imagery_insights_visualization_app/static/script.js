@@ -1,4 +1,4 @@
-const API_KEY = "AIzaSyBfU1npB62Js8WBJoJ8ZJ0RujeVk8aQifw";
+const API_KEY = "";
 let panorama, map;
 let currentItemIndex = 0;
 let currentOverlayOrMarker = null;
