@@ -1,34 +1,29 @@
-# Image Classification Service with Gemini 2.5 Flash
+# Road Sign Classification with Gemini
 
-This notebook demonstrates how to classify images from GCS URIs using the Gemini 2.5 Flash model via Google Cloud's Vertex AI.
+This notebook demonstrates how to use the Gemini 2.5 Flash model through Vertex AI to classify road signs from images.
 
-## Prerequisites
+## Overview
 
-- A Google Cloud Platform (GCP) project.
-- A BigQuery table containing GCS URIs of the images to be classified.
-- The following Python libraries installed:
-    - `google-cloud-bigquery`
-    - `google-cloud-aiplatform`
+The notebook performs the following steps:
 
-You can install them by running:
-```bash
-pip install --upgrade google-cloud-bigquery google-cloud-aiplatform
-```
-
-## Configuration
-
-Before running the notebook, you need to configure your GCP `PROJECT_ID` and `REGION` in the "Configuration" section of the notebook.
+1.  **Configuration**: Sets up the Google Cloud project, region, and BigQuery dataset details.
+2.  **Data Fetching**: Queries a BigQuery table to retrieve Google Cloud Storage (GCS) URIs for images that are classified as road sign assets (`ASSET_CLASS_ROAD_SIGN`).
+3.  **Image Classification**: For each image URI, it calls the Gemini 2.5 Flash model.
+4.  **Prompt Engineering**: A detailed prompt guides the model to act as an image analysis expert. The model is instructed to identify signs by their shape, color, and text, and then classify them into predefined categories:
+    *   Stop
+    *   Yield
+    *   Speed Limit
+    *   Pedestrian Crossing
+    *   No Parking
+    *   Turn
+    *   Do not enter
+    *   Street name
+    *   Other
+5.  **Structured Output**: The model is instructed to return its findings in a structured JSON format, including the sign identified, the reasoning behind the classification, and a confidence score (`High` or `Medium`).
+6.  **Results**: The notebook iterates through the list of images and prints the JSON output from the model for each one.
 
 ## How to Use
 
-1.  **Set up your environment**: Make sure you have the necessary libraries installed and have authenticated with your GCP account.
-2.  **Configure the notebook**: Open the notebook and replace the placeholder values for `PROJECT_ID` and `REGION` with your actual GCP project ID and region.
-3.  **Run the notebook**: Execute the cells in the notebook sequentially.
-
-## What the Notebook Does
-
-1.  **Initializes Vertex AI**: It initializes the Vertex AI SDK with your project ID and region.
-2.  **Fetches Image URIs**: It queries a BigQuery table to get the GCS URIs of the images you want to classify. The SQL query is defined in the `BIGQUERY_SQL_QUERY` variable.
-3.  **Defines Classification Function**: It defines a function `classify_image_with_gemini` that takes a GCS URI and a prompt as input, and then uses the Gemini 2.5 Flash model to generate a description of the image.
-4.  **Classifies Images**: It loops through the fetched GCS URIs and passes them to the classification function along with a detailed prompt. The prompt instructs the model to analyze the image of a utility pole, count specific items, assess its condition, and return the findings in a JSON format.
-5.  **Prints Results**: The classification result for each image is printed to the console.
+1.  **Set up your environment**: Make sure you have the required Python libraries installed (`google-cloud-bigquery`, `google-cloud-aiplatform`).
+2.  **Configure the notebook**: Update the configuration cells with your `PROJECT_ID`, `REGION`, and the correct BigQuery `DATASET_ID` and `TABLE_ID`.
+3.  **Run the notebook**: Execute the cells in order to fetch the image data and perform the classification.
