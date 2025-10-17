@@ -41,7 +41,7 @@ elements {
     name "User's Local Machine"
 
     card populate_script {
-      name "populate_with_cloud_run.py --mode shard"
+      name "populate_with_cloud_run.py"
       description "Initiates the entire pipeline"
       icon_url "https://drive.google.com/file/d/1LEzsFSqvHtnrO0_ZlP8mGuleuEejB89T/view?usp=sharing&resourcekey=0-2rJHOwvACwb8pTHH-Cho4w"
     }
@@ -71,7 +71,7 @@ paths {
 }
 ```
 
-*   **What it does:** The user runs the `populate_with_cloud_run.py --mode shard` script. This script first calls the `/setup` endpoint of the `main` service, which creates a Cloud Tasks queue with a unique name (e.g., `image-analysis-queue-<uuid>`). This unique name is crucial for idempotency, as Cloud Tasks does not allow recreating a queue with the same name for several days after it's deleted. The unique name is returned to the local script. The script then creates a unique Pub/Sub topic and subscription. Finally, it calculates how many "shards" (chunks of data) are needed to process the entire source table and publishes one message per shard to the new Pub/Sub topic.
+*   **What it does:** The user runs the `populate_with_cloud_run.py` script. This script first calls the `/setup` endpoint of the `main` service, which creates a Cloud Tasks queue with a unique name (e.g., `image-analysis-queue-<uuid>`). This unique name is crucial for idempotency, as Cloud Tasks does not allow recreating a queue with the same name for several days after it's deleted. The unique name is returned to the local script. The script then creates a unique Pub/Sub topic and subscription. Finally, it calculates how many "shards" (chunks of data) are needed to process the entire source table and publishes one message per shard to the new Pub/Sub topic.
 
 ### Stage 2: Parallel Task Population
 
@@ -159,8 +159,8 @@ paths {
     *   `/process`: Receives a task payload, sends the image URIs to the Gemini API, and writes the structured JSON response to the BigQuery results table.
     *   `/teardown`: Deletes the BigQuery results table and the Cloud Tasks queue specified by the `task_queue_id` parameter.
 *   **`populate_with_cloud_run.py`:** The task creation service and local client.
-    *   `--mode shard` (local): Orchestrates the setup and initiation of the pipeline.
-    *   `--mode serve` (service): The web service that receives Pub/Sub messages and creates tasks.
+    *   When run locally (`python3 src/populate_with_cloud_run.py`), it orchestrates the setup and initiation of the pipeline.
+    *   When deployed to Cloud Run, it runs as a `gunicorn` server, receiving Pub/Sub messages and creating tasks.
 *   **`deploy.sh`:** A shell script that automates the deployment of both Cloud Run services. It uses the `gcloud run deploy` command with the `--command` flag to specify the correct entrypoint for each service from the single `Dockerfile`. After deployment, it fetches the service URLs and writes them to a `.env` file.
 *   **`teardown.sh`:** A shell script that automates the complete cleanup of all resources created during a run. It reads the unique IDs from the `.env` file, calls the `/teardown` endpoint on the `main` service, deletes the Pub/Sub topic and subscription, and finally deletes the `.env` file to ensure a clean state.
 

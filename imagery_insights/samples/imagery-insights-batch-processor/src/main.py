@@ -15,6 +15,9 @@ from config import (
     BIGQUERY_SOURCE_TABLE,
     TASK_QUEUE_PREFIX,
     GEMINI_PROMPT,
+    GEMINI_MODEL,
+    BIGQUERY_SCHEMAS,
+    SELECTED_PROMPT_KEY,
     SERVICE_URL,
     SERVICE_ACCOUNT_EMAIL,
     BIGQUERY_SOURCE_QUERY,
@@ -27,7 +30,7 @@ app = Flask(__name__)
 bq_client = bigquery.Client(project=GCP_PROJECT)
 tasks_client = tasks_v2.CloudTasksClient()
 vertexai.init(project=GCP_PROJECT, location=LOCATION)
-model = GenerativeModel("gemini-2.5-flash")
+model = GenerativeModel(GEMINI_MODEL)
 
 
 @app.route("/setup", methods=["POST"])
@@ -39,29 +42,7 @@ def setup():
 
     # Create BigQuery table
     try:
-        schema = [
-            bigquery.SchemaField("asset_id", "STRING", mode="NULLABLE"),
-            bigquery.SchemaField(
-                "location",
-                "RECORD",
-                mode="NULLABLE",
-                fields=[
-                    bigquery.SchemaField("latitude", "FLOAT", mode="NULLABLE"),
-                    bigquery.SchemaField("longitude", "FLOAT", mode="NULLABLE"),
-                ],
-            ),
-            bigquery.SchemaField("observation_ids", "STRING", mode="REPEATED"),
-            bigquery.SchemaField("gcs_uris", "STRING", mode="REPEATED"),
-            bigquery.SchemaField("detection_time", "TIMESTAMP", mode="NULLABLE"),
-            bigquery.SchemaField("pole_condition", "STRING", mode="NULLABLE"),
-            bigquery.SchemaField("type", "STRING", mode="NULLABLE"),
-            bigquery.SchemaField("material", "STRING", mode="NULLABLE"),
-            bigquery.SchemaField("transformers", "INTEGER", mode="NULLABLE"),
-            bigquery.SchemaField("power_lines", "INTEGER", mode="NULLABLE"),
-            bigquery.SchemaField("street_lamps", "INTEGER", mode="NULLABLE"),
-            bigquery.SchemaField("junction_boxes", "INTEGER", mode="NULLABLE"),
-            bigquery.SchemaField("additional_notes", "STRING", mode="NULLABLE"),
-        ]
+        schema = BIGQUERY_SCHEMAS[SELECTED_PROMPT_KEY]
         table_id = f"{GCP_PROJECT}.{BIGQUERY_RESULTS_DATASET}.{BIGQUERY_RESULTS_TABLE}"
         table = bigquery.Table(table_id, schema=schema)
         bq_client.create_table(table)
@@ -170,21 +151,20 @@ def process_image():
         except json.JSONDecodeError:
             analysis_data = {"error": "Invalid JSON response from model."}
 
+        # Dynamically build the result dictionary based on the selected schema
         result = {
             "asset_id": asset_id,
             "location": location,
             "detection_time": detection_time,
             "observation_ids": [o["observation_id"] for o in observations],
             "gcs_uris": [o["gcs_uri"] for o in observations],
-            "pole_condition": analysis_data.get("pole_condition"),
-            "type": analysis_data.get("type"),
-            "material": analysis_data.get("material"),
-            "transformers": analysis_data.get("transformers"),
-            "power_lines": analysis_data.get("power_lines"),
-            "street_lamps": analysis_data.get("street_lamps"),
-            "junction_boxes": analysis_data.get("junction_boxes"),
-            "additional_notes": analysis_data.get("additional_notes"),
         }
+        # Get the schema fields, skipping the base fields that are already added
+        schema_fields = [field.name for field in BIGQUERY_SCHEMAS[SELECTED_PROMPT_KEY]]
+        dynamic_fields = [field for field in schema_fields if field not in result]
+
+        for field in dynamic_fields:
+            result[field] = analysis_data.get(field)
         table_id = f"{GCP_PROJECT}.{BIGQUERY_RESULTS_DATASET}.{BIGQUERY_RESULTS_TABLE}"
         errors = bq_client.insert_rows_json(table_id, [result])
         if errors:

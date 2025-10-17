@@ -9,9 +9,12 @@ ENV PYTHONUNBUFFERED True
 # Set the working directory in the container.
 WORKDIR /app
 
+# Add the src directory to the Python path
+ENV PYTHONPATH "${PYTHONPATH}:/app/src"
+
 # Copy over the requirements.txt file and install dependencies.
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 # Copy the rest of the application code.
-COPY ./src/ .
+COPY . .

@@ -14,6 +14,9 @@ from config import (
     BIGQUERY_COUNT_QUERY,
     TASK_QUEUE_PREFIX,
     SERVICE_ACCOUNT_EMAIL,
+    SHARD_SIZE,
+    POPULATE_TOPIC_ID_PREFIX,
+    SUBSCRIPTION_ID_PREFIX,
 )
 
 load_dotenv()
@@ -22,9 +25,6 @@ SERVICE_URL = os.getenv("SERVICE_URL")
 POPULATE_SERVICE_URL = os.getenv("POPULATE_SERVICE_URL")
 
 # Configuration
-SHARD_SIZE = 50
-POPULATE_TOPIC_ID_PREFIX = "populate-tasks-topic-"
-SUBSCRIPTION_ID_PREFIX = "populate-tasks-sub-"
 
 
 # Initialize clients
@@ -145,14 +145,14 @@ def process_shard():
 
     return "Processing complete.", 204
 
+# The script can be run in two modes:
+# 1. Local execution to initiate the process: `python3 src/populate_with_cloud_run.py`
+# 2. As a Flask app on Cloud Run to serve requests.
+# The `if __name__ == '__main__':` block handles the local execution,
+# while the Cloud Run entrypoint in the `deploy.sh` script will point to the `app` object.
+
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["shard", "serve"], required=True)
-    args = parser.parse_args()
-
-    if args.mode == "shard":
-        setup_and_shard()
-    elif args.mode == "serve":
-        app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    setup_and_shard()
+else:
+    # This is the entrypoint for the Cloud Run service
+    gunicorn_app = app
