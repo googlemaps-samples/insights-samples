@@ -60,7 +60,7 @@ def measure_height_with_gemini(gcs_uri: str, prompt: str) -> str:
 def main():
     """
     Main endpoint to execute the BigQuery query, extract URIs,
-    and measure pole height using Gemini 1.5 Pro.
+    and measure pole height using Gemini 2.5 Pro.
     """
     # Initialize Vertex AI
     vertexai.init(project=PROJECT_ID, location=REGION)
