@@ -14,9 +14,9 @@ from config import (
     BIGQUERY_SOURCE_DATASET,
     BIGQUERY_SOURCE_TABLE,
     TASK_QUEUE_PREFIX,
-    GEMINI_PROMPT,
     GEMINI_MODEL,
     BIGQUERY_SCHEMAS,
+    PROMPTS,
     SELECTED_PROMPT_KEY,
     SERVICE_URL,
     SERVICE_ACCOUNT_EMAIL,
@@ -141,7 +141,8 @@ def process_image():
         image_parts = [
             Part.from_uri(o["gcs_uri"], mime_type="image/jpeg") for o in observations
         ]
-        response = model.generate_content([*image_parts, GEMINI_PROMPT])
+        gemini_prompt = PROMPTS[SELECTED_PROMPT_KEY]
+        response = model.generate_content([*image_parts, gemini_prompt])
 
         print(f"Raw Gemini response for {asset_id}: {response.text}")
         try:

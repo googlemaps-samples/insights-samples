@@ -62,8 +62,59 @@ pip install -r requirements.txt
 Run the population script from the root of the project. This will kick off the entire automated workflow.
 
 ```bash
-python3 src/populate_with_cloud_run.py
+bash scripts/populate.sh
 ```
+
+## Adding a New Prompt
+
+This application is designed to be easily extensible with new analysis prompts. Here’s how to add a new one:
+
+### 1. Create a Prompt File
+
+Create a new Python file in the `src/prompts` directory (e.g., `src/prompts/my_new_prompt.py`).
+
+### 2. Define the Prompt and Schema
+
+In your new file, you must define two variables:
+
+*   `PROMPT`: A string containing the instructions for the Gemini model.
+*   `SCHEMA`: A list of `bigquery.SchemaField` objects that define the BigQuery table structure for the results.
+
+**Example:** `src/prompts/resolution.py`
+
+```python
+from google.cloud import bigquery
+
+PROMPT = """
+Analyze the provided image and determine its resolution. Provide the output as a JSON object with 'width' and 'height' keys.
+"""
+
+SCHEMA = [
+    bigquery.SchemaField("asset_id", "STRING"),
+    bigquery.SchemaField("width", "INTEGER"),
+    bigquery.SchemaField("height", "INTEGER"),
+]
+```
+
+### 3. How It Works: Dynamic Loading
+
+The application automatically discovers and loads all prompts from the `src/prompts` directory. The filename of your new prompt file (converted to uppercase, without the `.py` extension) becomes its unique key.
+
+For example:
+* `resolution.py` becomes the key `RESOLUTION`.
+* `road_signs.py` becomes the key `ROAD_SIGNS`.
+
+### 4. Select Your Prompt
+
+To use your new prompt, open `src/config.py` and set the `SELECTED_PROMPT_KEY` to the key of your new prompt.
+
+```python
+# src/config.py
+
+SELECTED_PROMPT_KEY = "MY_NEW_PROMPT"
+```
+
+The application will now use your custom prompt and schema for the analysis.
 
 ## Monitoring
 

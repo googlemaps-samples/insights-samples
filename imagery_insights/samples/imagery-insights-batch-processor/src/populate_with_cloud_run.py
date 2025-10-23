@@ -42,6 +42,9 @@ def setup_and_shard():
     """
     # Call the /setup endpoint
     print("Calling /setup endpoint...")
+    if not SERVICE_URL:
+        raise ValueError("SERVICE_URL environment variable not set.")
+    print(f"Using SERVICE_URL: {SERVICE_URL}")
     response = requests.post(f"{SERVICE_URL}/setup")
     response.raise_for_status()
     task_queue_id = response.json()["task_queue_id"]
