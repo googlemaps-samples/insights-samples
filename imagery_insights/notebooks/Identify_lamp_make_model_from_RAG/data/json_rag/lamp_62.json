@@ -1,0 +1,12 @@
+{
+    "Fixture_Type": "LPS",
+    "Technology": "LPS",
+    "Specific_Model/Example_Identifier": "Generic LPS Fixture",
+    "Manufacturer": "N/A",
+    "Description/Key_Features": "Most efficient (80-180 lm/W), very long life (18k hrs ). Monochromatic yellow light (589nm ), worst CRI (-44). Used where color rendering irrelevant (roads, security, astronomy). Declining use. Must be in enclosed fixtures.",
+    "Dimensions (L x W x H or H x D)": "Lamp Dimensions (SOX): 18W: 8.5\"L x 2.13\"D; 35W: 12.19\"L x 2.13\"D; 55W: 16.75\"L x 2.13\"D; 90W: 20.75\"L x 2.68\"D (528mm L x 67mm D ); 135W: 30.5\"L x 2.68\"D (775mm L x 66mm D ); 180W: 44.13\"L x 2.68\"D. Fixture dimensions N/A (Example P123: 18.9\"L x 12.4\"W x 9.75\"H ).",
+    "Weight": "Lamp Weight (SOX 90W): 1.4lb. Fixture weight N/A.",
+    "Mounting_Details": "Pole Mount (various styles, e.g., side entry), requires ballast",
+    "Image_URL": "(https://glowobject.com/cdn/shop/products/SOX90W.jpg?v=1705449290)",
+    "Source_Document_ID": ""
+}
