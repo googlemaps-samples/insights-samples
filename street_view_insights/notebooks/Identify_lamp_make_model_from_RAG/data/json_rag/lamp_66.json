@@ -1,0 +1,12 @@
+{
+    "Fixture_Type": "Solar LED",
+    "Technology": "Solar LED",
+    "Specific_Model/Example_Identifier": "Generic Solar LED (Split System)",
+    "Manufacturer": "Various (e.g., Xuyida)",
+    "Description/Key_Features": "Solar panel separate from LED lamp fixture. Allows optimal panel placement.",
+    "Dimensions (L x W x H or H x D)": "Varies greatly by component. Pole dimensions provided based on height (e.g., 6m pole: 60/140mm D, 3mm thick).",
+    "Weight": "Varies greatly.",
+    "Mounting_Details": "Pole Mount",
+    "Image_URL": "Data Not Available",
+    "Source_Document_ID": ""
+}

@@ -1,10 +1,10 @@
-# Insights Recipes
+# Insights samples
 
 This repository contains samples for the Insights produts from Google Maps Platform.
 
 You can learn more about the products on the [product page](https://mapsplatform.google.com/maps-products/geospatial-analytics)
 
-### Imagery Insights
+### Street View Insights
 
 [Docs](https://developers.google.com/maps/documentation/imagery-insights)
 

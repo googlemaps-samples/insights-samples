@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Imagery Insights asset visualization</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='3d-style.css') }}">
+</head>
+<body>
+    <div id="map-container">
+        <div class="controls">
+            <a href="/" class="m3-button m3-button--filled">Back to Street View</a>
+        </div>
+        <div id="map"></div>
+        <div id="tooltip"></div>
+    </div>
+
+    <script src="{{ url_for('static', filename='3d-script.js') }}"></script>
+    <script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBfU1npB62Js8WBJoJ8ZJ0RujeVk8aQifw&v=beta&libraries=maps3d,marker&callback=initMap"></script>
+</body>
+</html>

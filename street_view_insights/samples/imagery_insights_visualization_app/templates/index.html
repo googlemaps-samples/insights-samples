@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Street View Bounding/Marker Viewer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1 class="text-3xl font-bold mt-6 mb-4" style="color: var(--md-sys-color-primary);">Imagery Insights asset visualization</h1>
+    <div id="view-container">
+        <div id="map"></div>
+        <div id="pano"></div>
+    </div>
+
+    <div class="controls-container">
+        <div class="navigation-controls">
+            <button id="prevButton" class="m3-button m3-button--outlined">Previous</button>
+            <button id="nextButton" class="m3-button m3-button--filled">Next</button>
+            <button id="takePhotoButton" class="m3-button m3-button--filled">Take Photo</button>
+        </div>
+        <div class="camera-controls-wrapper">
+            <div class="toggle-switch-container">
+                <span>Use Camera Pose</span>
+                <input type="checkbox" id="useCameraPoseToggle" />
+                <label for="useCameraPoseToggle">Toggle</label>
+            </div>
+            <div id="camera-pose-controls">
+                <div class="toggle-switch-container">
+                    <span>Heading</span>
+                    <input type="checkbox" id="useHeadingToggle" checked />
+                    <label for="useHeadingToggle">Toggle</label>
+                </div>
+                <div class="toggle-switch-container">
+                    <span>Pitch</span>
+                    <input type="checkbox" id="usePitchToggle" />
+                    <label for="usePitchToggle">Toggle</label>
+                </div>
+                <div class="toggle-switch-container">
+                    <span>Roll</span>
+                    <input type="checkbox" id="useRollToggle" />
+                    <label for="useRollToggle">Toggle</label>
+                </div>
+            </div>
+        </div>
+        <div class="toggle-switch-container">
+            <span>Load Photographer POV</span>
+            <input type="checkbox" id="loadPhotographerPovToggle" />
+            <label for="loadPhotographerPovToggle">Toggle</label>
+        </div>
+    </div>
+
+    <div class="info-box">
+        <h3 id="infoTitle">Current Observation Details</h3>
+        <p id="infoTrackId">Track ID: </p>
+        <p id="infoObservationId">Observation ID: </p>
+        <p id="infoLatLon">Point Latitude, Longitude (Marker Location): </p>
+        <p id="infoCaptureTimestamp">Capture Timestamp: </p>
+        <p id="infoCameraPose">Camera Pose (Lat, Lng, Alt, Hdg, Ptch): </p>
+        <p>Map URL: <a id="infoMapUrl" href="#" target="_blank" class="text-blue-600 hover:underline"></a></p>
+    </div>
+
+    <a href="/3d_view" class="m3-fab">
+        <span class="material-symbols-outlined">view_in_ar</span>
+        See all locations covered
+    </a>
+
+    <div id="photo-modal">
+        <span id="close-modal">&times;</span>
+        <img id="static-streetview-image" src="" alt="Static Street View">
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBfU1npB62Js8WBJoJ8ZJ0RujeVk8aQifw&libraries=streetView,visualization&callback=initMap"></script>
+</body>
+</html>
