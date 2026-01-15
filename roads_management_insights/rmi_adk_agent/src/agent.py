@@ -1,10 +1,12 @@
 from google.adk.agents import Agent
+from google.adk.planners import BuiltInPlanner
 from google.adk.tools.agent_tool import AgentTool
 from google.adk.tools.bigquery import BigQueryCredentialsConfig
 from google.adk.tools.bigquery import BigQueryToolset
 from google.adk.tools.bigquery.config import BigQueryToolConfig
 from google.adk.tools.bigquery.config import WriteMode
 import google.auth
+from google.genai import types
 
 from src import prompts
 
@@ -51,6 +53,12 @@ root_agent = Agent(
     name="RMI_agent",
     description=(
         "Agent to answer questions about RMI data residing in BigQuery."
+    ),
+    planner=BuiltInPlanner(
+        thinking_config=types.ThinkingConfig(
+            include_thoughts=True,
+            thinking_level='medium',
+        )
     ),
     instruction=prompts.RMI_AGENT_PROMPT,
     tools=[AgentTool(bq_agent)],
