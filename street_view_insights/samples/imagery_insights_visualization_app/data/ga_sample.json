@@ -1,0 +1,2699 @@
+[{
+  "asset_id": "t1:8b62dbae89a1cc51d5eb5dd33feabafd:ffff005f",
+  "observations": [{
+    "observation_id": "o1:470e37a54568ffa8f5340dcaed3d937a:00110060",
+    "map_url": "https://www.google.com/maps/search/34.7225677752505,135.53325001614346",
+    "camera_pose": {
+      "latitude": "34.722590435387424",
+      "longitude": "135.53333763447696",
+      "altitude": "40.015160509308522",
+      "pitch": "-81.466148376464844",
+      "heading": "-101.81339263916016",
+      "roll": "-12.146354675292969"
+    },
+    "latitude": "34.7225677752505",
+    "longitude": "135.53325001614346",
+    "detection_time": "2025-05-27 03:17:03"
+  }, {
+    "observation_id": "o1:6a3d479b46424c6003768cdf5529fe0c:00110060",
+    "map_url": "https://www.google.com/maps/search/34.7225677752505,135.53325001614346",
+    "camera_pose": {
+      "latitude": "34.722592027174755",
+      "longitude": "135.53337443771605",
+      "altitude": "40.004926372243354",
+      "pitch": "-80.95672607421875",
+      "heading": "-108.54045867919922",
+      "roll": "-5.1303005218505859"
+    },
+    "latitude": "34.7225677752505",
+    "longitude": "135.53325001614346",
+    "detection_time": "2025-05-27 03:17:03"
+  }]
+}, {
+  "asset_id": "t1:9cb40e1bbc7e71f4c1de4f0f0bde0831:ffff005f",
+  "observations": [{
+    "observation_id": "o1:3bff774717d731cb9e328949fefe7c77:00110060",
+    "map_url": "https://www.google.com/maps/search/40.756124547190119,-111.91696990300159",
+    "camera_pose": {
+      "latitude": "40.756286247517522",
+      "longitude": "-111.91728450050617",
+      "altitude": "1272.9082916490531",
+      "pitch": "-80.22698974609375",
+      "heading": "128.93246459960938",
+      "roll": "-10.436843872070312"
+    },
+    "latitude": "40.756124547190119",
+    "longitude": "-111.91696990300159",
+    "detection_time": "2025-07-08 21:51:34"
+  }, {
+    "observation_id": "o1:cf5f764b615bd9a033b8f36aff8fbeab:00110060",
+    "map_url": "https://www.google.com/maps/search/40.756124547190119,-111.91696990300159",
+    "camera_pose": {
+      "latitude": "40.756874114194659",
+      "longitude": "-111.91687971721677",
+      "altitude": "1273.1776562618411",
+      "pitch": "-85.071418762207031",
+      "heading": "42.033672332763672",
+      "roll": "141.29789733886719"
+    },
+    "latitude": "40.756124547190119",
+    "longitude": "-111.91696990300159",
+    "detection_time": "2025-07-08 21:51:34"
+  }, {
+    "observation_id": "o1:22eacfa92a6698437ae702302fbe5fec:00110060",
+    "map_url": "https://www.google.com/maps/search/40.756124547190119,-111.91696990300159",
+    "camera_pose": {
+      "latitude": "40.756285579941249",
+      "longitude": "-111.91729459966975",
+      "altitude": "1272.8933082256005",
+      "pitch": "-80.129402160644531",
+      "heading": "130.100830078125",
+      "roll": "-11.839929580688477"
+    },
+    "latitude": "40.756124547190119",
+    "longitude": "-111.91696990300159",
+    "detection_time": "2025-07-08 21:51:34"
+  }]
+}, {
+  "asset_id": "t1:7ce3f95ce20d9aff33f3050b6a24a199:ffff005f",
+  "observations": [{
+    "observation_id": "o1:f9d0769fd5310e9e0d9dde5685e98b70:00110060",
+    "map_url": "https://www.google.com/maps/search/27.996218587001092,-81.968016017015486",
+    "camera_pose": {
+      "latitude": "27.996247941078078",
+      "longitude": "-81.96811447080384",
+      "altitude": "27.257960283403563",
+      "pitch": "-79.4263687133789",
+      "heading": "106.06194305419922",
+      "roll": "12.640049934387207"
+    },
+    "latitude": "27.996218587001092",
+    "longitude": "-81.968016017015486",
+    "detection_time": "2024-04-17 14:49:30"
+  }, {
+    "observation_id": "o1:157e22bfc8732688a0ca4dbbdb55c518:00110060",
+    "map_url": "https://www.google.com/maps/search/27.996218587001092,-81.968016017015486",
+    "camera_pose": {
+      "latitude": "27.996265600259107",
+      "longitude": "-81.9682566017303",
+      "altitude": "27.024075617303421",
+      "pitch": "-79.247932434082031",
+      "heading": "111.61105346679688",
+      "roll": "8.35821533203125"
+    },
+    "latitude": "27.996218587001092",
+    "longitude": "-81.968016017015486",
+    "detection_time": "2024-04-17 14:49:30"
+  }, {
+    "observation_id": "o1:fa5d916e8f31bcab200b3e80a0d5bbdc:00110060",
+    "map_url": "https://www.google.com/maps/search/27.996218587001092,-81.968016017015486",
+    "camera_pose": {
+      "latitude": "27.996265600870384",
+      "longitude": "-81.9682559697189",
+      "altitude": "27.025373922047258",
+      "pitch": "-79.246513366699219",
+      "heading": "111.60758972167969",
+      "roll": "8.3613185882568359"
+    },
+    "latitude": "27.996218587001092",
+    "longitude": "-81.968016017015486",
+    "detection_time": "2024-04-17 14:49:30"
+  }]
+}, {
+  "asset_id": "t1:c8a52c335372e654d137af0d7446976d:ffff005f",
+  "observations": [{
+    "observation_id": "o1:828dd36b0a90faf5811bb3662399d1ce:00110060",
+    "map_url": "https://www.google.com/maps/search/28.002400102559903,-81.9352514038",
+    "camera_pose": {
+      "latitude": "28.002423456835604",
+      "longitude": "-81.935075063705725",
+      "altitude": "9.3945284177914576",
+      "pitch": "-80.0189208984375",
+      "heading": "-93.370223999023438",
+      "roll": "-11.18833065032959"
+    },
+    "latitude": "28.002400102559903",
+    "longitude": "-81.9352514038",
+    "detection_time": "2024-02-05 19:39:11"
+  }, {
+    "observation_id": "o1:633e6fe7af4ca72b5726e21451ba5efd:00110060",
+    "map_url": "https://www.google.com/maps/search/28.002400102559903,-81.9352514038",
+    "camera_pose": {
+      "latitude": "28.002454962958776",
+      "longitude": "-81.935264264881724",
+      "altitude": "9.5094309846648031",
+      "pitch": "-79.5482177734375",
+      "heading": "-1.7537962198257446",
+      "roll": "-175.59596252441406"
+    },
+    "latitude": "28.002400102559903",
+    "longitude": "-81.9352514038",
+    "detection_time": "2024-02-05 19:39:11"
+  }, {
+    "observation_id": "o1:28a354283e0ca91b65ba7ce0767e90da:00110060",
+    "map_url": "https://www.google.com/maps/search/28.002400102559903,-81.9352514038",
+    "camera_pose": {
+      "latitude": "28.002444751781123",
+      "longitude": "-81.935171901200391",
+      "altitude": "9.4367848526963414",
+      "pitch": "-80.33978271484375",
+      "heading": "-102.96939086914062",
+      "roll": "-6.9163827896118164"
+    },
+    "latitude": "28.002400102559903",
+    "longitude": "-81.9352514038",
+    "detection_time": "2024-02-05 19:39:11"
+  }]
+}, {
+  "asset_id": "t1:c82260f977cf2b185273de37c0032fab:ffff005f",
+  "observations": [{
+    "observation_id": "o1:57e70f10920adaf152fd10a392dc617e:00110060",
+    "map_url": "https://www.google.com/maps/search/40.767127928289462,-111.90121510137421",
+    "camera_pose": {
+      "latitude": "40.767203310364877",
+      "longitude": "-111.90096457072517",
+      "altitude": "1285.0941993239928",
+      "pitch": "-81.843666076660156",
+      "heading": "-119.16765594482422",
+      "roll": "1.2631473541259766"
+    },
+    "latitude": "40.767127928289462",
+    "longitude": "-111.90121510137421",
+    "detection_time": "2019-06-04 22:22:26"
+  }, {
+    "observation_id": "o1:e4ea4bf659dec0fc2f49662eed28ab87:00110060",
+    "map_url": "https://www.google.com/maps/search/40.767127928289462,-111.90121510137421",
+    "camera_pose": {
+      "latitude": "40.767207080164674",
+      "longitude": "-111.9010858029777",
+      "altitude": "1284.8623930600008",
+      "pitch": "-81.588592529296875",
+      "heading": "-122.60222625732422",
+      "roll": "4.3037633895874023"
+    },
+    "latitude": "40.767127928289462",
+    "longitude": "-111.90121510137421",
+    "detection_time": "2019-06-04 22:22:26"
+  }, {
+    "observation_id": "o1:006da020db29b9bdeaf56c80b2d2b4f3:00110060",
+    "map_url": "https://www.google.com/maps/search/40.767127928289462,-111.90121510137421",
+    "camera_pose": {
+      "latitude": "40.767198239462665",
+      "longitude": "-111.90084202688207",
+      "altitude": "1285.2982878203081",
+      "pitch": "-81.856491088867188",
+      "heading": "-117.09817504882812",
+      "roll": "1.0304305553436279"
+    },
+    "latitude": "40.767127928289462",
+    "longitude": "-111.90121510137421",
+    "detection_time": "2019-06-04 22:22:26"
+  }, {
+    "observation_id": "o1:4a685eb78393a0fca64af59841a93d85:00110060",
+    "map_url": "https://www.google.com/maps/search/40.767127928289462,-111.90121510137421",
+    "camera_pose": {
+      "latitude": "40.768773962417093",
+      "longitude": "-111.89978696062258",
+      "altitude": "1288.524156101982",
+      "pitch": "-81.763656616210938",
+      "heading": "-166.18014526367188",
+      "roll": "15.671396255493164"
+    },
+    "latitude": "40.767127928289462",
+    "longitude": "-111.90121510137421",
+    "detection_time": "2019-06-04 22:22:26"
+  }, {
+    "observation_id": "o1:70bb4a7f8ec244c452e29c60bc1757d8:00110060",
+    "map_url": "https://www.google.com/maps/search/40.767127928289462,-111.90121510137421",
+    "camera_pose": {
+      "latitude": "40.767108140069041",
+      "longitude": "-111.90114979484827",
+      "altitude": "1284.5735362775608",
+      "pitch": "-79.977981567382812",
+      "heading": "-45.9125862121582",
+      "roll": "-15.632370948791504"
+    },
+    "latitude": "40.767127928289462",
+    "longitude": "-111.90121510137421",
+    "detection_time": "2019-06-04 22:22:26"
+  }]
+}, {
+  "asset_id": "t1:386dc26fffe7a73e1f6d12382d222f94:ffff005f",
+  "observations": [{
+    "observation_id": "o1:50e3ccf1c029e2eff41cbb3851c14468:00110060",
+    "map_url": "https://www.google.com/maps/search/53.333184345875409,-6.4309472628324631",
+    "camera_pose": {
+      "latitude": "53.333375227211242",
+      "longitude": "-6.4310414438174535",
+      "altitude": "123.24432691750933",
+      "pitch": "-81.5810775756836",
+      "heading": "168.58319091796875",
+      "roll": "-9.4937286376953125"
+    },
+    "latitude": "53.333184345875409",
+    "longitude": "-6.4309472628324631",
+    "detection_time": "2025-05-06 10:36:39"
+  }]
+}, {
+  "asset_id": "t1:facc0ac028fc885d863a49dec5b6cb52:ffff005f",
+  "observations": [{
+    "observation_id": "o1:734623a0e45ae48b239e2ddc05e2b13a:00110060",
+    "map_url": "https://www.google.com/maps/search/27.998548971036161,-81.975768137614622",
+    "camera_pose": {
+      "latitude": "27.998551130725694",
+      "longitude": "-81.975637885565263",
+      "altitude": "22.35289559950845",
+      "pitch": "-80.679039001464844",
+      "heading": "105.46059417724609",
+      "roll": "175.74406433105469"
+    },
+    "latitude": "27.998548971036161",
+    "longitude": "-81.975768137614622",
+    "detection_time": "2024-01-22 18:56:00"
+  }, {
+    "observation_id": "o1:974785ee11c28ab9babd64955805aa31:00110060",
+    "map_url": "https://www.google.com/maps/search/27.998548971036161,-81.975768137614622",
+    "camera_pose": {
+      "latitude": "27.998550504188593",
+      "longitude": "-81.975638015641792",
+      "altitude": "22.354224859875266",
+      "pitch": "-80.6836166381836",
+      "heading": "105.56969451904297",
+      "roll": "175.64053344726562"
+    },
+    "latitude": "27.998548971036161",
+    "longitude": "-81.975768137614622",
+    "detection_time": "2024-01-22 18:56:00"
+  }, {
+    "observation_id": "o1:87f04bb41b9799fd7385f213c2be6a6e:00110060",
+    "map_url": "https://www.google.com/maps/search/27.998548971036161,-81.975768137614622",
+    "camera_pose": {
+      "latitude": "27.998460577856218",
+      "longitude": "-81.975658754739953",
+      "altitude": "22.441293227067376",
+      "pitch": "-80.370323181152344",
+      "heading": "-14.243457794189453",
+      "roll": "-5.1892027854919434"
+    },
+    "latitude": "27.998548971036161",
+    "longitude": "-81.975768137614622",
+    "detection_time": "2024-01-22 18:56:00"
+  }, {
+    "observation_id": "o1:d52695f50a314d427d0e4f54ab9bb8b6:00110060",
+    "map_url": "https://www.google.com/maps/search/27.998548971036161,-81.975768137614622",
+    "camera_pose": {
+      "latitude": "27.998460578398877",
+      "longitude": "-81.975658754611757",
+      "altitude": "22.4412934750914",
+      "pitch": "-80.3703384399414",
+      "heading": "-14.243602752685547",
+      "roll": "-5.189056396484375"
+    },
+    "latitude": "27.998548971036161",
+    "longitude": "-81.975768137614622",
+    "detection_time": "2024-01-22 18:56:00"
+  }, {
+    "observation_id": "o1:c36571da846a82a60779f4139483ce4c:00110060",
+    "map_url": "https://www.google.com/maps/search/27.998548971036161,-81.975768137614622",
+    "camera_pose": {
+      "latitude": "27.998640588475602",
+      "longitude": "-81.975624091731561",
+      "altitude": "22.179860094522287",
+      "pitch": "-81.716194152832031",
+      "heading": "97.852249145507812",
+      "roll": "172.80354309082031"
+    },
+    "latitude": "27.998548971036161",
+    "longitude": "-81.975768137614622",
+    "detection_time": "2024-01-22 18:56:00"
+  }]
+}, {
+  "asset_id": "t1:db88bfca68605e0beaf7e1a86ea52b70:ffff005f",
+  "observations": [{
+    "observation_id": "o1:77689c4f43f6219c685caecdcd815527:00110060",
+    "map_url": "https://www.google.com/maps/search/40.761009663524717,-111.8691376497039",
+    "camera_pose": {
+      "latitude": "40.760768774901543",
+      "longitude": "-111.86914001789975",
+      "altitude": "1308.0660030841741",
+      "pitch": "-79.384071350097656",
+      "heading": "172.245361328125",
+      "roll": "-172.77816772460938"
+    },
+    "latitude": "40.761009663524717",
+    "longitude": "-111.8691376497039",
+    "detection_time": "2025-08-11 14:39:52"
+  }, {
+    "observation_id": "o1:cfc62e3b827354aae4c77112d100cb5c:00110060",
+    "map_url": "https://www.google.com/maps/search/40.761009663524717,-111.8691376497039",
+    "camera_pose": {
+      "latitude": "40.760794172750693",
+      "longitude": "-111.86910907135993",
+      "altitude": "1308.0265079457768",
+      "pitch": "-80.271484375",
+      "heading": "174.12591552734375",
+      "roll": "-173.85798645019531"
+    },
+    "latitude": "40.761009663524717",
+    "longitude": "-111.8691376497039",
+    "detection_time": "2025-08-11 14:39:52"
+  }, {
+    "observation_id": "o1:532368b9b1b9ff205acd0748c514e8a2:00110060",
+    "map_url": "https://www.google.com/maps/search/40.761009663524717,-111.8691376497039",
+    "camera_pose": {
+      "latitude": "40.760794573808766",
+      "longitude": "-111.86922401434337",
+      "altitude": "1307.7723059691707",
+      "pitch": "-79.925712585449219",
+      "heading": "174.669921875",
+      "roll": "-174.4068603515625"
+    },
+    "latitude": "40.761009663524717",
+    "longitude": "-111.8691376497039",
+    "detection_time": "2025-08-11 14:39:52"
+  }]
+}, {
+  "asset_id": "t1:000ed5adb88bbd1a37337249bc1da7d3:ffff01ee",
+  "observations": [{
+    "observation_id": "o1:a9f54e438a0751ca65fae624da17d4de:00250082",
+    "map_url": "https://www.google.com/maps/search/40.783553097987287,-111.91672828328142",
+    "camera_pose": {
+      "latitude": "40.783629476066416",
+      "longitude": "-111.91680662567509",
+      "altitude": "1270.6920583572876",
+      "pitch": "0.55537861585617065",
+      "heading": "-0.90482115745544434",
+      "roll": "1.22938871383667"
+    },
+    "latitude": "40.783553097987287",
+    "longitude": "-111.91672828328142",
+    "detection_time": "2022-11-21 21:19:13"
+  }, {
+    "observation_id": "o1:fd5f6ef87fc15f303e8c5c06febb6158:00250082",
+    "map_url": "https://www.google.com/maps/search/40.783553097987287,-111.91672828328142",
+    "camera_pose": {
+      "latitude": "40.783757903843096",
+      "longitude": "-111.9168947290872",
+      "altitude": "1270.5911597157922",
+      "pitch": "0.12856972217559814",
+      "heading": "-179.82369995117188",
+      "roll": "1.2427773475646973"
+    },
+    "latitude": "40.783553097987287",
+    "longitude": "-111.91672828328142",
+    "detection_time": "2022-11-21 21:19:13"
+  }, {
+    "observation_id": "o1:93e284b5cba5170c00add5ee336deea8:00250082",
+    "map_url": "https://www.google.com/maps/search/40.783553097987287,-111.91672828328142",
+    "camera_pose": {
+      "latitude": "40.783323043478816",
+      "longitude": "-111.91689681352084",
+      "altitude": "1270.709790975397",
+      "pitch": "0.073288865387439728",
+      "heading": "179.99127197265625",
+      "roll": "1.0703171491622925"
+    },
+    "latitude": "40.783553097987287",
+    "longitude": "-111.91672828328142",
+    "detection_time": "2022-11-21 21:19:13"
+  }, {
+    "observation_id": "o1:41ca65a1d9b0e381a15cadb23334ba35:00250082",
+    "map_url": "https://www.google.com/maps/search/40.783553097987287,-111.91672828328142",
+    "camera_pose": {
+      "latitude": "40.783629476066416",
+      "longitude": "-111.91680662567509",
+      "altitude": "1270.6920583572876",
+      "pitch": "0.55537861585617065",
+      "heading": "-0.90482115745544434",
+      "roll": "1.22938871383667"
+    },
+    "latitude": "40.783553097987287",
+    "longitude": "-111.91672828328142",
+    "detection_time": "2022-11-21 21:19:13"
+  }, {
+    "observation_id": "o1:ebb6962510eb1789a0352154e5aa3ce5:00250082",
+    "map_url": "https://www.google.com/maps/search/40.783553097987287,-111.91672828328142",
+    "camera_pose": {
+      "latitude": "40.783629476054834",
+      "longitude": "-111.91680661411152",
+      "altitude": "1270.6921206996476",
+      "pitch": "0.55538427829742432",
+      "heading": "-0.90465247631073",
+      "roll": "1.2294840812683105"
+    },
+    "latitude": "40.783553097987287",
+    "longitude": "-111.91672828328142",
+    "detection_time": "2022-11-21 21:19:13"
+  }, {
+    "observation_id": "o1:ccc345a368bb85d03fe46ea559691633:00250082",
+    "map_url": "https://www.google.com/maps/search/40.783553097987287,-111.91672828328142",
+    "camera_pose": {
+      "latitude": "40.783757903843096",
+      "longitude": "-111.9168947290872",
+      "altitude": "1270.5911597157922",
+      "pitch": "0.12856972217559814",
+      "heading": "-179.82369995117188",
+      "roll": "1.2427773475646973"
+    },
+    "latitude": "40.783553097987287",
+    "longitude": "-111.91672828328142",
+    "detection_time": "2022-11-21 21:19:13"
+  }]
+}, {
+  "asset_id": "t1:9a660a21e4172f56f73f44abd83379c2:ffff005f",
+  "observations": [{
+    "observation_id": "o1:83633f43cd8ed7a404cf2c20035a164d:00110060",
+    "map_url": "https://www.google.com/maps/search/34.715383271650431,135.55619359343407",
+    "camera_pose": {
+      "latitude": "34.715215353441984",
+      "longitude": "135.55616033383401",
+      "altitude": "40.622102221018054",
+      "pitch": "-81.311119079589844",
+      "heading": "-171.98213195800781",
+      "roll": "173.67507934570312"
+    },
+    "latitude": "34.715383271650431",
+    "longitude": "135.55619359343407",
+    "detection_time": "2025-08-08 05:25:45"
+  }, {
+    "observation_id": "o1:6aacb77207ca0a2a9442be665c68446b:00110060",
+    "map_url": "https://www.google.com/maps/search/34.715383271650431,135.55619359343407",
+    "camera_pose": {
+      "latitude": "34.715215353467286",
+      "longitude": "135.55616033224939",
+      "altitude": "40.622103223382112",
+      "pitch": "-81.311103820800781",
+      "heading": "-171.9822998046875",
+      "roll": "173.67524719238281"
+    },
+    "latitude": "34.715383271650431",
+    "longitude": "135.55619359343407",
+    "detection_time": "2025-08-08 05:25:45"
+  }]
+}, {
+  "asset_id": "t1:b56fd155e5c3ea6e3497ee4645cd716d:ffff005f",
+  "observations": [{
+    "observation_id": "o1:36629fdac6a57b68db2f27c9f3f78db6:00110060",
+    "map_url": "https://www.google.com/maps/search/40.784626520183252,-111.8715218517595",
+    "camera_pose": {
+      "latitude": "40.784555679695075",
+      "longitude": "-111.87157692185562",
+      "altitude": "1482.2410454556912",
+      "pitch": "-70.052291870117188",
+      "heading": "26.495174407958984",
+      "roll": "-0.44722330570220947"
+    },
+    "latitude": "40.784626520183252",
+    "longitude": "-111.8715218517595",
+    "detection_time": "2021-05-05 18:47:39"
+  }, {
+    "observation_id": "o1:8d1efbada36d5233d8c98abc2ebda542:00110060",
+    "map_url": "https://www.google.com/maps/search/40.784626520183252,-111.8715218517595",
+    "camera_pose": {
+      "latitude": "40.784464629142427",
+      "longitude": "-111.87156578163555",
+      "altitude": "1480.7080489690179",
+      "pitch": "-70.902099609375",
+      "heading": "17.811731338500977",
+      "roll": "8.57068920135498"
+    },
+    "latitude": "40.784626520183252",
+    "longitude": "-111.8715218517595",
+    "detection_time": "2021-05-05 18:47:39"
+  }]
+}, {
+  "asset_id": "t1:6e21d33e9d3d2459d93819517758cc3e:ffff005f",
+  "observations": [{
+    "observation_id": "o1:c025a41325101fea17c3acf5e3e99e89:00110060",
+    "map_url": "https://www.google.com/maps/search/34.7227301311368,135.55541365095155",
+    "camera_pose": {
+      "latitude": "34.722704416539578",
+      "longitude": "135.55540953956842",
+      "altitude": "40.6121216834551",
+      "pitch": "-81.20672607421875",
+      "heading": "-177.07919311523438",
+      "roll": "179.72091674804688"
+    },
+    "latitude": "34.7227301311368",
+    "longitude": "135.55541365095155",
+    "detection_time": "2024-09-23 21:51:11"
+  }]
+}, {
+  "asset_id": "t1:0cd3b77ae746852df4be97d41a489728:ffff01ee",
+  "observations": [{
+    "observation_id": "o1:d6b90a42eea9b3a58201947d403bd061:00250082",
+    "map_url": "https://www.google.com/maps/search/40.76445318277851,-111.87126567382099",
+    "camera_pose": {
+      "latitude": "40.764578689194565",
+      "longitude": "-111.87115998268088",
+      "altitude": "1312.659066906393",
+      "pitch": "-1.2662060260772705",
+      "heading": "179.79087829589844",
+      "roll": "1.3774980306625366"
+    },
+    "latitude": "40.76445318277851",
+    "longitude": "-111.87126567382099",
+    "detection_time": "2022-06-14 21:23:25"
+  }, {
+    "observation_id": "o1:11abdb25ec75081a4e35ce7f6baea8ff:00250082",
+    "map_url": "https://www.google.com/maps/search/40.76445318277851,-111.87126567382099",
+    "camera_pose": {
+      "latitude": "40.764578706829411",
+      "longitude": "-111.8711600126594",
+      "altitude": "1312.6586441992808",
+      "pitch": "-1.2709017992019653",
+      "heading": "179.79119873046875",
+      "roll": "1.3723913431167603"
+    },
+    "latitude": "40.76445318277851",
+    "longitude": "-111.87126567382099",
+    "detection_time": "2022-06-14 21:23:25"
+  }]
+}, {
+  "asset_id": "t1:93c89f54c241840765c4ce152880628a:ffff01ee",
+  "observations": [{
+    "observation_id": "o1:d50d4802f581e22e1fae13dd55f00ff8:00250082",
+    "map_url": "https://www.google.com/maps/search/28.058597553277231,-81.967523325802915",
+    "camera_pose": {
+      "latitude": "28.058643099091064",
+      "longitude": "-81.967433777856414",
+      "altitude": "39.758607948562251",
+      "pitch": "0.12639926373958588",
+      "heading": "-90.509895324707031",
+      "roll": "1.802289605140686"
+    },
+    "latitude": "28.058597553277231",
+    "longitude": "-81.967523325802915",
+    "detection_time": "2024-02-12 19:17:44"
+  }, {
+    "observation_id": "o1:e1c701637ca459141a46c9756087703b:00250082",
+    "map_url": "https://www.google.com/maps/search/28.058597553277231,-81.967523325802915",
+    "camera_pose": {
+      "latitude": "28.058642774802038",
+      "longitude": "-81.967433274378351",
+      "altitude": "39.718022726051515",
+      "pitch": "0.1266506165266037",
+      "heading": "-90.5096435546875",
+      "roll": "1.8024585247039795"
+    },
+    "latitude": "28.058597553277231",
+    "longitude": "-81.967523325802915",
+    "detection_time": "2024-02-12 19:17:44"
+  }, {
+    "observation_id": "o1:4fda5d38259155fa382a499499e27fb3:00250082",
+    "map_url": "https://www.google.com/maps/search/28.058597553277231,-81.967523325802915",
+    "camera_pose": {
+      "latitude": "28.058643099091064",
+      "longitude": "-81.967433777856414",
+      "altitude": "39.758607948562251",
+      "pitch": "0.12639926373958588",
+      "heading": "-90.509895324707031",
+      "roll": "1.802289605140686"
+    },
+    "latitude": "28.058597553277231",
+    "longitude": "-81.967523325802915",
+    "detection_time": "2024-02-12 19:17:44"
+  }, {
+    "observation_id": "o1:d824f1ed50b164d3c958a4b278e18ac7:00250082",
+    "map_url": "https://www.google.com/maps/search/28.058597553277231,-81.967523325802915",
+    "camera_pose": {
+      "latitude": "28.058646410398413",
+      "longitude": "-81.967225838547208",
+      "altitude": "39.42847530330193",
+      "pitch": "0.081711456179618835",
+      "heading": "-91.653411865234375",
+      "roll": "1.7950773239135742"
+    },
+    "latitude": "28.058597553277231",
+    "longitude": "-81.967523325802915",
+    "detection_time": "2024-02-12 19:17:44"
+  }]
+}, {
+  "asset_id": "t1:6edb3f91f8839315f84a7660c4e57bb9:ffff005f",
+  "observations": [{
+    "observation_id": "o1:99e3a1d2a1de4ea7d3494691d74ed40f:00110060",
+    "map_url": "https://www.google.com/maps/search/40.772761784868415,-111.86577822247263",
+    "camera_pose": {
+      "latitude": "40.772819712612772",
+      "longitude": "-111.86564445153749",
+      "altitude": "1356.9739060823376",
+      "pitch": "-82.3412857055664",
+      "heading": "-108.91306304931641",
+      "roll": "-12.022932052612305"
+    },
+    "latitude": "40.772761784868415",
+    "longitude": "-111.86577822247263",
+    "detection_time": "2025-08-07 16:01:21"
+  }, {
+    "observation_id": "o1:60a577772514cb63b59882746d0e4921:00110060",
+    "map_url": "https://www.google.com/maps/search/40.772761784868415,-111.86577822247263",
+    "camera_pose": {
+      "latitude": "40.772846344712931",
+      "longitude": "-111.86554979340495",
+      "altitude": "1357.1841840152156",
+      "pitch": "-81.393302917480469",
+      "heading": "-119.07325744628906",
+      "roll": "-1.3428336381912231"
+    },
+    "latitude": "40.772761784868415",
+    "longitude": "-111.86577822247263",
+    "detection_time": "2025-08-07 16:01:21"
+  }, {
+    "observation_id": "o1:551bca1cdfbf742989d8561a41cf5099:00110060",
+    "map_url": "https://www.google.com/maps/search/40.772761784868415,-111.86577822247263",
+    "camera_pose": {
+      "latitude": "40.772789984035654",
+      "longitude": "-111.86551845399183",
+      "altitude": "1356.9595696085491",
+      "pitch": "-82.395980834960938",
+      "heading": "-73.0086898803711",
+      "roll": "-27.928552627563477"
+    },
+    "latitude": "40.772761784868415",
+    "longitude": "-111.86577822247263",
+    "detection_time": "2025-08-07 16:01:21"
+  }, {
+    "observation_id": "o1:00056e65859e9debb5531ccc3b32011f:00110060",
+    "map_url": "https://www.google.com/maps/search/40.772761784868415,-111.86577822247263",
+    "camera_pose": {
+      "latitude": "40.772746195869075",
+      "longitude": "-111.86556060936373",
+      "altitude": "1356.6595300922229",
+      "pitch": "-80.157577514648438",
+      "heading": "88.346206665039062",
+      "roll": "-168.15684509277344"
+    },
+    "latitude": "40.772761784868415",
+    "longitude": "-111.86577822247263",
+    "detection_time": "2025-08-07 16:01:21"
+  }, {
+    "observation_id": "o1:f667e618e1d0161db6963e3ba24d4937:00110060",
+    "map_url": "https://www.google.com/maps/search/40.772761784868415,-111.86577822247263",
+    "camera_pose": {
+      "latitude": "40.77275586645154",
+      "longitude": "-111.86562727066095",
+      "altitude": "1356.6105648895179",
+      "pitch": "-78.385139465332031",
+      "heading": "84.655525207519531",
+      "roll": "-174.57438659667969"
+    },
+    "latitude": "40.772761784868415",
+    "longitude": "-111.86577822247263",
+    "detection_time": "2025-08-07 16:01:21"
+  }]
+}, {
+  "asset_id": "t1:380a7e52c48be645657f9dcc4f0237b5:ffff005f",
+  "observations": [{
+    "observation_id": "o1:b277bb3759b803b806800f1b0ee94056:00110060",
+    "map_url": "https://www.google.com/maps/search/53.355589136852018,-6.3934398749229127",
+    "camera_pose": {
+      "latitude": "53.355688673632216",
+      "longitude": "-6.3931811625567612",
+      "altitude": "109.64932524142382",
+      "pitch": "-80.792694091796875",
+      "heading": "-140.31581115722656",
+      "roll": "12.552806854248047"
+    },
+    "latitude": "53.355589136852018",
+    "longitude": "-6.3934398749229127",
+    "detection_time": "2025-06-30 13:25:42"
+  }]
+}, {
+  "asset_id": "t1:69e53da88dfcc0697a4f13f3a6fe9468:ffff005f",
+  "observations": [{
+    "observation_id": "o1:a212e10b7c63b1bb81497575ec2709cd:00110060",
+    "map_url": "https://www.google.com/maps/search/53.34427908874283,-6.4317136113270807",
+    "camera_pose": {
+      "latitude": "53.344308179293023",
+      "longitude": "-6.4318267729999707",
+      "altitude": "112.33760289945289",
+      "pitch": "-78.955352783203125",
+      "heading": "-74.39068603515625",
+      "roll": "-176.87727355957031"
+    },
+    "latitude": "53.34427908874283",
+    "longitude": "-6.4317136113270807",
+    "detection_time": "2023-03-16 14:03:01"
+  }, {
+    "observation_id": "o1:6cfe6b8f860dc0b751b3f2f2f498bb7b:00110060",
+    "map_url": "https://www.google.com/maps/search/53.34427908874283,-6.4317136113270807",
+    "camera_pose": {
+      "latitude": "53.344506162623126",
+      "longitude": "-6.431716451915606",
+      "altitude": "112.13286472535655",
+      "pitch": "-79.745925903320312",
+      "heading": "169.26258850097656",
+      "roll": "-0.79587721824646"
+    },
+    "latitude": "53.34427908874283",
+    "longitude": "-6.4317136113270807",
+    "detection_time": "2023-03-16 14:03:01"
+  }]
+}, {
+  "asset_id": "t1:8888a0106996b9f421cbc86d15cf2d07:ffff005f",
+  "observations": [{
+    "observation_id": "o1:cffd072ca94236c39133a7cf2e98181c:00110060",
+    "map_url": "https://www.google.com/maps/search/34.720499563421249,135.55040020759213",
+    "camera_pose": {
+      "latitude": "34.720474367812095",
+      "longitude": "135.55050412339693",
+      "altitude": "40.957478571914159",
+      "pitch": "-79.453384399414062",
+      "heading": "-81.235404968261719",
+      "roll": "2.4690389633178711"
+    },
+    "latitude": "34.720499563421249",
+    "longitude": "135.55040020759213",
+    "detection_time": "2020-12-28 07:00:19"
+  }, {
+    "observation_id": "o1:2dc2643423522032c99c1107b15f8d38:00110060",
+    "map_url": "https://www.google.com/maps/search/34.720499563421249,135.55040020759213",
+    "camera_pose": {
+      "latitude": "34.720500568715693",
+      "longitude": "135.55046754908125",
+      "altitude": "40.969294645583624",
+      "pitch": "-79.599472045898438",
+      "heading": "-85.844032287597656",
+      "roll": "6.7156462669372559"
+    },
+    "latitude": "34.720499563421249",
+    "longitude": "135.55040020759213",
+    "detection_time": "2020-12-28 07:00:19"
+  }]
+}, {
+  "asset_id": "t1:a095baec1743f731e561afdc53ec603f:ffff005f",
+  "observations": [{
+    "observation_id": "o1:5931d6d5aed4185db8fb1de352a41bc6:00110060",
+    "map_url": "https://www.google.com/maps/search/28.043699275901393,-81.914772658535441",
+    "camera_pose": {
+      "latitude": "28.0437595883359",
+      "longitude": "-81.9148154631698",
+      "altitude": "17.514299999460491",
+      "pitch": "-80.989730834960938",
+      "heading": "140.94505310058594",
+      "roll": "1.5267446041107178"
+    },
+    "latitude": "28.043699275901393",
+    "longitude": "-81.914772658535441",
+    "detection_time": "2024-01-30 19:58:39"
+  }, {
+    "observation_id": "o1:17534bb9cb0a3e1f8e349eeba6480c8d:00110060",
+    "map_url": "https://www.google.com/maps/search/28.043699275901393,-81.914772658535441",
+    "camera_pose": {
+      "latitude": "28.04375959103454",
+      "longitude": "-81.914815463609244",
+      "altitude": "17.514316720530775",
+      "pitch": "-80.989013671875",
+      "heading": "140.94354248046875",
+      "roll": "1.5278003215789795"
+    },
+    "latitude": "28.043699275901393",
+    "longitude": "-81.914772658535441",
+    "detection_time": "2024-01-30 19:58:39"
+  }, {
+    "observation_id": "o1:6c09d059eca76053dc9978ac2365c3d2:00110060",
+    "map_url": "https://www.google.com/maps/search/28.043699275901393,-81.914772658535441",
+    "camera_pose": {
+      "latitude": "28.043828449048547",
+      "longitude": "-81.914839256351812",
+      "altitude": "17.618473957420051",
+      "pitch": "-79.2003402709961",
+      "heading": "-33.522182464599609",
+      "roll": "173.99354553222656"
+    },
+    "latitude": "28.043699275901393",
+    "longitude": "-81.914772658535441",
+    "detection_time": "2024-01-30 19:58:39"
+  }]
+}, {
+  "asset_id": "t1:dfb8985a9031afb4a804396517b15285:ffff01ee",
+  "observations": [{
+    "observation_id": "o1:9d0f18ffa82f543a5497e38b2d0bc641:00250082",
+    "map_url": "https://www.google.com/maps/search/28.016115759843665,-81.971201118090349",
+    "camera_pose": {
+      "latitude": "28.016163426535471",
+      "longitude": "-81.9712805604576",
+      "altitude": "25.229280642443939",
+      "pitch": "0.76013106107711792",
+      "heading": "-90.654472351074219",
+      "roll": "0.61178797483444214"
+    },
+    "latitude": "28.016115759843665",
+    "longitude": "-81.971201118090349",
+    "detection_time": "2024-01-19 18:46:50"
+  }, {
+    "observation_id": "o1:c29cc885907c7a6494f40f20f751c411:00250082",
+    "map_url": "https://www.google.com/maps/search/28.016115759843665,-81.971201118090349",
+    "camera_pose": {
+      "latitude": "28.016162772550828",
+      "longitude": "-81.971384749400656",
+      "altitude": "25.266367475746655",
+      "pitch": "0.70670545101165771",
+      "heading": "-90.75482177734375",
+      "roll": "0.92658793926239014"
+    },
+    "latitude": "28.016115759843665",
+    "longitude": "-81.971201118090349",
+    "detection_time": "2024-01-19 18:46:50"
+  }, {
+    "observation_id": "o1:030f050b75c4781409372d72cb944711:00250082",
+    "map_url": "https://www.google.com/maps/search/28.016115759843665,-81.971201118090349",
+    "camera_pose": {
+      "latitude": "28.016164645332054",
+      "longitude": "-81.971071548105428",
+      "altitude": "25.081485385469513",
+      "pitch": "0.82495599985122681",
+      "heading": "-90.547866821289062",
+      "roll": "0.632696807384491"
+    },
+    "latitude": "28.016115759843665",
+    "longitude": "-81.971201118090349",
+    "detection_time": "2024-01-19 18:46:50"
+  }, {
+    "observation_id": "o1:19f9798bd04bf6369997b49918ecc1c9:00250082",
+    "map_url": "https://www.google.com/maps/search/28.016115759843665,-81.971201118090349",
+    "camera_pose": {
+      "latitude": "28.016163426535471",
+      "longitude": "-81.9712805604576",
+      "altitude": "25.229280642443939",
+      "pitch": "0.76013106107711792",
+      "heading": "-90.654472351074219",
+      "roll": "0.61178797483444214"
+    },
+    "latitude": "28.016115759843665",
+    "longitude": "-81.971201118090349",
+    "detection_time": "2024-01-19 18:46:50"
+  }, {
+    "observation_id": "o1:6849be9e678f5e0a8e5001313c751716:00250082",
+    "map_url": "https://www.google.com/maps/search/28.016115759843665,-81.971201118090349",
+    "camera_pose": {
+      "latitude": "28.016164613130602",
+      "longitude": "-81.971071554599078",
+      "altitude": "25.078713589375838",
+      "pitch": "0.829816460609436",
+      "heading": "-90.548583984375",
+      "roll": "0.63176232576370239"
+    },
+    "latitude": "28.016115759843665",
+    "longitude": "-81.971201118090349",
+    "detection_time": "2024-01-19 18:46:50"
+  }, {
+    "observation_id": "o1:67f342a21ad9d3bc8e64080167f51438:00250082",
+    "map_url": "https://www.google.com/maps/search/28.016115759843665,-81.971201118090349",
+    "camera_pose": {
+      "latitude": "28.016162772550828",
+      "longitude": "-81.971384749400656",
+      "altitude": "25.266367475746655",
+      "pitch": "0.70670545101165771",
+      "heading": "-90.75482177734375",
+      "roll": "0.92658793926239014"
+    },
+    "latitude": "28.016115759843665",
+    "longitude": "-81.971201118090349",
+    "detection_time": "2024-01-19 18:46:50"
+  }]
+}, {
+  "asset_id": "t1:be99115425cd8eb6e922598e59c1034f:ffff005f",
+  "observations": [{
+    "observation_id": "o1:af9f1af5955ed64d21d7be6fc9063e9a:00110060",
+    "map_url": "https://www.google.com/maps/search/40.764881429760564,-111.89798378733299",
+    "camera_pose": {
+      "latitude": "40.765030161532081",
+      "longitude": "-111.89826709017643",
+      "altitude": "1286.1202781560874",
+      "pitch": "-80.005905151367188",
+      "heading": "114.53437805175781",
+      "roll": "4.5453214645385742"
+    },
+    "latitude": "40.764881429760564",
+    "longitude": "-111.89798378733299",
+    "detection_time": "2025-07-01 16:50:22"
+  }, {
+    "observation_id": "o1:cde121a71fcb7a25e323c4bb205b7293:00110060",
+    "map_url": "https://www.google.com/maps/search/40.764881429760564,-111.89798378733299",
+    "camera_pose": {
+      "latitude": "40.765031592078465",
+      "longitude": "-111.89802539704377",
+      "altitude": "1286.5131827767023",
+      "pitch": "-80.670616149902344",
+      "heading": "4.7167062759399414",
+      "roll": "174.99813842773438"
+    },
+    "latitude": "40.764881429760564",
+    "longitude": "-111.89798378733299",
+    "detection_time": "2025-07-01 16:50:22"
+  }, {
+    "observation_id": "o1:0495b6bff7b784f5b611dedc92b471d7:00110060",
+    "map_url": "https://www.google.com/maps/search/40.764881429760564,-111.89798378733299",
+    "camera_pose": {
+      "latitude": "40.765027888051755",
+      "longitude": "-111.89850438135052",
+      "altitude": "1285.7181523827485",
+      "pitch": "-79.99383544921875",
+      "heading": "114.07625579833984",
+      "roll": "5.3149318695068359"
+    },
+    "latitude": "40.764881429760564",
+    "longitude": "-111.89798378733299",
+    "detection_time": "2025-07-01 16:50:22"
+  }, {
+    "observation_id": "o1:1a0bc7cff196d1142bfec1e764365cf2:00110060",
+    "map_url": "https://www.google.com/maps/search/40.764881429760564,-111.89798378733299",
+    "camera_pose": {
+      "latitude": "40.765031098733161",
+      "longitude": "-111.89814791364094",
+      "altitude": "1286.3050380869472",
+      "pitch": "-79.888229370117188",
+      "heading": "116.86134338378906",
+      "roll": "2.383211612701416"
+    },
+    "latitude": "40.764881429760564",
+    "longitude": "-111.89798378733299",
+    "detection_time": "2025-07-01 16:50:22"
+  }, {
+    "observation_id": "o1:9959953007c502137bd3f78e3a74a7ed:00110060",
+    "map_url": "https://www.google.com/maps/search/40.764881429760564,-111.89798378733299",
+    "camera_pose": {
+      "latitude": "40.765028955188484",
+      "longitude": "-111.89838557981334",
+      "altitude": "1285.9223428874773",
+      "pitch": "-80.037544250488281",
+      "heading": "115.60221099853516",
+      "roll": "3.5284137725830078"
+    },
+    "latitude": "40.764881429760564",
+    "longitude": "-111.89798378733299",
+    "detection_time": "2025-07-01 16:50:22"
+  }]
+}, {
+  "asset_id": "t1:854f85f0f93aa3b3115689f8a0d566b8:ffff005f",
+  "observations": [{
+    "observation_id": "o1:40036afe9fb227f42c15872134e2063e:00110060",
+    "map_url": "https://www.google.com/maps/search/40.763012468206782,-111.90242611570086",
+    "camera_pose": {
+      "latitude": "40.762776704551193",
+      "longitude": "-111.90264867928688",
+      "altitude": "1277.0277944736686",
+      "pitch": "-79.385086059570312",
+      "heading": "31.441564559936523",
+      "roll": "-2.0045173168182373"
+    },
+    "latitude": "40.763012468206782",
+    "longitude": "-111.90242611570086",
+    "detection_time": "2022-06-01 17:30:32"
+  }, {
+    "observation_id": "o1:8a6161e7dc5669caeaabcb06295f0d9f:00110060",
+    "map_url": "https://www.google.com/maps/search/40.763012468206782,-111.90242611570086",
+    "camera_pose": {
+      "latitude": "40.762876618210377",
+      "longitude": "-111.90264841898082",
+      "altitude": "1277.0869532045654",
+      "pitch": "-80.681358337402344",
+      "heading": "36.261493682861328",
+      "roll": "-6.7496609687805176"
+    },
+    "latitude": "40.763012468206782",
+    "longitude": "-111.90242611570086",
+    "detection_time": "2022-06-01 17:30:32"
+  }]
+}, {
+  "asset_id": "t1:48458c7b3647060f57c781504a84535c:ffff005f",
+  "observations": [{
+    "observation_id": "o1:d2205f389cff8da83d0b9a031a9f47bb:00110060",
+    "map_url": "https://www.google.com/maps/search/40.746003653163967,-111.90037379553408",
+    "camera_pose": {
+      "latitude": "40.745951221516236",
+      "longitude": "-111.90051511085389",
+      "altitude": "1273.8307871321344",
+      "pitch": "-80.348342895507812",
+      "heading": "67.36248779296875",
+      "roll": "-9.0271635055542"
+    },
+    "latitude": "40.746003653163967",
+    "longitude": "-111.90037379553408",
+    "detection_time": "2019-05-31 16:39:19"
+  }, {
+    "observation_id": "o1:e9896bf9fb30dbfda91c8f4f1c19d59f:00110060",
+    "map_url": "https://www.google.com/maps/search/40.746003653163967,-111.90037379553408",
+    "camera_pose": {
+      "latitude": "40.745953625729705",
+      "longitude": "-111.90039432507233",
+      "altitude": "1273.8688618990782",
+      "pitch": "-79.409385681152344",
+      "heading": "173.56472778320312",
+      "roll": "-175.04086303710938"
+    },
+    "latitude": "40.746003653163967",
+    "longitude": "-111.90037379553408",
+    "detection_time": "2019-05-31 16:39:19"
+  }, {
+    "observation_id": "o1:904e378a7dc202f1779c81e276e12e66:00110060",
+    "map_url": "https://www.google.com/maps/search/40.746003653163967,-111.90037379553408",
+    "camera_pose": {
+      "latitude": "40.74595405383721",
+      "longitude": "-111.90027344242387",
+      "altitude": "1273.9348767120919",
+      "pitch": "-81.6987075805664",
+      "heading": "-64.551399230957031",
+      "roll": "4.5008788108825684"
+    },
+    "latitude": "40.746003653163967",
+    "longitude": "-111.90037379553408",
+    "detection_time": "2019-05-31 16:39:19"
+  }]
+}, {
+  "asset_id": "t1:093dc489d1acacdf757d9e2fd7364acb:ffff01ee",
+  "observations": [{
+    "observation_id": "o1:426c583d48a6c2be187371894c46ef06:00250082",
+    "map_url": "https://www.google.com/maps/search/40.745008134305344,-111.91752591940791",
+    "camera_pose": {
+      "latitude": "40.744936813210849",
+      "longitude": "-111.91770431185743",
+      "altitude": "1273.7613236808902",
+      "pitch": "0.56683510541915894",
+      "heading": "88.925384521484375",
+      "roll": "0.78767663240432739"
+    },
+    "latitude": "40.745008134305344",
+    "longitude": "-111.91752591940791",
+    "detection_time": "2022-06-29 20:21:00"
+  }, {
+    "observation_id": "o1:df06420ed16672c50f0e13acf0b1782e:00250082",
+    "map_url": "https://www.google.com/maps/search/40.745008134305344,-111.91752591940791",
+    "camera_pose": {
+      "latitude": "40.74493932195044",
+      "longitude": "-111.91734456092317",
+      "altitude": "1273.7206190091777",
+      "pitch": "-0.67038995027542114",
+      "heading": "89.8350601196289",
+      "roll": "0.52749490737915039"
+    },
+    "latitude": "40.745008134305344",
+    "longitude": "-111.91752591940791",
+    "detection_time": "2022-06-29 20:21:00"
+  }, {
+    "observation_id": "o1:16d0c980e4d76c68679b01cb5bb57b29:00250082",
+    "map_url": "https://www.google.com/maps/search/40.745008134305344,-111.91752591940791",
+    "camera_pose": {
+      "latitude": "40.74493932195044",
+      "longitude": "-111.91734456092317",
+      "altitude": "1273.7206190091777",
+      "pitch": "-0.67038995027542114",
+      "heading": "89.8350601196289",
+      "roll": "0.52749490737915039"
+    },
+    "latitude": "40.745008134305344",
+    "longitude": "-111.91752591940791",
+    "detection_time": "2022-06-29 20:21:00"
+  }, {
+    "observation_id": "o1:3a79dbc155b77dd2b88ce54e8e77390d:00250082",
+    "map_url": "https://www.google.com/maps/search/40.745008134305344,-111.91752591940791",
+    "camera_pose": {
+      "latitude": "40.744939326598868",
+      "longitude": "-111.91734454078394",
+      "altitude": "1273.7171587815226",
+      "pitch": "-0.67128968238830566",
+      "heading": "89.836776733398438",
+      "roll": "0.53144353628158569"
+    },
+    "latitude": "40.745008134305344",
+    "longitude": "-111.91752591940791",
+    "detection_time": "2022-06-29 20:21:00"
+  }, {
+    "observation_id": "o1:9651a12a910ddb5f48324e62f18c7255:00250082",
+    "map_url": "https://www.google.com/maps/search/40.745008134305344,-111.91752591940791",
+    "camera_pose": {
+      "latitude": "40.744939326598868",
+      "longitude": "-111.91734454078394",
+      "altitude": "1273.7171587815226",
+      "pitch": "-0.67128968238830566",
+      "heading": "89.836776733398438",
+      "roll": "0.53144353628158569"
+    },
+    "latitude": "40.745008134305344",
+    "longitude": "-111.91752591940791",
+    "detection_time": "2022-06-29 20:21:00"
+  }, {
+    "observation_id": "o1:4f2f7d805635c92f0ffcb5db6889cc1d:00250082",
+    "map_url": "https://www.google.com/maps/search/40.745008134305344,-111.91752591940791",
+    "camera_pose": {
+      "latitude": "40.744936813210849",
+      "longitude": "-111.91770431185743",
+      "altitude": "1273.7613236808902",
+      "pitch": "0.56683510541915894",
+      "heading": "88.925384521484375",
+      "roll": "0.78767663240432739"
+    },
+    "latitude": "40.745008134305344",
+    "longitude": "-111.91752591940791",
+    "detection_time": "2022-06-29 20:21:00"
+  }, {
+    "observation_id": "o1:5eb1f80033298014097198e47247473d:00250082",
+    "map_url": "https://www.google.com/maps/search/40.745008134305344,-111.91752591940791",
+    "camera_pose": {
+      "latitude": "40.74493678681403",
+      "longitude": "-111.91770433502685",
+      "altitude": "1273.7634812655397",
+      "pitch": "0.5680965781211853",
+      "heading": "88.924812316894531",
+      "roll": "0.78549253940582275"
+    },
+    "latitude": "40.745008134305344",
+    "longitude": "-111.91752591940791",
+    "detection_time": "2022-06-29 20:21:00"
+  }, {
+    "observation_id": "o1:c692c8f3bc71d232a1c3d6ec52405bce:00250082",
+    "map_url": "https://www.google.com/maps/search/40.745008134305344,-111.91752591940791",
+    "camera_pose": {
+      "latitude": "40.744939326598868",
+      "longitude": "-111.91734454078394",
+      "altitude": "1273.7171587815226",
+      "pitch": "-0.67128968238830566",
+      "heading": "89.836776733398438",
+      "roll": "0.53144353628158569"
+    },
+    "latitude": "40.745008134305344",
+    "longitude": "-111.91752591940791",
+    "detection_time": "2022-06-29 20:21:00"
+  }]
+}, {
+  "asset_id": "t1:f83caabd418c7e21fe1c434d1ae95316:ffff005f",
+  "observations": [{
+    "observation_id": "o1:027cbc4f6edd623094a1ad84a3e79aa8:00110060",
+    "map_url": "https://www.google.com/maps/search/34.730356893006373,135.54921373996277",
+    "camera_pose": {
+      "latitude": "34.730336228265685",
+      "longitude": "135.54917224421911",
+      "altitude": "41.580999533383824",
+      "pitch": "-80.8979263305664",
+      "heading": "59.555454254150391",
+      "roll": "-6.4988760948181152"
+    },
+    "latitude": "34.730356893006373",
+    "longitude": "135.54921373996277",
+    "detection_time": "2022-06-20 05:18:27"
+  }, {
+    "observation_id": "o1:08efd9dd768b710a9c2dcff372c8fd22:00110060",
+    "map_url": "https://www.google.com/maps/search/34.730356893006373,135.54921373996277",
+    "camera_pose": {
+      "latitude": "34.730321323310307",
+      "longitude": "135.54902725889363",
+      "altitude": "41.567624554200755",
+      "pitch": "-80.487678527832031",
+      "heading": "55.7144660949707",
+      "roll": "-2.6422388553619385"
+    },
+    "latitude": "34.730356893006373",
+    "longitude": "135.54921373996277",
+    "detection_time": "2022-06-20 05:18:27"
+  }, {
+    "observation_id": "o1:64dafa8d33da2691317043e9f287db4f:00110060",
+    "map_url": "https://www.google.com/maps/search/34.730356893006373,135.54921373996277",
+    "camera_pose": {
+      "latitude": "34.7303162460035",
+      "longitude": "135.54897903208041",
+      "altitude": "41.56155300903832",
+      "pitch": "-80.470046997070312",
+      "heading": "56.606277465820312",
+      "roll": "-3.8505816459655762"
+    },
+    "latitude": "34.730356893006373",
+    "longitude": "135.54921373996277",
+    "detection_time": "2022-06-20 05:18:27"
+  }, {
+    "observation_id": "o1:ea80d549342caa087395297f2258da69:00110060",
+    "map_url": "https://www.google.com/maps/search/34.730356893006373,135.54921373996277",
+    "camera_pose": {
+      "latitude": "34.730315531611652",
+      "longitude": "135.54897957671218",
+      "altitude": "41.562428454703479",
+      "pitch": "-80.169197082519531",
+      "heading": "113.45860290527344",
+      "roll": "-0.70601797103881836"
+    },
+    "latitude": "34.730356893006373",
+    "longitude": "135.54921373996277",
+    "detection_time": "2022-06-20 05:18:27"
+  }]
+}, {
+  "asset_id": "t1:24ff7af88e55b8fc9d80fb2631779402:ffff005f",
+  "observations": [{
+    "observation_id": "o1:ffa9dbf64ad17239e56dbd0ed0da6e3f:00110060",
+    "map_url": "https://www.google.com/maps/search/28.017329962055051,-82.035967170204472",
+    "camera_pose": {
+      "latitude": "28.017390588292685",
+      "longitude": "-82.035988437386152",
+      "altitude": "19.123305663624709",
+      "pitch": "-80.605674743652344",
+      "heading": "172.17536926269531",
+      "roll": "-6.1959562301635742"
+    },
+    "latitude": "28.017329962055051",
+    "longitude": "-82.035967170204472",
+    "detection_time": "2020-03-16 20:27:03"
+  }, {
+    "observation_id": "o1:35127a85815377018499180c1da45abc:00110060",
+    "map_url": "https://www.google.com/maps/search/28.017329962055051,-82.035967170204472",
+    "camera_pose": {
+      "latitude": "28.017448721678896",
+      "longitude": "-82.036051075782169",
+      "altitude": "19.159409111821329",
+      "pitch": "-80.731681823730469",
+      "heading": "171.9793701171875",
+      "roll": "-5.9587421417236328"
+    },
+    "latitude": "28.017329962055051",
+    "longitude": "-82.035967170204472",
+    "detection_time": "2020-03-16 20:27:03"
+  }, {
+    "observation_id": "o1:76ee843f48d759360e9df370cf7fecf9:00110060",
+    "map_url": "https://www.google.com/maps/search/28.017329962055051,-82.035967170204472",
+    "camera_pose": {
+      "latitude": "28.01744524029602",
+      "longitude": "-82.03635124062059",
+      "altitude": "19.135028303268793",
+      "pitch": "-79.47625732421875",
+      "heading": "99.384307861328125",
+      "roll": "7.2343645095825195"
+    },
+    "latitude": "28.017329962055051",
+    "longitude": "-82.035967170204472",
+    "detection_time": "2020-03-16 20:27:03"
+  }, {
+    "observation_id": "o1:e67f783125e4571792ba832d92fba961:00110060",
+    "map_url": "https://www.google.com/maps/search/28.017329962055051,-82.035967170204472",
+    "camera_pose": {
+      "latitude": "28.017509691428089",
+      "longitude": "-82.0361164333651",
+      "altitude": "19.195892665504143",
+      "pitch": "-80.643478393554688",
+      "heading": "171.88470458984375",
+      "roll": "-5.8275609016418457"
+    },
+    "latitude": "28.017329962055051",
+    "longitude": "-82.035967170204472",
+    "detection_time": "2020-03-16 20:27:03"
+  }]
+}, {
+  "asset_id": "t1:a1cf3ec6424e445d3bb8bb152389765f:ffff005f",
+  "observations": [{
+    "observation_id": "o1:5a80e45ceb3872dcc53b06d90566b8db:00110060",
+    "map_url": "https://www.google.com/maps/search/40.764451711602391,-111.91794220388935",
+    "camera_pose": {
+      "latitude": "40.764479590071417",
+      "longitude": "-111.91817615461625",
+      "altitude": "1281.4727794804421",
+      "pitch": "-81.264251708984375",
+      "heading": "124.72299957275391",
+      "roll": "-0.84286081790924072"
+    },
+    "latitude": "40.764451711602391",
+    "longitude": "-111.91794220388935",
+    "detection_time": "2025-08-13 15:48:36"
+  }, {
+    "observation_id": "o1:c6a379ac8425c981bfc8f111c66d385e:00110060",
+    "map_url": "https://www.google.com/maps/search/40.764451711602391,-111.91794220388935",
+    "camera_pose": {
+      "latitude": "40.764447248992632",
+      "longitude": "-111.91825002243189",
+      "altitude": "1281.3227425031698",
+      "pitch": "-79.0496597290039",
+      "heading": "55.910476684570312",
+      "roll": "7.4653382301330566"
+    },
+    "latitude": "40.764451711602391",
+    "longitude": "-111.91794220388935",
+    "detection_time": "2025-08-13 15:48:36"
+  }, {
+    "observation_id": "o1:005cef52ae75ab53e30e8ff15acf0b72:00110060",
+    "map_url": "https://www.google.com/maps/search/40.764451711602391,-111.91794220388935",
+    "camera_pose": {
+      "latitude": "40.7644845235779",
+      "longitude": "-111.91828917079138",
+      "altitude": "1281.4280497665372",
+      "pitch": "-81.075233459472656",
+      "heading": "123.25817108154297",
+      "roll": "-0.46868917346000671"
+    },
+    "latitude": "40.764451711602391",
+    "longitude": "-111.91794220388935",
+    "detection_time": "2025-08-13 15:48:36"
+  }, {
+    "observation_id": "o1:ca7666a8ba843f525a8107e48361ad06:00110060",
+    "map_url": "https://www.google.com/maps/search/40.764451711602391,-111.91794220388935",
+    "camera_pose": {
+      "latitude": "40.764442988522667",
+      "longitude": "-111.91816456778206",
+      "altitude": "1281.3338410747783",
+      "pitch": "-79.078598022460938",
+      "heading": "56.740753173828125",
+      "roll": "7.5417728424072266"
+    },
+    "latitude": "40.764451711602391",
+    "longitude": "-111.91794220388935",
+    "detection_time": "2025-08-13 15:48:36"
+  }, {
+    "observation_id": "o1:a029ce604ca354b4c2f6f53529489a25:00110060",
+    "map_url": "https://www.google.com/maps/search/40.764451711602391,-111.91794220388935",
+    "camera_pose": {
+      "latitude": "40.764688074771485",
+      "longitude": "-111.91855678886343",
+      "altitude": "1280.8350480053491",
+      "pitch": "-79.509765625",
+      "heading": "127.51766967773438",
+      "roll": "-7.1632719039916992"
+    },
+    "latitude": "40.764451711602391",
+    "longitude": "-111.91794220388935",
+    "detection_time": "2025-08-13 15:48:36"
+  }]
+}, {
+  "asset_id": "t1:a26bc90c631c7e91cfde3aba8c1995a7:ffff005f",
+  "observations": [{
+    "observation_id": "o1:9bccaf9ccd244acffdcd958b0d5149b7:00110060",
+    "map_url": "https://www.google.com/maps/search/34.723113112990617,135.53459269084269",
+    "camera_pose": {
+      "latitude": "34.722997153332621",
+      "longitude": "135.53464104735778",
+      "altitude": "40.09798710856181",
+      "pitch": "-81.01153564453125",
+      "heading": "-14.563261985778809",
+      "roll": "-10.786163330078125"
+    },
+    "latitude": "34.723113112990617",
+    "longitude": "135.53459269084269",
+    "detection_time": "2025-05-27 03:20:44"
+  }, {
+    "observation_id": "o1:5e30901393000b4839f7c271d3c99a22:00110060",
+    "map_url": "https://www.google.com/maps/search/34.723113112990617,135.53459269084269",
+    "camera_pose": {
+      "latitude": "34.7230796686792",
+      "longitude": "135.53464852751009",
+      "altitude": "40.19096850010839",
+      "pitch": "-80.697792053222656",
+      "heading": "-48.455753326416016",
+      "roll": "-6.7777624130249023"
+    },
+    "latitude": "34.723113112990617",
+    "longitude": "135.53459269084269",
+    "detection_time": "2025-05-27 03:20:44"
+  }, {
+    "observation_id": "o1:d1d278a14de3b5fcb0f70c6e2bd141ff:00110060",
+    "map_url": "https://www.google.com/maps/search/34.723113112990617,135.53459269084269",
+    "camera_pose": {
+      "latitude": "34.72295619289654",
+      "longitude": "135.53466377168331",
+      "altitude": "40.090221861545686",
+      "pitch": "-79.072494506835938",
+      "heading": "-33.6768913269043",
+      "roll": "7.99406623840332"
+    },
+    "latitude": "34.723113112990617",
+    "longitude": "135.53459269084269",
+    "detection_time": "2025-05-27 03:20:44"
+  }, {
+    "observation_id": "o1:fa7b30a835fa7beda30d65dd7aa5a282:00110060",
+    "map_url": "https://www.google.com/maps/search/34.723113112990617,135.53459269084269",
+    "camera_pose": {
+      "latitude": "34.723081239634318",
+      "longitude": "135.53464895583127",
+      "altitude": "40.187272312380131",
+      "pitch": "-79.841377258300781",
+      "heading": "92.479843139648438",
+      "roll": "-177.4381103515625"
+    },
+    "latitude": "34.723113112990617",
+    "longitude": "135.53459269084269",
+    "detection_time": "2025-05-27 03:20:44"
+  }, {
+    "observation_id": "o1:880cf6bc8b151666917d3d88562d726b:00110060",
+    "map_url": "https://www.google.com/maps/search/34.723113112990617,135.53459269084269",
+    "camera_pose": {
+      "latitude": "34.723079575494822",
+      "longitude": "135.53464918225313",
+      "altitude": "40.185939568086887",
+      "pitch": "-80.317207336425781",
+      "heading": "-20.315963745117188",
+      "roll": "-4.7906842231750488"
+    },
+    "latitude": "34.723113112990617",
+    "longitude": "135.53459269084269",
+    "detection_time": "2025-05-27 03:20:44"
+  }]
+}, {
+  "asset_id": "t1:e1714be2c5f7c4eee63bb2a1c0328a05:ffff005f",
+  "observations": [{
+    "observation_id": "o1:40828f2a079e5584506c681fc695df32:00110060",
+    "map_url": "https://www.google.com/maps/search/34.730958038408431,135.55967526652967",
+    "camera_pose": {
+      "latitude": "34.731062128718008",
+      "longitude": "135.55981721434142",
+      "altitude": "42.1945822432936",
+      "pitch": "-80.19683837890625",
+      "heading": "-129.15263366699219",
+      "roll": "-8.619084358215332"
+    },
+    "latitude": "34.730958038408431",
+    "longitude": "135.55967526652967",
+    "detection_time": "2024-09-23 00:31:02"
+  }, {
+    "observation_id": "o1:be1b34436a684451742fb3a35882b7bf:00110060",
+    "map_url": "https://www.google.com/maps/search/34.730958038408431,135.55967526652967",
+    "camera_pose": {
+      "latitude": "34.73094524043961",
+      "longitude": "135.5597472113306",
+      "altitude": "42.08232759132634",
+      "pitch": "-81.0599594116211",
+      "heading": "-98.5297622680664",
+      "roll": "-10.868658065795898"
+    },
+    "latitude": "34.730958038408431",
+    "longitude": "135.55967526652967",
+    "detection_time": "2024-09-23 00:31:02"
+  }, {
+    "observation_id": "o1:9ad30d83553c2f69f068ca6d67fcfeb4:00110060",
+    "map_url": "https://www.google.com/maps/search/34.730958038408431,135.55967526652967",
+    "camera_pose": {
+      "latitude": "34.730975836113167",
+      "longitude": "135.55979045371157",
+      "altitude": "42.106555040432013",
+      "pitch": "-82.716339111328125",
+      "heading": "124.96019744873047",
+      "roll": "176.4111328125"
+    },
+    "latitude": "34.730958038408431",
+    "longitude": "135.55967526652967",
+    "detection_time": "2024-09-23 00:31:02"
+  }, {
+    "observation_id": "o1:66b4d5124573f1913adfa33f9ae868d5:00110060",
+    "map_url": "https://www.google.com/maps/search/34.730958038408431,135.55967526652967",
+    "camera_pose": {
+      "latitude": "34.730945993206504",
+      "longitude": "135.55974739672419",
+      "altitude": "42.0847393736592",
+      "pitch": "-79.482345581054688",
+      "heading": "-41.093856811523438",
+      "roll": "-8.3219327926635742"
+    },
+    "latitude": "34.730958038408431",
+    "longitude": "135.55967526652967",
+    "detection_time": "2024-09-23 00:31:02"
+  }, {
+    "observation_id": "o1:922ca1ab6e3d4d2de4b95ea1bb20581a:00110060",
+    "map_url": "https://www.google.com/maps/search/34.730958038408431,135.55967526652967",
+    "camera_pose": {
+      "latitude": "34.730975873883473",
+      "longitude": "135.55979081738587",
+      "altitude": "42.104536152919309",
+      "pitch": "-78.5381088256836",
+      "heading": "-111.05525207519531",
+      "roll": "-8.3217229843139648"
+    },
+    "latitude": "34.730958038408431",
+    "longitude": "135.55967526652967",
+    "detection_time": "2024-09-23 00:31:02"
+  }, {
+    "observation_id": "o1:07081ef5c188a5b4e36dfa764d2b5f50:00110060",
+    "map_url": "https://www.google.com/maps/search/34.730958038408431,135.55967526652967",
+    "camera_pose": {
+      "latitude": "34.730924414858542",
+      "longitude": "135.55985325221567",
+      "altitude": "42.13569992061278",
+      "pitch": "-79.636589050292969",
+      "heading": "-85.220252990722656",
+      "roll": "-1.6531424522399902"
+    },
+    "latitude": "34.730958038408431",
+    "longitude": "135.55967526652967",
+    "detection_time": "2024-09-23 00:31:02"
+  }, {
+    "observation_id": "o1:3254d837ac538109f47566ac859d5ffd:00110060",
+    "map_url": "https://www.google.com/maps/search/34.730958038408431,135.55967526652967",
+    "camera_pose": {
+      "latitude": "34.730945240456229",
+      "longitude": "135.55974721293705",
+      "altitude": "42.082329391896927",
+      "pitch": "-81.060050964355469",
+      "heading": "-98.532478332519531",
+      "roll": "-10.867754936218262"
+    },
+    "latitude": "34.730958038408431",
+    "longitude": "135.55967526652967",
+    "detection_time": "2024-09-23 00:31:02"
+  }]
+}, {
+  "asset_id": "t1:f97e81071408bc3c0d43d7d4734cf24e:ffff005f",
+  "observations": [{
+    "observation_id": "o1:6112ff4073b1ed3b1effebc871766a4a:00110060",
+    "map_url": "https://www.google.com/maps/search/34.722385289054529,135.54552436203366",
+    "camera_pose": {
+      "latitude": "34.722417192936604",
+      "longitude": "135.54539014460585",
+      "altitude": "40.74590458227906",
+      "pitch": "-80.287002563476562",
+      "heading": "109.26909637451172",
+      "roll": "-8.982905387878418"
+    },
+    "latitude": "34.722385289054529",
+    "longitude": "135.54552436203366",
+    "detection_time": "2022-09-16 02:15:58"
+  }, {
+    "observation_id": "o1:102f06f3f7d9a5df659d76bf687e928e:00110060",
+    "map_url": "https://www.google.com/maps/search/34.722385289054529,135.54552436203366",
+    "camera_pose": {
+      "latitude": "34.722396944257248",
+      "longitude": "135.5455810377222",
+      "altitude": "40.695715777626049",
+      "pitch": "-80.797035217285156",
+      "heading": "-108.23952484130859",
+      "roll": "-2.9877257347106934"
+    },
+    "latitude": "34.722385289054529",
+    "longitude": "135.54552436203366",
+    "detection_time": "2022-09-16 02:15:58"
+  }, {
+    "observation_id": "o1:33fc0e0c4c7a874563846c89a01d2f53:00110060",
+    "map_url": "https://www.google.com/maps/search/34.722385289054529,135.54552436203366",
+    "camera_pose": {
+      "latitude": "34.722455472598718",
+      "longitude": "135.54543977411728",
+      "altitude": "40.756756039305245",
+      "pitch": "-80.3100357055664",
+      "heading": "141.56544494628906",
+      "roll": "-4.0911974906921387"
+    },
+    "latitude": "34.722385289054529",
+    "longitude": "135.54552436203366",
+    "detection_time": "2022-09-16 02:15:58"
+  }, {
+    "observation_id": "o1:f9ac75cad1ab78f7d190873c2c20dc60:00110060",
+    "map_url": "https://www.google.com/maps/search/34.722385289054529,135.54552436203366",
+    "camera_pose": {
+      "latitude": "34.7224127438688",
+      "longitude": "135.54545823510801",
+      "altitude": "40.774661354800827",
+      "pitch": "-82.02105712890625",
+      "heading": "136.48249816894531",
+      "roll": "-6.95772123336792"
+    },
+    "latitude": "34.722385289054529",
+    "longitude": "135.54552436203366",
+    "detection_time": "2022-09-16 02:15:58"
+  }, {
+    "observation_id": "o1:2cc3cfb42fc836e16e73ee219fd4fd70:00110060",
+    "map_url": "https://www.google.com/maps/search/34.722385289054529,135.54552436203366",
+    "camera_pose": {
+      "latitude": "34.722411146866051",
+      "longitude": "135.54546822406036",
+      "altitude": "40.748452632937237",
+      "pitch": "-81.655479431152344",
+      "heading": "125.41175079345703",
+      "roll": "-7.060417652130127"
+    },
+    "latitude": "34.722385289054529",
+    "longitude": "135.54552436203366",
+    "detection_time": "2022-09-16 02:15:58"
+  }, {
+    "observation_id": "o1:0d499727f14084ea0a8c86dff62382ca:00110060",
+    "map_url": "https://www.google.com/maps/search/34.722385289054529,135.54552436203366",
+    "camera_pose": {
+      "latitude": "34.722400286372959",
+      "longitude": "135.54557522912748",
+      "altitude": "40.702542011360094",
+      "pitch": "-80.963729858398438",
+      "heading": "-111.60979461669922",
+      "roll": "0.27817308902740479"
+    },
+    "latitude": "34.722385289054529",
+    "longitude": "135.54552436203366",
+    "detection_time": "2022-09-16 02:15:58"
+  }, {
+    "observation_id": "o1:891f3693d9aa6dcd3ced4fc1cbb1ec14:00110060",
+    "map_url": "https://www.google.com/maps/search/34.722385289054529,135.54552436203366",
+    "camera_pose": {
+      "latitude": "34.722397148397256",
+      "longitude": "135.54559679423232",
+      "altitude": "40.682165589380013",
+      "pitch": "-80.4903564453125",
+      "heading": "-110.61347961425781",
+      "roll": "1.2042031288146973"
+    },
+    "latitude": "34.722385289054529",
+    "longitude": "135.54552436203366",
+    "detection_time": "2022-09-16 02:15:58"
+  }]
+}, {
+  "asset_id": "t1:71303f116bfa349fe8e69c2c3e81013d:ffff005f",
+  "observations": [{
+    "observation_id": "o1:e018ffae3e2cf564f6a7a8645ed78c68:00110060",
+    "map_url": "https://www.google.com/maps/search/27.998690608425335,-81.973866801296268",
+    "camera_pose": {
+      "latitude": "27.998791909349979",
+      "longitude": "-81.973935533155682",
+      "altitude": "23.219172074938978",
+      "pitch": "-79.772132873535156",
+      "heading": "139.95304870605469",
+      "roll": "2.6173186302185059"
+    },
+    "latitude": "27.998690608425335",
+    "longitude": "-81.973866801296268",
+    "detection_time": "2022-09-12 16:38:35"
+  }, {
+    "observation_id": "o1:3e0796062ceb94fac0a843a7c7a9ee05:00110060",
+    "map_url": "https://www.google.com/maps/search/27.998690608425335,-81.973866801296268",
+    "camera_pose": {
+      "latitude": "27.998788738646333",
+      "longitude": "-81.974103600132",
+      "altitude": "23.218923812663",
+      "pitch": "-81.508171081542969",
+      "heading": "124.55581665039062",
+      "roll": "-7.4042558670043945"
+    },
+    "latitude": "27.998690608425335",
+    "longitude": "-81.973866801296268",
+    "detection_time": "2022-09-12 16:38:35"
+  }, {
+    "observation_id": "o1:dc00d9319f2647c9ea672ce948326303:00110060",
+    "map_url": "https://www.google.com/maps/search/27.998690608425335,-81.973866801296268",
+    "camera_pose": {
+      "latitude": "27.998822015767207",
+      "longitude": "-81.974070392168045",
+      "altitude": "23.134118288822453",
+      "pitch": "-79.073348999023438",
+      "heading": "-75.809722900390625",
+      "roll": "-175.4022216796875"
+    },
+    "latitude": "27.998690608425335",
+    "longitude": "-81.973866801296268",
+    "detection_time": "2022-09-12 16:38:35"
+  }, {
+    "observation_id": "o1:96ec0e3c379adcfa4777d69aae372c90:00110060",
+    "map_url": "https://www.google.com/maps/search/27.998690608425335,-81.973866801296268",
+    "camera_pose": {
+      "latitude": "27.99884377338314",
+      "longitude": "-81.974026630048883",
+      "altitude": "23.079173360729975",
+      "pitch": "-80.609359741210938",
+      "heading": "-61.166828155517578",
+      "roll": "-177.56715393066406"
+    },
+    "latitude": "27.998690608425335",
+    "longitude": "-81.973866801296268",
+    "detection_time": "2022-09-12 16:38:35"
+  }, {
+    "observation_id": "o1:b3cec2c99cccf6e5a555d8f4d0b70f19:00110060",
+    "map_url": "https://www.google.com/maps/search/27.998690608425335,-81.973866801296268",
+    "camera_pose": {
+      "latitude": "27.9987795321269",
+      "longitude": "-81.973920043996657",
+      "altitude": "23.66519538020507",
+      "pitch": "-78.091705322265625",
+      "heading": "-17.581857681274414",
+      "roll": "172.22015380859375"
+    },
+    "latitude": "27.998690608425335",
+    "longitude": "-81.973866801296268",
+    "detection_time": "2022-09-12 16:38:35"
+  }, {
+    "observation_id": "o1:0420fd053a19cdf690a349fe1b0fa01a:00110060",
+    "map_url": "https://www.google.com/maps/search/27.998690608425335,-81.973866801296268",
+    "camera_pose": {
+      "latitude": "27.998694975214221",
+      "longitude": "-81.974048953674071",
+      "altitude": "23.159148164064792",
+      "pitch": "-80.38861083984375",
+      "heading": "-82.3401107788086",
+      "roll": "172.01924133300781"
+    },
+    "latitude": "27.998690608425335",
+    "longitude": "-81.973866801296268",
+    "detection_time": "2022-09-12 16:38:35"
+  }]
+}, {
+  "asset_id": "t1:3fff59e75a97c9af9edf3e6d53c61660:ffff01ee",
+  "observations": [{
+    "observation_id": "o1:5bcc481a814026f89a0f82711ada1018:00250082",
+    "map_url": "https://www.google.com/maps/search/40.757461792315347,-111.89663012798592",
+    "camera_pose": {
+      "latitude": "40.757674080209512",
+      "longitude": "-111.89677239999921",
+      "altitude": "1276.9852189335061",
+      "pitch": "0.83787274360656738",
+      "heading": "-0.29893004894256592",
+      "roll": "0.31086471676826477"
+    },
+    "latitude": "40.757461792315347",
+    "longitude": "-111.89663012798592",
+    "detection_time": "2022-06-23 19:55:57"
+  }, {
+    "observation_id": "o1:8a6b5f2c81d918fd0aa78f6073c56ee0:00250082",
+    "map_url": "https://www.google.com/maps/search/40.757461792315347,-111.89663012798592",
+    "camera_pose": {
+      "latitude": "40.757478642283026",
+      "longitude": "-111.89686168753866",
+      "altitude": "1276.7035205359996",
+      "pitch": "-0.77215361595153809",
+      "heading": "179.5826416015625",
+      "roll": "1.551002025604248"
+    },
+    "latitude": "40.757461792315347",
+    "longitude": "-111.89663012798592",
+    "detection_time": "2022-06-23 19:55:57"
+  }, {
+    "observation_id": "o1:4352e592d9718a8b692e19f80f1fd542:00250082",
+    "map_url": "https://www.google.com/maps/search/40.757461792315347,-111.89663012798592",
+    "camera_pose": {
+      "latitude": "40.7572585488401",
+      "longitude": "-111.89677456627732",
+      "altitude": "1276.6297029556488",
+      "pitch": "0.71967297792434692",
+      "heading": "-0.52418065071105957",
+      "roll": "0.4628700315952301"
+    },
+    "latitude": "40.757461792315347",
+    "longitude": "-111.89663012798592",
+    "detection_time": "2022-06-23 19:55:57"
+  }, {
+    "observation_id": "o1:ef31fcf35249df747c283cd132fd78a2:00250082",
+    "map_url": "https://www.google.com/maps/search/40.757461792315347,-111.89663012798592",
+    "camera_pose": {
+      "latitude": "40.757478642283026",
+      "longitude": "-111.89686168753866",
+      "altitude": "1276.7035205359996",
+      "pitch": "-0.77215361595153809",
+      "heading": "179.5826416015625",
+      "roll": "1.551002025604248"
+    },
+    "latitude": "40.757461792315347",
+    "longitude": "-111.89663012798592",
+    "detection_time": "2022-06-23 19:55:57"
+  }, {
+    "observation_id": "o1:b643f0898807c7dbab8f1bce27a66b29:00250082",
+    "map_url": "https://www.google.com/maps/search/40.757461792315347,-111.89663012798592",
+    "camera_pose": {
+      "latitude": "40.757674080209512",
+      "longitude": "-111.89677239999921",
+      "altitude": "1276.9852189335061",
+      "pitch": "0.83787274360656738",
+      "heading": "-0.29893004894256592",
+      "roll": "0.31086471676826477"
+    },
+    "latitude": "40.757461792315347",
+    "longitude": "-111.89663012798592",
+    "detection_time": "2022-06-23 19:55:57"
+  }, {
+    "observation_id": "o1:7f8e375bba96d099f386560d980252ab:00250082",
+    "map_url": "https://www.google.com/maps/search/40.757461792315347,-111.89663012798592",
+    "camera_pose": {
+      "latitude": "40.757674080209512",
+      "longitude": "-111.89677239999921",
+      "altitude": "1276.9852189335061",
+      "pitch": "0.83787274360656738",
+      "heading": "-0.29893004894256592",
+      "roll": "0.31086471676826477"
+    },
+    "latitude": "40.757461792315347",
+    "longitude": "-111.89663012798592",
+    "detection_time": "2022-06-23 19:55:57"
+  }, {
+    "observation_id": "o1:972a1ab14dff506914e32dcd4c86d19d:00250082",
+    "map_url": "https://www.google.com/maps/search/40.757461792315347,-111.89663012798592",
+    "camera_pose": {
+      "latitude": "40.757488872888153",
+      "longitude": "-111.89677377515008",
+      "altitude": "1276.81100653816",
+      "pitch": "0.51509004831314087",
+      "heading": "-0.19103662669658661",
+      "roll": "0.24865031242370605"
+    },
+    "latitude": "40.757461792315347",
+    "longitude": "-111.89663012798592",
+    "detection_time": "2022-06-23 19:55:57"
+  }]
+}, {
+  "asset_id": "t1:fb085ae337769dfe73afde3ff6d2eabc:ffff01ee",
+  "observations": [{
+    "observation_id": "o1:86b72cbd27bf3a5b6d2c781adad1d602:00250082",
+    "map_url": "https://www.google.com/maps/search/28.012612329321932,-81.907480457584811",
+    "camera_pose": {
+      "latitude": "28.012619542678639",
+      "longitude": "-81.907722244621226",
+      "altitude": "18.982030324059892",
+      "pitch": "0.590561032295227",
+      "heading": "-1.4585722684860229",
+      "roll": "1.9204462766647339"
+    },
+    "latitude": "28.012612329321932",
+    "longitude": "-81.907480457584811",
+    "detection_time": "2024-04-18 17:27:16"
+  }, {
+    "observation_id": "o1:6a6cc34a37f850393d1b31c718cbdbcc:00250082",
+    "map_url": "https://www.google.com/maps/search/28.012612329321932,-81.907480457584811",
+    "camera_pose": {
+      "latitude": "28.012619744358734",
+      "longitude": "-81.907722723791153",
+      "altitude": "19.016812899313187",
+      "pitch": "0.59202635288238525",
+      "heading": "-1.459202766418457",
+      "roll": "1.9219805002212524"
+    },
+    "latitude": "28.012612329321932",
+    "longitude": "-81.907480457584811",
+    "detection_time": "2024-04-18 17:27:16"
+  }]
+}, {
+  "asset_id": "t1:76d22e414f7809ceb3c1ace78c05ca9e:ffff005f",
+  "observations": [{
+    "observation_id": "o1:c209efe2912dd1cdb38e713785b5b411:00110060",
+    "map_url": "https://www.google.com/maps/search/53.360316511282875,-6.4462388334552356",
+    "camera_pose": {
+      "latitude": "53.360437247380077",
+      "longitude": "-6.4464128771169333",
+      "altitude": "82.81470617934896",
+      "pitch": "-79.727119445800781",
+      "heading": "128.74871826171875",
+      "roll": "5.1284608840942383"
+    },
+    "latitude": "53.360316511282875",
+    "longitude": "-6.4462388334552356",
+    "detection_time": "2024-10-26 14:05:04"
+  }, {
+    "observation_id": "o1:8ab1ebcde218213da26a8518b4f6ddf3:00110060",
+    "map_url": "https://www.google.com/maps/search/53.360316511282875,-6.4462388334552356",
+    "camera_pose": {
+      "latitude": "53.36038022920485",
+      "longitude": "-6.4463113049484981",
+      "altitude": "82.93879134418674",
+      "pitch": "-79.38348388671875",
+      "heading": "153.81550598144531",
+      "roll": "1.3548798561096191"
+    },
+    "latitude": "53.360316511282875",
+    "longitude": "-6.4462388334552356",
+    "detection_time": "2024-10-26 14:05:04"
+  }, {
+    "observation_id": "o1:ca9a7e5ea68d98b458f7934dc443530b:00110060",
+    "map_url": "https://www.google.com/maps/search/53.360316511282875,-6.4462388334552356",
+    "camera_pose": {
+      "latitude": "53.360513676711534",
+      "longitude": "-6.44604183659717",
+      "altitude": "82.193914619797184",
+      "pitch": "-78.86236572265625",
+      "heading": "-126.71253967285156",
+      "roll": "-9.75488567352295"
+    },
+    "latitude": "53.360316511282875",
+    "longitude": "-6.4462388334552356",
+    "detection_time": "2024-10-26 14:05:04"
+  }]
+}, {
+  "asset_id": "t1:c09234e1bc4571db7db6d96e8d9663ff:ffff01ee",
+  "observations": [{
+    "observation_id": "o1:897f937520084be397996a4c7e9f065f:00250082",
+    "map_url": "https://www.google.com/maps/search/27.996733674583293,-82.016741209949615",
+    "camera_pose": {
+      "latitude": "27.996602932799487",
+      "longitude": "-82.017004659514328",
+      "altitude": "16.044231432451639",
+      "pitch": "-0.20120131969451904",
+      "heading": "90.817665100097656",
+      "roll": "0.49573925137519836"
+    },
+    "latitude": "27.996733674583293",
+    "longitude": "-82.016741209949615",
+    "detection_time": "2025-05-02 12:27:18"
+  }, {
+    "observation_id": "o1:f5c9267448d7bca4ec277773b579c922:00250082",
+    "map_url": "https://www.google.com/maps/search/27.996733674583293,-82.016741209949615",
+    "camera_pose": {
+      "latitude": "27.996594890984223",
+      "longitude": "-82.016483818844648",
+      "altitude": "16.0207920403625",
+      "pitch": "-0.11210024356842041",
+      "heading": "91.051872253417969",
+      "roll": "1.4169437885284424"
+    },
+    "latitude": "27.996733674583293",
+    "longitude": "-82.016741209949615",
+    "detection_time": "2025-05-02 12:27:18"
+  }]
+}, {
+  "asset_id": "t1:89838683ba69e06b976c2e663462a60f:ffff005f",
+  "observations": [{
+    "observation_id": "o1:987fa242dc1f92d0928c2d24a961a274:00110060",
+    "map_url": "https://www.google.com/maps/search/40.791211906980635,-111.93485263005505",
+    "camera_pose": {
+      "latitude": "40.791163387616329",
+      "longitude": "-111.93473197395609",
+      "altitude": "1270.9072541819755",
+      "pitch": "-79.598495483398438",
+      "heading": "-75.420112609863281",
+      "roll": "6.9560389518737793"
+    },
+    "latitude": "40.791211906980635",
+    "longitude": "-111.93485263005505",
+    "detection_time": "2022-11-21 23:42:03"
+  }, {
+    "observation_id": "o1:19a8dc4ddaf9c27b6e7030247f56b80c:00110060",
+    "map_url": "https://www.google.com/maps/search/40.791211906980635,-111.93485263005505",
+    "camera_pose": {
+      "latitude": "40.791085500436431",
+      "longitude": "-111.93460362530909",
+      "altitude": "1271.12598345763",
+      "pitch": "-80.831382751464844",
+      "heading": "-68.050201416015625",
+      "roll": "7.5981950759887695"
+    },
+    "latitude": "40.791211906980635",
+    "longitude": "-111.93485263005505",
+    "detection_time": "2022-11-21 23:42:03"
+  }, {
+    "observation_id": "o1:aaf577730673cd96036bd62d60ae66ae:00110060",
+    "map_url": "https://www.google.com/maps/search/40.791211906980635,-111.93485263005505",
+    "camera_pose": {
+      "latitude": "40.7910202861886",
+      "longitude": "-111.93490429942739",
+      "altitude": "1271.2276845496663",
+      "pitch": "-81.6608657836914",
+      "heading": "-177.66400146484375",
+      "roll": "176.99742126464844"
+    },
+    "latitude": "40.791211906980635",
+    "longitude": "-111.93485263005505",
+    "detection_time": "2022-11-21 23:42:03"
+  }, {
+    "observation_id": "o1:739b455c15ae86cf233ff03bc3bcceed:00110060",
+    "map_url": "https://www.google.com/maps/search/40.791211906980635,-111.93485263005505",
+    "camera_pose": {
+      "latitude": "40.791163388999479",
+      "longitude": "-111.93473197524919",
+      "altitude": "1270.9072529425196",
+      "pitch": "-79.598457336425781",
+      "heading": "-75.419204711914062",
+      "roll": "6.9558272361755371"
+    },
+    "latitude": "40.791211906980635",
+    "longitude": "-111.93485263005505",
+    "detection_time": "2022-11-21 23:42:03"
+  }]
+}, {
+  "asset_id": "t1:1b1522f657ed4851e9764af085fd92fe:ffff005f",
+  "observations": [{
+    "observation_id": "o1:86f9970c5197000cda4525806bedfe98:00110060",
+    "map_url": "https://www.google.com/maps/search/27.974862212660749,-81.99334114524855",
+    "camera_pose": {
+      "latitude": "27.974758637844012",
+      "longitude": "-81.993172381809615",
+      "altitude": "10.179744330148297",
+      "pitch": "-79.773994445800781",
+      "heading": "-49.131492614746094",
+      "roll": "-12.073616027832031"
+    },
+    "latitude": "27.974862212660749",
+    "longitude": "-81.99334114524855",
+    "detection_time": "2024-02-14 14:12:35"
+  }, {
+    "observation_id": "o1:7c88ffe2386d1ac3a79402caebb78249:00110060",
+    "map_url": "https://www.google.com/maps/search/27.974862212660749,-81.99334114524855",
+    "camera_pose": {
+      "latitude": "27.974760832508696",
+      "longitude": "-81.993070579584142",
+      "altitude": "10.119493125105164",
+      "pitch": "-80.3883056640625",
+      "heading": "-52.598625183105469",
+      "roll": "-8.83625602722168"
+    },
+    "latitude": "27.974862212660749",
+    "longitude": "-81.99334114524855",
+    "detection_time": "2024-02-14 14:12:35"
+  }, {
+    "observation_id": "o1:1ce2b97aeb27e91bf5a6c42dcbca3d09:00110060",
+    "map_url": "https://www.google.com/maps/search/27.974862212660749,-81.99334114524855",
+    "camera_pose": {
+      "latitude": "27.974758637937718",
+      "longitude": "-81.993172376092716",
+      "altitude": "10.179741230567629",
+      "pitch": "-79.773994445800781",
+      "heading": "-49.131931304931641",
+      "roll": "-12.073177337646484"
+    },
+    "latitude": "27.974862212660749",
+    "longitude": "-81.99334114524855",
+    "detection_time": "2024-02-14 14:12:35"
+  }, {
+    "observation_id": "o1:f9a01b3fdcbe2660c13c7e1a2f4fcc87:00110060",
+    "map_url": "https://www.google.com/maps/search/27.974862212660749,-81.99334114524855",
+    "camera_pose": {
+      "latitude": "27.974760832448876",
+      "longitude": "-81.993070582400208",
+      "altitude": "10.119493197386168",
+      "pitch": "-80.388275146484375",
+      "heading": "-52.598808288574219",
+      "roll": "-8.836064338684082"
+    },
+    "latitude": "27.974862212660749",
+    "longitude": "-81.99334114524855",
+    "detection_time": "2024-02-14 14:12:35"
+  }]
+}, {
+  "asset_id": "t1:54725c60cac74abc3ee0ad8cc494ce45:ffff005f",
+  "observations": [{
+    "observation_id": "o1:57748227da6feb429241f6f4e122b8e2:00110060",
+    "map_url": "https://www.google.com/maps/search/34.726550251012718,135.53129480017282",
+    "camera_pose": {
+      "latitude": "34.726478588334643",
+      "longitude": "135.53121800657902",
+      "altitude": "40.682312974277671",
+      "pitch": "-81.155845642089844",
+      "heading": "49.415401458740234",
+      "roll": "-14.85703182220459"
+    },
+    "latitude": "34.726550251012718",
+    "longitude": "135.53129480017282",
+    "detection_time": "2020-11-24 01:57:17"
+  }, {
+    "observation_id": "o1:1b7c704b225e238ef260feaa125f0f56:00110060",
+    "map_url": "https://www.google.com/maps/search/34.726550251012718,135.53129480017282",
+    "camera_pose": {
+      "latitude": "34.726498431040689",
+      "longitude": "135.53130455166476",
+      "altitude": "40.666735699591058",
+      "pitch": "-82.300727844238281",
+      "heading": "149.92123413085938",
+      "roll": "-176.80882263183594"
+    },
+    "latitude": "34.726550251012718",
+    "longitude": "135.53129480017282",
+    "detection_time": "2020-11-24 01:57:17"
+  }]
+}, {
+  "asset_id": "t1:0237b24483021649c061aae7f52925a1:ffff01ee",
+  "observations": [{
+    "observation_id": "o1:26f828fe05fa221f2fbe853a004f2764:00250082",
+    "map_url": "https://www.google.com/maps/search/27.997443579045484,-81.930396718491224",
+    "camera_pose": {
+      "latitude": "27.997497087352372",
+      "longitude": "-81.930532558466538",
+      "altitude": "9.0704437995008718",
+      "pitch": "-0.48485314846038818",
+      "heading": "-37.241874694824219",
+      "roll": "2.416193962097168"
+    },
+    "latitude": "27.997443579045484",
+    "longitude": "-81.930396718491224",
+    "detection_time": "2024-02-05 19:43:18"
+  }, {
+    "observation_id": "o1:25ad0a9f5318fc3878441930134e3e77:00250082",
+    "map_url": "https://www.google.com/maps/search/27.997443579045484,-81.930396718491224",
+    "camera_pose": {
+      "latitude": "27.997496846022468",
+      "longitude": "-81.930532098671534",
+      "altitude": "9.05349183362467",
+      "pitch": "-0.48461100459098816",
+      "heading": "-37.24188232421875",
+      "roll": "2.4161868095397949"
+    },
+    "latitude": "27.997443579045484",
+    "longitude": "-81.930396718491224",
+    "detection_time": "2024-02-05 19:43:18"
+  }, {
+    "observation_id": "o1:4b6f67e3ac7fea0d96b3b788d868f1bb:00250082",
+    "map_url": "https://www.google.com/maps/search/27.997443579045484,-81.930396718491224",
+    "camera_pose": {
+      "latitude": "27.997546254604018",
+      "longitude": "-81.930635873576776",
+      "altitude": "9.0442504600865821",
+      "pitch": "0.088154532015323639",
+      "heading": "148.00791931152344",
+      "roll": "0.048883151262998581"
+    },
+    "latitude": "27.997443579045484",
+    "longitude": "-81.930396718491224",
+    "detection_time": "2024-02-05 19:43:18"
+  }, {
+    "observation_id": "o1:b2754e3077fe20f00a5bca93a87da76a:00250082",
+    "map_url": "https://www.google.com/maps/search/27.997443579045484,-81.930396718491224",
+    "camera_pose": {
+      "latitude": "27.997497087352372",
+      "longitude": "-81.930532558466538",
+      "altitude": "9.0704437995008718",
+      "pitch": "-0.48485314846038818",
+      "heading": "-37.241874694824219",
+      "roll": "2.416193962097168"
+    },
+    "latitude": "27.997443579045484",
+    "longitude": "-81.930396718491224",
+    "detection_time": "2024-02-05 19:43:18"
+  }, {
+    "observation_id": "o1:fe7da1c1987d85c6be68218bb0fe89c7:00250082",
+    "map_url": "https://www.google.com/maps/search/27.997443579045484,-81.930396718491224",
+    "camera_pose": {
+      "latitude": "27.997497087352372",
+      "longitude": "-81.930532558466538",
+      "altitude": "9.0704437995008718",
+      "pitch": "-0.48485314846038818",
+      "heading": "-37.241874694824219",
+      "roll": "2.416193962097168"
+    },
+    "latitude": "27.997443579045484",
+    "longitude": "-81.930396718491224",
+    "detection_time": "2024-02-05 19:43:18"
+  }]
+}, {
+  "asset_id": "t1:094d5253d332107be281766971132712:ffff005f",
+  "observations": [{
+    "observation_id": "o1:c78306e36e8613c81c4a803501eaefb8:00110060",
+    "map_url": "https://www.google.com/maps/search/40.758735950528639,-111.90559629329839",
+    "camera_pose": {
+      "latitude": "40.758810730133611",
+      "longitude": "-111.90550519482818",
+      "altitude": "1274.0784210886211",
+      "pitch": "-80.969306945800781",
+      "heading": "-154.05598449707031",
+      "roll": "3.779078483581543"
+    },
+    "latitude": "40.758735950528639",
+    "longitude": "-111.90559629329839",
+    "detection_time": "2021-07-06 15:29:28"
+  }, {
+    "observation_id": "o1:3d5ebe052df4793f9022cbf7b9a98fd8:00110060",
+    "map_url": "https://www.google.com/maps/search/40.758735950528639,-111.90559629329839",
+    "camera_pose": {
+      "latitude": "40.758921483432452",
+      "longitude": "-111.90550927954421",
+      "altitude": "1274.1788840678958",
+      "pitch": "-81.260787963867188",
+      "heading": "-150.97471618652344",
+      "roll": "-0.42914307117462158"
+    },
+    "latitude": "40.758735950528639",
+    "longitude": "-111.90559629329839",
+    "detection_time": "2021-07-06 15:29:28"
+  }]
+}, {
+  "asset_id": "t1:d31df9954bde391f98ea1c17b26eed65:ffff005f",
+  "observations": [{
+    "observation_id": "o1:0d1bb9a172e3d8688df880f4e846d944:00110060",
+    "map_url": "https://www.google.com/maps/search/28.044412726529824,-82.022292651624952",
+    "camera_pose": {
+      "latitude": "28.044512173953731",
+      "longitude": "-82.022338317133631",
+      "altitude": "12.764042017181579",
+      "pitch": "-80.9011459350586",
+      "heading": "156.83462524414062",
+      "roll": "-5.2352538108825684"
+    },
+    "latitude": "28.044412726529824",
+    "longitude": "-82.022292651624952",
+    "detection_time": "2024-01-22 15:17:37"
+  }, {
+    "observation_id": "o1:70ee819a97d6c852bfb51ff476ad74e6:00110060",
+    "map_url": "https://www.google.com/maps/search/28.044412726529824,-82.022292651624952",
+    "camera_pose": {
+      "latitude": "28.044371382631969",
+      "longitude": "-82.0224991424741",
+      "altitude": "12.773660410646798",
+      "pitch": "-81.058052062988281",
+      "heading": "60.337661743164062",
+      "roll": "0.32740336656570435"
+    },
+    "latitude": "28.044412726529824",
+    "longitude": "-82.022292651624952",
+    "detection_time": "2024-01-22 15:17:37"
+  }, {
+    "observation_id": "o1:429fc0cb71f0c570d15ef68207c80ef7:00110060",
+    "map_url": "https://www.google.com/maps/search/28.044412726529824,-82.022292651624952",
+    "camera_pose": {
+      "latitude": "28.044379011873257",
+      "longitude": "-82.022388920226263",
+      "altitude": "12.746729863267166",
+      "pitch": "-81.349609375",
+      "heading": "99.085243225097656",
+      "roll": "-1.8134500980377197"
+    },
+    "latitude": "28.044412726529824",
+    "longitude": "-82.022292651624952",
+    "detection_time": "2024-01-22 15:17:37"
+  }, {
+    "observation_id": "o1:091c35f102970acebae1658134c37155:00110060",
+    "map_url": "https://www.google.com/maps/search/28.044412726529824,-82.022292651624952",
+    "camera_pose": {
+      "latitude": "28.04441944025492",
+      "longitude": "-82.02234450246614",
+      "altitude": "12.731693181833057",
+      "pitch": "-79.605026245117188",
+      "heading": "-86.353683471679688",
+      "roll": "-178.43910217285156"
+    },
+    "latitude": "28.044412726529824",
+    "longitude": "-82.022292651624952",
+    "detection_time": "2024-01-22 15:17:37"
+  }, {
+    "observation_id": "o1:a71e83985f64a82c94006f9314ea02aa:00110060",
+    "map_url": "https://www.google.com/maps/search/28.044412726529824,-82.022292651624952",
+    "camera_pose": {
+      "latitude": "28.044417917858066",
+      "longitude": "-82.022353697001591",
+      "altitude": "12.712235955682409",
+      "pitch": "-79.740928649902344",
+      "heading": "-66.026618957519531",
+      "roll": "-178.23707580566406"
+    },
+    "latitude": "28.044412726529824",
+    "longitude": "-82.022292651624952",
+    "detection_time": "2024-01-22 15:17:37"
+  }]
+}, {
+  "asset_id": "t1:1f4c18c2ca3eada556d09e3de000cfe6:ffff005f",
+  "observations": [{
+    "observation_id": "o1:25080dc5600f2b69e87c05a0be158b84:00110060",
+    "map_url": "https://www.google.com/maps/search/27.977017486672665,-81.971526011815385",
+    "camera_pose": {
+      "latitude": "27.976823200017957",
+      "longitude": "-81.97150971917732",
+      "altitude": "24.796990422493952",
+      "pitch": "-79.5418701171875",
+      "heading": "-9.8455486297607422",
+      "roll": "-1.1659727096557617"
+    },
+    "latitude": "27.977017486672665",
+    "longitude": "-81.971526011815385",
+    "detection_time": "2024-12-26 22:59:14"
+  }, {
+    "observation_id": "o1:d851c2efb8240e5aafa235218c1560b1:00110060",
+    "map_url": "https://www.google.com/maps/search/27.977017486672665,-81.971526011815385",
+    "camera_pose": {
+      "latitude": "27.976823205737396",
+      "longitude": "-81.971509724795069",
+      "altitude": "24.796988120845782",
+      "pitch": "-79.541938781738281",
+      "heading": "-9.845515251159668",
+      "roll": "-1.1662675142288208"
+    },
+    "latitude": "27.977017486672665",
+    "longitude": "-81.971526011815385",
+    "detection_time": "2024-12-26 22:59:14"
+  }, {
+    "observation_id": "o1:f4deaee07190599c847d7a3d6163dc21:00110060",
+    "map_url": "https://www.google.com/maps/search/27.977017486672665,-81.971526011815385",
+    "camera_pose": {
+      "latitude": "27.977019368064646",
+      "longitude": "-81.97173048454431",
+      "altitude": "24.646587506985096",
+      "pitch": "-80.2364273071289",
+      "heading": "96.728157043457031",
+      "roll": "4.9973349571228027"
+    },
+    "latitude": "27.977017486672665",
+    "longitude": "-81.971526011815385",
+    "detection_time": "2024-12-26 22:59:14"
+  }, {
+    "observation_id": "o1:97d57478c977af0e502ae7089de11ab7:00110060",
+    "map_url": "https://www.google.com/maps/search/27.977017486672665,-81.971526011815385",
+    "camera_pose": {
+      "latitude": "27.977078569442764",
+      "longitude": "-81.971808608682949",
+      "altitude": "24.552453263947623",
+      "pitch": "-80.2906723022461",
+      "heading": "94.855606079101562",
+      "roll": "4.781395435333252"
+    },
+    "latitude": "27.977017486672665",
+    "longitude": "-81.971526011815385",
+    "detection_time": "2024-12-26 22:59:14"
+  }, {
+    "observation_id": "o1:0035b28d023940d3d6dacbe7a499a3d7:00110060",
+    "map_url": "https://www.google.com/maps/search/27.977017486672665,-81.971526011815385",
+    "camera_pose": {
+      "latitude": "27.977019372095967",
+      "longitude": "-81.971730489643008",
+      "altitude": "24.646581646556594",
+      "pitch": "-80.236404418945312",
+      "heading": "96.728080749511719",
+      "roll": "4.9972624778747559"
+    },
+    "latitude": "27.977017486672665",
+    "longitude": "-81.971526011815385",
+    "detection_time": "2024-12-26 22:59:14"
+  }]
+}, {
+  "asset_id": "t1:1064e80eef26a9e6580de34aed7feebb:ffff005f",
+  "observations": [{
+    "observation_id": "o1:353cfefebd882c5ec10d8c58ef4e8613:00110060",
+    "map_url": "https://www.google.com/maps/search/34.713127538914136,135.53888927675459",
+    "camera_pose": {
+      "latitude": "34.713237187009973",
+      "longitude": "135.53878701733305",
+      "altitude": "40.43656001803614",
+      "pitch": "-80.904975891113281",
+      "heading": "155.36691284179688",
+      "roll": "-1.7904235124588013"
+    },
+    "latitude": "34.713127538914136",
+    "longitude": "135.53888927675459",
+    "detection_time": "2022-09-14 22:00:03"
+  }, {
+    "observation_id": "o1:6100403d07aea07c26337483e2dad425:00110060",
+    "map_url": "https://www.google.com/maps/search/34.713127538914136,135.53888927675459",
+    "camera_pose": {
+      "latitude": "34.713119081755636",
+      "longitude": "135.53876731219458",
+      "altitude": "40.389069358998945",
+      "pitch": "-80.088165283203125",
+      "heading": "-72.586288452148438",
+      "roll": "178.22001647949219"
+    },
+    "latitude": "34.713127538914136",
+    "longitude": "135.53888927675459",
+    "detection_time": "2022-09-14 22:00:03"
+  }]
+}, {
+  "asset_id": "t1:468cc8ba679e1215571b9a226f249e34:ffff005f",
+  "observations": [{
+    "observation_id": "o1:7a7168089c44f05ba749520892e0023e:00110060",
+    "map_url": "https://www.google.com/maps/search/40.764846241687231,-111.89945388998615",
+    "camera_pose": {
+      "latitude": "40.76501105790625",
+      "longitude": "-111.89955673090839",
+      "altitude": "1283.8865370100718",
+      "pitch": "-80.9996337890625",
+      "heading": "143.68571472167969",
+      "roll": "5.61773157119751"
+    },
+    "latitude": "40.764846241687231",
+    "longitude": "-111.89945388998615",
+    "detection_time": "2025-08-13 21:18:52"
+  }, {
+    "observation_id": "o1:72aea7d7dd87399d6907104681a4fed0:00110060",
+    "map_url": "https://www.google.com/maps/search/40.764846241687231,-111.89945388998615",
+    "camera_pose": {
+      "latitude": "40.765105635156438",
+      "longitude": "-111.89955622475537",
+      "altitude": "1283.9727228997006",
+      "pitch": "-81.602447509765625",
+      "heading": "150.508056640625",
+      "roll": "-0.61048692464828491"
+    },
+    "latitude": "40.764846241687231",
+    "longitude": "-111.89945388998615",
+    "detection_time": "2025-08-13 21:18:52"
+  }, {
+    "observation_id": "o1:ffff8d703bd151d3cde9428cfe7ee717:00110060",
+    "map_url": "https://www.google.com/maps/search/40.764846241687231,-111.89945388998615",
+    "camera_pose": {
+      "latitude": "40.764865076932",
+      "longitude": "-111.899552436055",
+      "altitude": "1283.6661700405416",
+      "pitch": "-79.47662353515625",
+      "heading": "-81.144088745117188",
+      "roll": "169.87095642089844"
+    },
+    "latitude": "40.764846241687231",
+    "longitude": "-111.89945388998615",
+    "detection_time": "2025-08-13 21:18:52"
+  }]
+}, {
+  "asset_id": "t1:b77b895b6f136f99bb5c1a74548d66da:ffff005f",
+  "observations": [{
+    "observation_id": "o1:b0920075633c18835567a0d682538dbd:00110060",
+    "map_url": "https://www.google.com/maps/search/28.038872808456155,-81.955769647784564",
+    "camera_pose": {
+      "latitude": "28.038908562351",
+      "longitude": "-81.95555540554119",
+      "altitude": "29.63491623051242",
+      "pitch": "-79.470916748046875",
+      "heading": "-109.14121246337891",
+      "roll": "3.1314258575439453"
+    },
+    "latitude": "28.038872808456155",
+    "longitude": "-81.955769647784564",
+    "detection_time": "2024-02-12 17:01:11"
+  }]
+}, {
+  "asset_id": "t1:dd59759252634015fa91fa776d50e0c7:ffff01ee",
+  "observations": [{
+    "observation_id": "o1:d75626d86aa74a303f18fe8f8605ea98:00250082",
+    "map_url": "https://www.google.com/maps/search/53.336182471450115,-6.4415700025422682",
+    "camera_pose": {
+      "latitude": "53.33618427322714",
+      "longitude": "-6.4418623885998958",
+      "altitude": "112.92296899131188",
+      "pitch": "-0.60590046644210815",
+      "heading": "173.81307983398438",
+      "roll": "-1.0186833143234253"
+    },
+    "latitude": "53.336182471450115",
+    "longitude": "-6.4415700025422682",
+    "detection_time": "2024-10-03 17:11:16"
+  }, {
+    "observation_id": "o1:e765657dcad157df90a3e49d1393e896:00250082",
+    "map_url": "https://www.google.com/maps/search/53.336182471450115,-6.4415700025422682",
+    "camera_pose": {
+      "latitude": "53.336211644547006",
+      "longitude": "-6.441467286253296",
+      "altitude": "113.04773680901035",
+      "pitch": "-0.69419169425964355",
+      "heading": "-91.201606750488281",
+      "roll": "-1.7199047803878784"
+    },
+    "latitude": "53.336182471450115",
+    "longitude": "-6.4415700025422682",
+    "detection_time": "2024-10-03 17:11:16"
+  }, {
+    "observation_id": "o1:bdc76e4f0090dad8b71e3a4881eac59b:00250082",
+    "map_url": "https://www.google.com/maps/search/53.336182471450115,-6.4415700025422682",
+    "camera_pose": {
+      "latitude": "53.336226028782043",
+      "longitude": "-6.4418059646260115",
+      "altitude": "112.95392623991553",
+      "pitch": "0.08693859726190567",
+      "heading": "68.938316345214844",
+      "roll": "-0.69749850034713745"
+    },
+    "latitude": "53.336182471450115",
+    "longitude": "-6.4415700025422682",
+    "detection_time": "2024-10-03 17:11:16"
+  }, {
+    "observation_id": "o1:8d37551ad49b23d6bd8b6eea3bbc1079:00250082",
+    "map_url": "https://www.google.com/maps/search/53.336182471450115,-6.4415700025422682",
+    "camera_pose": {
+      "latitude": "53.336211644547006",
+      "longitude": "-6.441467286253296",
+      "altitude": "113.04773680901035",
+      "pitch": "-0.69419169425964355",
+      "heading": "-91.201606750488281",
+      "roll": "-1.7199047803878784"
+    },
+    "latitude": "53.336182471450115",
+    "longitude": "-6.4415700025422682",
+    "detection_time": "2024-10-03 17:11:16"
+  }]
+}, {
+  "asset_id": "t1:9378a46f91be0423855aede9d6759461:ffff005f",
+  "observations": [{
+    "observation_id": "o1:7869eacf1a4cc7c25aff84accf4e5899:00110060",
+    "map_url": "https://www.google.com/maps/search/28.029158760418113,-81.940657254215324",
+    "camera_pose": {
+      "latitude": "28.029341485419614",
+      "longitude": "-81.940640508170119",
+      "altitude": "16.388598020356177",
+      "pitch": "-80.729934692382812",
+      "heading": "178.48286437988281",
+      "roll": "-0.48033326864242554"
+    },
+    "latitude": "28.029158760418113",
+    "longitude": "-81.940657254215324",
+    "detection_time": "2022-09-09 14:02:46"
+  }, {
+    "observation_id": "o1:92af53d83638a9d11120f4de4aca1b24:00110060",
+    "map_url": "https://www.google.com/maps/search/28.029158760418113,-81.940657254215324",
+    "camera_pose": {
+      "latitude": "28.029373919082364",
+      "longitude": "-81.940694901495718",
+      "altitude": "16.57163833750991",
+      "pitch": "-81.637947082519531",
+      "heading": "179.7037353515625",
+      "roll": "-9.7076635360717773"
+    },
+    "latitude": "28.029158760418113",
+    "longitude": "-81.940657254215324",
+    "detection_time": "2022-09-09 14:02:46"
+  }, {
+    "observation_id": "o1:7c86010b60d1d432631ac1e7c24418a6:00110060",
+    "map_url": "https://www.google.com/maps/search/28.029158760418113,-81.940657254215324",
+    "camera_pose": {
+      "latitude": "28.029218990099828",
+      "longitude": "-81.9407070850205",
+      "altitude": "16.29856141592764",
+      "pitch": "-80.251670837402344",
+      "heading": "138.06715393066406",
+      "roll": "4.1768465042114258"
+    },
+    "latitude": "28.029158760418113",
+    "longitude": "-81.940657254215324",
+    "detection_time": "2022-09-09 14:02:46"
+  }, {
+    "observation_id": "o1:8882d345a22d656516700c0268dd0024:00110060",
+    "map_url": "https://www.google.com/maps/search/28.029158760418113,-81.940657254215324",
+    "camera_pose": {
+      "latitude": "28.029235964238854",
+      "longitude": "-81.940755880591851",
+      "altitude": "16.294574744340423",
+      "pitch": "-80.765449523925781",
+      "heading": "134.28684997558594",
+      "roll": "6.4720311164855957"
+    },
+    "latitude": "28.029158760418113",
+    "longitude": "-81.940657254215324",
+    "detection_time": "2022-09-09 14:02:46"
+  }]
+}, {
+  "asset_id": "t1:b63a970035f98f5f25d2eb3c7fa64db1:ffff005f",
+  "observations": [{
+    "observation_id": "o1:92c6c0081b25f189265f91f99b3d7e74:00110060",
+    "map_url": "https://www.google.com/maps/search/53.345578202985585,-6.4066712911117625",
+    "camera_pose": {
+      "latitude": "53.345421951607264",
+      "longitude": "-6.4066219877810662",
+      "altitude": "124.44951023332223",
+      "pitch": "-79.676956176757812",
+      "heading": "-28.274957656860352",
+      "roll": "10.865626335144043"
+    },
+    "latitude": "53.345578202985585",
+    "longitude": "-6.4066712911117625",
+    "detection_time": "2025-04-23 12:47:11"
+  }, {
+    "observation_id": "o1:d341cd017371dee4adf1e119ca5cc09d:00110060",
+    "map_url": "https://www.google.com/maps/search/53.345578202985585,-6.4066712911117625",
+    "camera_pose": {
+      "latitude": "53.345686323108275",
+      "longitude": "-6.4065219096504933",
+      "altitude": "124.33628849372823",
+      "pitch": "-79.046562194824219",
+      "heading": "-129.45954895019531",
+      "roll": "-7.9506564140319824"
+    },
+    "latitude": "53.345578202985585",
+    "longitude": "-6.4066712911117625",
+    "detection_time": "2025-04-23 12:47:11"
+  }, {
+    "observation_id": "o1:05332001ed50d52dce1b0561c8d14086:00110060",
+    "map_url": "https://www.google.com/maps/search/53.345578202985585,-6.4066712911117625",
+    "camera_pose": {
+      "latitude": "53.345353908179767",
+      "longitude": "-6.4065323614198",
+      "altitude": "124.25975210458493",
+      "pitch": "-79.680648803710938",
+      "heading": "-26.551496505737305",
+      "roll": "8.88873291015625"
+    },
+    "latitude": "53.345578202985585",
+    "longitude": "-6.4066712911117625",
+    "detection_time": "2025-04-23 12:47:11"
+  }]
+}, {
+  "asset_id": "t1:ee85000c0eb31ea35db7f3a0dc51bcb0:ffff005f",
+  "observations": [{
+    "observation_id": "o1:c2c0fea2b2023d3f2df8eb3ff7ad75c8:00110060",
+    "map_url": "https://www.google.com/maps/search/40.771517250272112,-111.89071186588028",
+    "camera_pose": {
+      "latitude": "40.771443818020934",
+      "longitude": "-111.8905873713103",
+      "altitude": "1308.4824028743687",
+      "pitch": "-80.669998168945312",
+      "heading": "-44.929664611816406",
+      "roll": "-15.217131614685059"
+    },
+    "latitude": "40.771517250272112",
+    "longitude": "-111.89071186588028",
+    "detection_time": "2025-08-13 15:01:45"
+  }, {
+    "observation_id": "o1:5927b1dd7dde96bf83b0a21508a7eefc:00110060",
+    "map_url": "https://www.google.com/maps/search/40.771517250272112,-111.89071186588028",
+    "camera_pose": {
+      "latitude": "40.771444111366762",
+      "longitude": "-111.89046874970532",
+      "altitude": "1308.7906358929986",
+      "pitch": "-80.468132019042969",
+      "heading": "-44.482772827148438",
+      "roll": "-16.693546295166016"
+    },
+    "latitude": "40.771517250272112",
+    "longitude": "-111.89071186588028",
+    "detection_time": "2025-08-13 15:01:45"
+  }, {
+    "observation_id": "o1:b51df8cdee4dfcece5471391e82451b4:00110060",
+    "map_url": "https://www.google.com/maps/search/40.771517250272112,-111.89071186588028",
+    "camera_pose": {
+      "latitude": "40.771444113220973",
+      "longitude": "-111.89046853599058",
+      "altitude": "1308.7912378751014",
+      "pitch": "-80.465927124023438",
+      "heading": "-44.496646881103516",
+      "roll": "-16.681943893432617"
+    },
+    "latitude": "40.771517250272112",
+    "longitude": "-111.89071186588028",
+    "detection_time": "2025-08-13 15:01:45"
+  }]
+}, {
+  "asset_id": "t1:4ed26e065661e4a741501ba01da927db:ffff005f",
+  "observations": [{
+    "observation_id": "o1:3f5de24bde06b485d1d4f302b646cc9d:00110060",
+    "map_url": "https://www.google.com/maps/search/47.639974458103026,26.246966778188831",
+    "camera_pose": {
+      "latitude": "47.640141955937167",
+      "longitude": "26.246866824726585",
+      "altitude": "380.84733832904885",
+      "pitch": "-79.929672241210938",
+      "heading": "-35.346794128417969",
+      "roll": "-173.09831237792969"
+    },
+    "latitude": "47.639974458103026",
+    "longitude": "26.246966778188831",
+    "detection_time": "2024-04-16 12:49:53"
+  }, {
+    "observation_id": "o1:eecae6e59211b5f873dc6e1bfcd72829:00110060",
+    "map_url": "https://www.google.com/maps/search/47.639974458103026,26.246966778188831",
+    "camera_pose": {
+      "latitude": "47.640023461122411",
+      "longitude": "26.24699303039424",
+      "altitude": "380.48681046714273",
+      "pitch": "-81.274002075195312",
+      "heading": "-168.66859436035156",
+      "roll": "-4.6861157417297363"
+    },
+    "latitude": "47.639974458103026",
+    "longitude": "26.246966778188831",
+    "detection_time": "2024-04-16 12:49:53"
+  }, {
+    "observation_id": "o1:72e971dd82c587ca9b951f665b25c90a:00110060",
+    "map_url": "https://www.google.com/maps/search/47.639974458103026,26.246966778188831",
+    "camera_pose": {
+      "latitude": "47.64016333992042",
+      "longitude": "26.246926539803528",
+      "altitude": "380.82914910310882",
+      "pitch": "-79.771926879882812",
+      "heading": "-31.265310287475586",
+      "roll": "-177.23994445800781"
+    },
+    "latitude": "47.639974458103026",
+    "longitude": "26.246966778188831",
+    "detection_time": "2024-04-16 12:49:53"
+  }, {
+    "observation_id": "o1:995a91dbd29f70da33d77a66b4f68f9a:00110060",
+    "map_url": "https://www.google.com/maps/search/47.639974458103026,26.246966778188831",
+    "camera_pose": {
+      "latitude": "47.640234588954677",
+      "longitude": "26.247027182089969",
+      "altitude": "380.83757489360482",
+      "pitch": "-81.258209228515625",
+      "heading": "-164.90325927734375",
+      "roll": "2.545975923538208"
+    },
+    "latitude": "47.639974458103026",
+    "longitude": "26.246966778188831",
+    "detection_time": "2024-04-16 12:49:53"
+  }]
+}]
