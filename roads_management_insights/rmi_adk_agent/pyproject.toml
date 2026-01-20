@@ -1,0 +1,11 @@
+[project]
+name = "rmi-adk-agent"
+version = "0.1.0"
+description = "Demo AI agent for Roads Management Insights using Google's ADK"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "google-adk>=1.22.1",
+    "google-cloud-bigquery>=3.38.0",
+    "google-genai>=1.46.0",
+]
