@@ -1,0 +1,40 @@
+# --- OS System Files 
+# Mac
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# --- Python ---
+# Compiled bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environments
+venv/
+env/
+.venv/
+
+# --- Jupyter Notebooks
+.ipynb_checkpoints
+
+# --- Environment Variables ---
+.env
+
+# --- IDE/Editor Settings
+.vscode/
+.idea/
