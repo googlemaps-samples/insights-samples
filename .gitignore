@@ -38,3 +38,9 @@ env/
 # --- IDE/Editor Settings
 .vscode/
 .idea/
+
+# --- JavaScript / Web ---
+config.js
+node_modules/
+.npm
+dist/
