@@ -119,6 +119,22 @@ function handleAddRegionClick() {
 }
 
 /**
+ * Handles clicks on the "+" button to add a brand to the list.
+ */
+function handleAddBrandClick() {
+    const brandInput = document.getElementById('brand-name-input');
+    const brandList = document.getElementById('selected-brands-list');
+    const brandName = brandInput.value.trim();
+
+    if (brandName) {
+        addTag(brandName, brandList); // Keep original case for brands
+        brandInput.value = '';
+        brandInput.focus();
+        invalidateQueryState();
+    }
+}
+
+/**
  * Generates the help HTML via help.js and displays the modal.
  */
 function showHelpModal() {
@@ -214,24 +230,6 @@ function populateRegionTypes(locationName) {
 }
 
 /**
- * Fetches the brand data from the JSON file and sets up the brand-related UI.
- */
-async function loadAndSetupBrandsData() {
-    try {
-        const response = await fetch('brands.json');
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        BRANDS_DATA = await response.json();
-        
-        populateBrandCategories();
-        initializeBrandAutocomplete();
-
-    } catch (error) {
-        console.error("Could not load brands.json:", error);
-        alert("Failed to load brand data. Brand filtering will be disabled.");
-    }
-}
-
-/**
  * Initializes the Place Autocomplete (New) web components for route search.
  */
 async function initializeRouteSearch() {
@@ -299,6 +297,7 @@ window.onload = () => {
     startButton: document.getElementById("start-demo-btn"),
     changeCountryBtn: document.getElementById('change-country-btn'),
     addRegionBtn: document.getElementById('add-region-btn'),
+    addBrandBtn: document.getElementById('add-brand-btn'),
     showHelpBtn: document.getElementById('show-help-btn'),
     guideModal: document.getElementById('guide-modal'),
     queryModal: document.getElementById('query-modal'),
@@ -327,6 +326,7 @@ window.onload = () => {
   elements.startButton.addEventListener("click", handleStartDemo);
   elements.changeCountryBtn.addEventListener('click', handleChangeCountryClick);
   elements.addRegionBtn.addEventListener('click', handleAddRegionClick);
+  elements.addBrandBtn.addEventListener('click', handleAddBrandClick);
   elements.showHelpBtn.addEventListener('click', showHelpModal);
   elements.closeHelpBtn.addEventListener('click', () => hideModal('guide-modal'));
   elements.closeQueryBtn.addEventListener('click', () => hideModal('query-modal'));
@@ -363,7 +363,6 @@ window.onload = () => {
   initializeIdentityServices();
   initializeAutocomplete(document.getElementById('place-type-input'));
   initializeRouteSearch();
-  loadAndSetupBrandsData();
   initializeAccordion();
 
   // Set initial state for time inputs

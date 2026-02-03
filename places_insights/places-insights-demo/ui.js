@@ -95,7 +95,6 @@ function resetSidebarUI(targetMode = 'circle-search') {
     endInput.disabled = true;
 
     // Reset Brands
-    document.getElementById('brand-category-select').value = '';
     document.getElementById('brand-name-input').value = '';
     document.getElementById('selected-brands-list').innerHTML = '';
 
@@ -181,64 +180,6 @@ function initializeAutocomplete(inputElement) {
         }
     });
 }
-
-
-/**
- * Populates the brand category dropdown from the loaded brand data.
- */
-function populateBrandCategories() {
-    const categorySelect = document.getElementById('brand-category-select');
-    const categories = [...new Set(BRANDS_DATA.map(brand => brand.category))].sort();
-    categories.forEach(category => {
-        const option = document.createElement('option');
-        option.value = category;
-        option.textContent = category;
-        categorySelect.appendChild(option);
-    });
-}
-
-/**
- * Initializes the brand name autocomplete functionality for multi-selection.
- */
-function initializeBrandAutocomplete() {
-    const inputElement = document.getElementById('brand-name-input');
-    const categorySelect = document.getElementById('brand-category-select');
-    const suggestionsContainer = document.getElementById('brand-autocomplete-suggestions');
-    const selectedBrandsList = document.getElementById('selected-brands-list');
-
-    const updateSuggestions = () => {
-        const query = inputElement.value.toLowerCase();
-        const category = categorySelect.value;
-        suggestionsContainer.innerHTML = '';
-        if (!query) return;
-
-        const filteredBrands = BRANDS_DATA
-            .filter(brand => !category || brand.category === category)
-            .filter(brand => brand.name.toLowerCase().includes(query))
-            .slice(0, 10);
-
-        filteredBrands.forEach(brand => {
-            const item = document.createElement('div');
-            item.className = 'suggestion-item';
-            item.textContent = brand.name;
-            item.addEventListener('click', () => {
-                addTag(brand.name, selectedBrandsList);
-                inputElement.value = '';
-                suggestionsContainer.innerHTML = '';
-                invalidateQueryState(); // Invalidate on add
-            });
-            suggestionsContainer.appendChild(item);
-        });
-    };
-
-    inputElement.addEventListener('input', updateSuggestions);
-
-    categorySelect.addEventListener('change', () => {
-        inputElement.value = '';
-        suggestionsContainer.innerHTML = '';
-    });
-}
-
 
 /**
  * Converts a google.maps.Polygon object to a WKT string and updates the textarea.

@@ -197,8 +197,8 @@ async function runQuery() {
             // Brand Filters (only applicable here, not in H3 Function)
             const brandNames = [...document.querySelectorAll('#selected-brands-list span')].map(s => s.textContent);
             if (brandNames.length > 0) allFilters.push(buildBrandFilter(brandNames));
-            const brandCategory = document.getElementById('brand-category-select').value;
-            if (brandCategory) allFilters.push(buildBrandCategoryFilter(brandCategory));
+            
+            // Brand Category is removed as we no longer have brands.json data
             
             const openingDay = document.getElementById('day-of-week-select').value;
             const hoursFilter = buildOpeningHoursFilter(openingDay, document.getElementById('start-time-input').value, document.getElementById('end-time-input').value);
@@ -217,7 +217,7 @@ async function runQuery() {
             if (openingDay) fromClause += ` ${hoursFilter.unnestClause}`;
             
             // Brands Join Logic
-            const isBrandQuery = brandNames.length > 0 || !!brandCategory;
+            const isBrandQuery = brandNames.length > 0;
             if (isBrandQuery) {
                 let brandsTable;
                 if (DATASET === 'SAMPLE') {
@@ -289,11 +289,7 @@ function buildBrandFilter(brandNames) {
     return `brands.name IN (${sanitizedNames})`;
 }
 
-function buildBrandCategoryFilter(brandCategory) {
-    if (!brandCategory) return '';
-    const sanitizedCategory = brandCategory.replace(/"/g, '\\"');
-    return `brands.category = "${sanitizedCategory}"`;
-}
+// Brand Category Filter removed
 
 function buildOpeningHoursFilter(day, startTime, endTime) {
     if (!day || (!startTime && !endTime)) return { unnestClause: '', whereClause: '' };

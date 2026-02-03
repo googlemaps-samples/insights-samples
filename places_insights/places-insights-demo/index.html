@@ -195,16 +195,10 @@
             <legend>Brand Filters (US Only)</legend>
             <div class="collapsible-content">
               <div class="control-group">
-                  <label for="brand-category-select">Brand Category</label>
-                  <select id="brand-category-select">
-                      <option value="" selected>Any Category</option>
-                  </select>
-              </div>
-              <div class="control-group">
                   <label for="brand-name-input">Included Brand Names</label>
-                  <div class="autocomplete-container">
+                  <div class="input-with-button">
                       <input type="text" id="brand-name-input" placeholder="e.g., Chase Bank, 7-Eleven..." />
-                      <div id="brand-autocomplete-suggestions"></div>
+                      <button id="add-brand-btn" class="secondary-button">+</button>
                   </div>
               </div>
               <ul id="selected-brands-list"></ul>
