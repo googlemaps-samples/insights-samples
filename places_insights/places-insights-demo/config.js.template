@@ -1,0 +1,33 @@
+// This file contains the client-side configuration for connecting to Google Cloud.
+// RENAME this file to "config.js" and fill in your actual credentials.
+// IMPORTANT: config.js is ignored by Git to keep your credentials private.
+
+window.APP_CONFIG = {
+  /**
+   * Your Google Cloud Project ID.
+   * This is the project where BigQuery API calls will be billed.
+   */
+  GCP_PROJECT_ID: 'YOUR_GCP_PROJECT_ID',
+
+  /**
+   * Your OAuth 2.0 Client ID for a Web Application.
+   * This ID is used to authenticate users and get their consent to run queries on their behalf.
+   * Ensure your app's origin (e.g., http://localhost:8000) is in the "Authorized JavaScript origins".
+   */
+  OAUTH_CLIENT_ID: 'YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com',
+
+  /**
+   * Your Google Maps Platform API Key.
+   * This is used to display the map and call the Routes API.
+   * Ensure it has "Maps JavaScript API", "Geocoding API", and "Routes API" enabled.
+   */
+  MAPS_API_KEY: 'YOUR_MAPS_API_KEY',
+
+  /**
+   * Defines which dataset to query.
+   * Options: 'FULL' or 'SAMPLE'
+   * - 'FULL': Queries the full country datasets (e.g., places_insights___us.places).
+   * - 'SAMPLE': Queries the city sample datasets (e.g., places_insights___us___sample.places_sample).
+   */
+  DATASET: 'FULL',
+};

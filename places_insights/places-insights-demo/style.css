@@ -1,0 +1,520 @@
+/* Basic styles */
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+#map {
+  height: 100%;
+}
+
+/* Modal styles */
+#country-selector-modal,
+#guide-modal,
+#query-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  z-index: 2000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#country-selector-modal.hidden,
+#guide-modal.hidden,
+#query-modal.hidden {
+  display: none;
+}
+
+.modal-content {
+  background-color: white;
+  padding: 25px 35px;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  text-align: center;
+  width: 90%;
+  max-width: 450px;
+  position: relative;
+}
+
+.modal-content h2 {
+  font-size: 24px;
+  margin-top: 0;
+}
+
+.modal-content p {
+  margin-bottom: 25px;
+  color: #555;
+  font-size: 16px;
+}
+
+#country-select {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 20px;
+  font-size: 16px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  box-sizing: border-box;
+}
+
+#start-demo-btn {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  font-weight: bold;
+  background-color: #4285F4;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+#start-demo-btn:hover {
+  background-color: #357ae8;
+}
+
+/* Help & Query Modal Specifics */
+#guide-modal .modal-content,
+#query-modal .modal-content {
+  text-align: left;
+  max-width: 700px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.close-modal-btn {
+  position: absolute;
+  top: 10px;
+  right: 20px;
+  font-size: 28px;
+  font-weight: bold;
+  color: #aaa;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.close-modal-btn:hover {
+  color: #333;
+}
+
+#guide-content h2,
+#guide-content h3 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+#guide-content p,
+#guide-content ul,
+#guide-content ol {
+  line-height: 1.6;
+}
+
+#query-content {
+  background-color: #f1f3f4;
+  border-radius: 4px;
+  padding: 15px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.modal-actions {
+  margin-top: 15px;
+  text-align: right;
+}
+
+
+/* Sidebar styles */
+#sidebar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 320px;
+  max-height: calc(100% - 20px);
+  overflow-y: auto;
+  background-color: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+}
+
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.sidebar-header h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.sidebar-header-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.sidebar-header button {
+  font-size: 14px;
+  padding: 6px 10px;
+}
+
+#sidebar hr {
+  border: none;
+  border-top: 1px solid #eee;
+  margin: 15px 0;
+}
+
+.control-group {
+  margin-bottom: 15px;
+}
+
+.control-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 5px;
+}
+
+.control-group input,
+.control-group select,
+.control-group textarea {
+  width: 100%;
+  padding: 8px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.control-group textarea {
+  font-family: monospace;
+  resize: vertical;
+}
+
+.control-group textarea.invalid {
+  border-color: #ea4335;
+}
+
+.info-text {
+  font-size: 14px;
+  color: #555;
+  margin-top: 0;
+}
+
+.advanced-options label,
+.filter-group label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: normal;
+}
+
+.advanced-options input,
+.filter-group input {
+  width: auto;
+  margin-right: 8px;
+}
+
+.drawing-buttons {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 15px;
+}
+
+.drawing-buttons button {
+  flex: 1;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 8px;
+}
+
+.input-with-button input {
+  flex: 1;
+}
+
+.input-with-button button {
+  flex-shrink: 0;
+  padding-left: 12px;
+  padding-right: 12px;
+  font-weight: bold;
+}
+
+/* Styles for Place Autocomplete (New) Web Component */
+#origin-input-container,
+#destination-input-container {
+  min-height: 36px;
+}
+
+gmp-place-autocomplete::part(input) {
+  width: 100%;
+  padding: 8px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+
+/* Attribute Filters Section */
+.attribute-filters {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 0 10px;
+  margin-bottom: 15px;
+}
+
+.attribute-filters legend {
+  font-weight: 500;
+  padding: 0 5px;
+}
+
+.filter-group {
+  margin-bottom: 8px;
+}
+
+.rating-inputs,
+.time-inputs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.rating-inputs .control-group,
+.time-inputs .control-group {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+/* Collapsible Accordion Styles */
+.collapsible-fieldset > legend {
+  cursor: pointer;
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 5px;
+  margin-left: -5px;
+}
+
+.collapsible-fieldset > legend::after {
+  content: '+';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: bold;
+}
+
+.collapsible-fieldset.is-open > legend::after {
+  content: '−';
+}
+
+.collapsible-content {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease-out;
+  padding: 0;
+}
+
+.collapsible-fieldset.is-open > .collapsible-content {
+  max-height: 600px; /* A large enough value */
+  padding: 10px 0;
+}
+
+.collapsible-fieldset:not(.is-open) {
+  padding-top: 0;
+  padding-bottom: 0;
+  border-width: 1px 0;
+}
+
+.collapsible-fieldset:not(.is-open):first-of-type {
+  border-top-width: 1px;
+}
+
+.collapsible-fieldset:not(.is-open) > legend {
+  margin-bottom: 0;
+}
+
+
+/* Auth container & Buttons */
+.auth-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+
+#status {
+  margin: 0;
+  font-weight: bold;
+  text-align: center;
+  font-size: 13px;
+}
+
+#status.error {
+  color: #ea4335;
+}
+
+#status.success {
+  color: #34a853;
+}
+
+.main-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 15px;
+}
+
+.main-buttons #run-query-btn {
+  flex-grow: 1;
+}
+
+button {
+  padding: 10px 15px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.2s;
+}
+
+button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+button.secondary-button {
+  background-color: #f1f3f4;
+  color: #5f6368;
+  font-size: 14px;
+  padding: 8px;
+}
+
+button.secondary-button:hover:not(:disabled) {
+  background-color: #e8eaed;
+}
+
+#run-query-btn {
+  background-color: #4285F4;
+  color: white;
+}
+
+#run-query-btn:hover:not(:disabled) {
+  background-color: #357ae8;
+}
+
+#auth-button {
+  background-color: #34a853;
+  color: white;
+}
+
+#auth-button:hover {
+  background-color: #2c8e44;
+}
+
+/* Autocomplete styles */
+.autocomplete-container {
+  position: relative;
+}
+
+#autocomplete-suggestions,
+#brand-autocomplete-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ccc;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  z-index: 1001;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.suggestion-item {
+  padding: 8px;
+  cursor: pointer;
+}
+
+.suggestion-item:hover {
+  background-color: #f0f0f0;
+}
+
+/* Selected list styles */
+#selected-types-list,
+#selected-brands-list,
+#selected-regions-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.selected-type-tag {
+  display: flex;
+  align-items: center;
+  background-color: #e0e0e0;
+  padding: 5px 10px;
+  border-radius: 15px;
+  font-size: 14px;
+}
+
+.remove-tag-btn {
+  background: none;
+  border: none;
+  color: #555;
+  cursor: pointer;
+  margin-left: 8px;
+  font-size: 16px;
+  padding: 0;
+}
+
+.remove-tag-btn:hover {
+  color: black;
+}
+
+/* Tooltip for deck.gl */
+#tooltip {
+  position: absolute;
+  z-index: 1001;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.hidden {
+  display: none;
+}
+
+/* InfoWindow container for Place Details Component */
+.info-window-component-container {
+  width: 300px;
+  min-height: 200px;
+  display: block;
+  overflow: hidden;
+}
+
+.info-window-component-container gmp-place-details-compact {
+  width: 100%;
+}
