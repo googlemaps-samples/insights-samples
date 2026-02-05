@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Places Insights Demo</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- Modal for country selection -->
+    <div id="country-selector-modal">
+      <div class="modal-content">
+        <h2 id="selector-title">Select a Country for the Demo</h2>
+        <p>Places Insights data is available for the following locations.</p>
+        <!-- Options will be populated dynamically via JavaScript -->
+        <select id="country-select">
+          <option value="" disabled selected>-- Please choose a location --</option>
+        </select>
+        <button id="start-demo-btn">Show Map</button>
+      </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="guide-modal" class="hidden">
+      <div class="modal-content">
+        <span class="close-modal-btn">&times;</span>
+        <h2>User Guide</h2>
+        <div id="guide-content">
+          <p>Loading...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Query Modal -->
+    <div id="query-modal" class="hidden">
+      <div class="modal-content">
+        <span class="close-modal-btn">&times;</span>
+        <h2>Last Executed SQL Query</h2>
+        <pre id="query-content"><code><!-- SQL will be loaded here --></code></pre>
+        <div class="modal-actions">
+          <button id="copy-query-btn" class="secondary-button">Copy SQL</button>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- Sidebar for demo controls -->
+    <div id="sidebar" class="hidden">
+      <div class="sidebar-header">
+        <h1>Places Insights</h1>
+        <div class="sidebar-header-buttons">
+          <button id="show-help-btn" class="secondary-button">Help</button>
+          <button id="change-country-btn" class="secondary-button">Change Country</button>
+        </div>
+      </div>
+      <div class="auth-container">
+        <button id="auth-button">Authorize with Google</button>
+        <p id="status">Please authorize to run a query.</p>
+      </div>
+      <hr>
+      <div class="control-group">
+        <label for="demo-type-select">Demo Type</label>
+        <select id="demo-type-select">
+          <option value="circle-search" selected>Circle Search</option>
+          <option value="polygon-search">Custom Polygon</option>
+          <option value="region-search">Region Search</option>
+          <option value="route-search">Route Search</option>
+          <option value="h3-function">Places Count Per H3 (Function)</option>
+        </select>
+      </div>
+
+      <!-- Demo-specific controls will be shown/hidden here -->
+      <div id="circle-search-controls">
+        <p class="info-text">Click on the map to set the search center.</p>
+        <div class="control-group">
+          <label for="radius-input">Radius (meters)</label>
+          <input type="number" id="radius-input" value="1000" min="100" />
+        </div>
+      </div>
+      
+      <div id="polygon-search-controls" class="hidden">
+        <p class="info-text" id="polygon-instructions">Define a search area by drawing or pasting WKT.</p>
+        <div class="drawing-buttons">
+            <button id="start-drawing-btn" class="secondary-button">Start Drawing</button>
+            <button id="finish-drawing-btn" class="secondary-button hidden">Finish Drawing</button>
+            <button id="clear-polygon-btn" class="secondary-button">Clear Polygon</button>
+        </div>
+        <div class="control-group">
+          <label for="wkt-input">Polygon (WKT)</label>
+          <textarea id="wkt-input" rows="5" placeholder="POLYGON((lng lat, ...))"></textarea>
+        </div>
+      </div>
+
+      <div id="region-search-controls" class="hidden">
+        <p class="info-text">Select a region type and enter name(s).</p>
+        <div class="control-group">
+            <label for="region-type-select">Region Type</label>
+            <select id="region-type-select">
+                <option value="" disabled selected>-- Select location first --</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="region-name-input">Region Name(s)</label>
+            <div class="input-with-button">
+              <input type="text" id="region-name-input" placeholder="e.g., London, California...">
+              <button id="add-region-btn" class="secondary-button">+</button>
+            </div>
+        </div>
+        <ul id="selected-regions-list"></ul>
+      </div>
+
+      <div id="route-search-controls" class="hidden">
+        <p class="info-text">Select an origin and destination for the route.</p>
+        <div class="control-group">
+          <label for="origin-input-container">Origin</label>
+          <div id="origin-input-container"></div>
+        </div>
+        <div class="control-group">
+          <label for="destination-input-container">Destination</label>
+          <div id="destination-input-container"></div>
+        </div>
+        <div class="control-group">
+          <label for="route-radius-input">Radius (meters)</label>
+          <input type="number" id="route-radius-input" value="100" min="50">
+        </div>
+      </div>
+      
+      <hr>
+
+      <!-- Shared Filter Controls -->
+      <div id="shared-filters">
+        <div class="control-group">
+          <label for="place-type-input">Place Types</label>
+          <div class="autocomplete-container">
+            <input type="text" id="place-type-input" placeholder="e.g., restaurant, park..." />
+            <div id="autocomplete-suggestions"></div>
+          </div>
+          <div class="filter-group" style="margin-top: 8px;">
+             <label style="font-weight: normal;">
+               <input type="checkbox" id="primary-type-checkbox"> Match Primary Type Only
+             </label>
+          </div>
+        </div>
+        <ul id="selected-types-list"></ul>
+        <hr>
+        <fieldset class="attribute-filters collapsible-fieldset">
+          <legend>Attribute Filters</legend>
+          <div class="collapsible-content">
+            <div class="control-group">
+                <label for="business-status-select">Business Status</label>
+                <select id="business-status-select">
+                    <option value="OPERATIONAL" selected>Operational</option>
+                    <option value="CLOSED_TEMPORARILY">Closed Temporarily</option>
+                    <option value="CLOSED_PERMANENTLY">Closed Permanently</option>
+                    <option value="">Any Status</option>
+                </select>
+            </div>
+            <div class="rating-inputs">
+              <div class="control-group"><label for="min-rating-input">Min Rating</label><input type="number" id="min-rating-input" min="1" max="5" step="0.1" placeholder="1.0"></div>
+              <div class="control-group"><label for="max-rating-input">Max Rating</label><input type="number" id="max-rating-input" min="1" max="5" step="0.1" placeholder="5.0"></div>
+            </div>
+            <div class="filter-group"><label><input type="checkbox" class="attribute-filter" name="delivery"> Offers Delivery</label></div>
+            <div class="filter-group"><label><input type="checkbox" class="attribute-filter" name="curbside_pickup"> Curbside Pickup</label></div>
+            <div class="filter-group"><label><input type="checkbox" class="attribute-filter" name="wheelchair_accessible_entrance"> Wheelchair Accessible</label></div>
+            <div class="filter-group"><label><input type="checkbox" class="attribute-filter" name="outdoor_seating"> Outdoor Seating</label></div>
+            <div class="filter-group"><label><input type="checkbox" class="attribute-filter" name="free_parking_lot"> Free Parking Lot</label></div>
+            <div class="filter-group"><label><input type="checkbox" class="attribute-filter" name="good_for_children"> Good for Children</label></div>
+          </div>
+        </fieldset>
+        
+        <fieldset id="opening-hours-filters" class="attribute-filters collapsible-fieldset">
+          <legend>Opening Hours</legend>
+          <div class="collapsible-content">
+            <div class="control-group">
+              <label for="day-of-week-select">Day of Week</label>
+              <select id="day-of-week-select">
+                <option value="" selected>Any Day</option>
+                <option value="monday">Monday</option>
+                <option value="tuesday">Tuesday</option>
+                <option value="wednesday">Wednesday</option>
+                <option value="thursday">Thursday</option>
+                <option value="friday">Friday</option>
+                <option value="saturday">Saturday</option>
+                <option value="sunday">Sunday</option>
+              </select>
+            </div>
+            <div class="time-inputs">
+              <div class="control-group"><label for="start-time-input">Open After</label><input type="time" id="start-time-input"></div>
+              <div class="control-group"><label for="end-time-input">Open Before</label><input type="time" id="end-time-input"></div>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset id="brand-filters" class="attribute-filters collapsible-fieldset hidden">
+            <legend>Brand Filters (US Only)</legend>
+            <div class="collapsible-content">
+              <div class="control-group">
+                  <label for="brand-name-input">Included Brand Names</label>
+                  <div class="input-with-button">
+                      <input type="text" id="brand-name-input" placeholder="e.g., Chase Bank, 7-Eleven..." />
+                      <button id="add-brand-btn" class="secondary-button">+</button>
+                  </div>
+              </div>
+              <ul id="selected-brands-list"></ul>
+            </div>
+        </fieldset>
+        
+        <hr>
+        <div class="control-group advanced-options">
+          <label><input type="checkbox" id="h3-density-toggle" /> Show H3 Density Map</label>
+        </div>
+        <div class="control-group hidden" id="h3-resolution-controls">
+          <label for="h3-resolution-slider">H3 Resolution: <span id="h3-resolution-value">8</span></label>
+          <input type="range" id="h3-resolution-slider" min="6" max="12" value="8" />
+        </div>
+      </div>
+
+      <div class="main-buttons">
+        <button id="run-query-btn" disabled>Run Search</button>
+        <button id="view-query-btn" class="secondary-button hidden">View Query</button>
+      </div>
+
+    </div>
+
+    <!-- Map & Tooltip -->
+    <div id="map"></div>
+    <div id="tooltip"></div>
+
+    <!-- Scripts -->
+    <script src="config.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
+    <script src="https://unpkg.com/@deck.gl/google-maps@latest/dist.min.js"></script>
+    <script src="https://unpkg.com/h3-js@4.1.0"></script>
+    <script>
+      (g => {
+        var h, a, k, p = "The Google Maps JavaScript API", c = "google", l = "importLibrary", q = "__ib__", m = document, b = window;
+        b = b[c] || (b[c] = {}); var d = b.maps || (b.maps = {}); var r = new Set(), e = new URLSearchParams(),
+        u = () => h || (h = new Promise(async (f, n) => { await (a = m.createElement("script")); e.set("libraries", [...r] + ""); for (k in g) e.set(k.replace(/[A-Z]/g, t => "_" + t[0].toLowerCase()), g[k]);
+        e.set("callback", c + ".maps." + q); a.src = `https://maps.${c}apis.com/maps/api/js?` + e; d[q] = f; a.onerror = () => (h = n(Error(p + " could not load.")));
+        a.nonce = m.querySelector("script[nonce]")?.nonce || ""; m.head.append(a); }));
+        d[l] ? console.warn(p + " only loads once. Ignoring:", g) : (d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)));
+      })({ key: window.APP_CONFIG.MAPS_API_KEY, v: "beta" });
+    </script>
+    <script src="place_types.js"></script>
+    
+    <!-- Refactored Application Scripts -->
+    <script src="state.js"></script>
+    <script src="auth.js"></script>
+    <script src="ui.js"></script>
+    <script src="display.js"></script>
+    <script src="routes.js"></script>
+    <script src="query.js"></script>
+    <script src="map.js"></script>
+    <script src="help.js"></script>
+    <script src="main.js"></script>
+
+  </body>
+</html>
