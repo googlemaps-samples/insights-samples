@@ -69,8 +69,7 @@ step_backup_routes() {
         return 1
     fi
 
-    local parent="projects/$project_id"
-    roadsselection_v1_projects_selectedRoutes_list_all "$parent" "1000" "$project_id" > "$output_file"
+    roadsselection_v1_projects_selectedRoutes_list_all "$project_id" "1000" ""
     
     local count
     count=$(wc -l < "$output_file")

@@ -43,6 +43,7 @@ step_show_restricted_services() {
     echo "  - analyticshub.googleapis.com"
     echo "  - bigquery.googleapis.com"
     echo "  - pubsub.googleapis.com"
+    echo "  - roads.googleapis.com"
 }
 
 # Generates the YAML snippet for a VPC-SC Ingress Rule.
@@ -76,6 +77,9 @@ step_generate_ingress() {
     echo "    - serviceName: pubsub.googleapis.com"
     echo "      methodSelectors:"
     echo "      - method: '*'"
+    echo "    - serviceName: roads.googleapis.com"
+    echo "      methodSelectors:"
+    echo "      - method: '*'"
     echo "    resources:"
     echo "    - projects/$project_number"
 }
@@ -95,6 +99,9 @@ step_generate_egress() {
     echo "      methodSelectors:"
     echo "      - method: '*'"
     echo "    - serviceName: pubsub.googleapis.com"
+    echo "      methodSelectors:"
+    echo "      - method: '*'"
+    echo "    - serviceName: roads.googleapis.com"
     echo "      methodSelectors:"
     echo "      - method: '*'"
     echo "    resources:"

@@ -273,16 +273,19 @@ ANALYTICSHUB_V1_BASE_URL="https://analyticshub.googleapis.com/v1"
 
 # Lists all data exchanges in a given project and location.
 #
-# @param string parent Required. Format: projects/{project}/locations/{location}
+# @param string project_id Required.
+# @param string location Required.
 # @param integer page_size Optional.
 # @param string page_token Optional.
-# @param string project_id Optional.
+# @param string billing_project_id Optional. Defaults to project_id.
 analyticshub_v1_projects_locations_dataExchanges_list() {
-  local parent="$1"
-  local page_size="${2:-""}"
-  local page_token="${3:-""}"
-  local project_id="${4:-""}"
+  local project_id="$1"
+  local location="$2"
+  local page_size="${3:-""}"
+  local page_token="${4:-""}"
+  local billing_project_id="${5:-$project_id}"
 
+  local parent="projects/${project_id}/locations/${location}"
   local query_args=()
   if [[ -n "${page_size}" ]]; then query_args+=("pageSize=${page_size}"); fi
   if [[ -n "${page_token}" ]]; then query_args+=("pageToken=${page_token}"); fi
@@ -291,64 +294,84 @@ analyticshub_v1_projects_locations_dataExchanges_list() {
   query_params=$(_build_query_params "${query_args[@]}")
 
   local url="${ANALYTICSHUB_V1_BASE_URL}/${parent}/dataExchanges${query_params}"
-  _call_api "GET" "${url}" "" "${project_id}"
+  _call_api "GET" "${url}" "" "${billing_project_id}"
 }
 
 # Creates a new data exchange.
 #
-# @param string parent Required. Format: projects/{project}/locations/{location}
+# @param string project_id Required.
+# @param string location Required.
 # @param string request_body Required. DataExchange JSON.
 # @param string data_exchange_id Required. The ID of the data exchange.
-# @param string project_id Optional.
+# @param string billing_project_id Optional. Defaults to project_id.
 analyticshub_v1_projects_locations_dataExchanges_create() {
-  local parent="$1"
-  local request_body="$2"
-  local data_exchange_id="$3"
-  local project_id="${4:-""}"
+  local project_id="$1"
+  local location="$2"
+  local request_body="$3"
+  local data_exchange_id="$4"
+  local billing_project_id="${5:-$project_id}"
 
+  local parent="projects/${project_id}/locations/${location}"
   local query_params
   query_params=$(_build_query_params "dataExchangeId=${data_exchange_id}")
 
   local url="${ANALYTICSHUB_V1_BASE_URL}/${parent}/dataExchanges${query_params}"
-  _call_api "POST" "${url}" "${request_body}" "${project_id}"
+  _call_api "POST" "${url}" "${request_body}" "${billing_project_id}"
 }
 
 # Gets the details of a data exchange.
 #
-# @param string name Required. Format: projects/{project}/locations/{location}/dataExchanges/{data_exchange}
-# @param string project_id Optional.
+# @param string project_id Required.
+# @param string location Required.
+# @param string data_exchange_id Required.
+# @param string billing_project_id Optional. Defaults to project_id.
 analyticshub_v1_projects_locations_dataExchanges_get() {
-  local name="$1"
-  local project_id="${2:-""}"
+  local project_id="$1"
+  local location="$2"
+  local data_exchange_id="$3"
+  local billing_project_id="${4:-$project_id}"
+
+  local name="projects/${project_id}/locations/${location}/dataExchanges/${data_exchange_id}"
   local url="${ANALYTICSHUB_V1_BASE_URL}/${name}"
-  _call_api "GET" "${url}" "" "${project_id}"
+  _call_api "GET" "${url}" "" "${billing_project_id}"
 }
 
 # Deletes an existing data exchange.
 #
-# @param string name Required. Format: projects/{project}/locations/{location}/dataExchanges/{data_exchange}
-# @param string project_id Optional.
+# @param string project_id Required.
+# @param string location Required.
+# @param string data_exchange_id Required.
+# @param string billing_project_id Optional. Defaults to project_id.
 analyticshub_v1_projects_locations_dataExchanges_delete() {
-  local name="$1"
-  local project_id="${2:-""}"
+  local project_id="$1"
+  local location="$2"
+  local data_exchange_id="$3"
+  local billing_project_id="${4:-$project_id}"
+
+  local name="projects/${project_id}/locations/${location}/dataExchanges/${data_exchange_id}"
   local url="${ANALYTICSHUB_V1_BASE_URL}/${name}"
-  _call_api "DELETE" "${url}" "" "${project_id}"
+  _call_api "DELETE" "${url}" "" "${billing_project_id}"
 }
 
 # --- Listings ---
 
 # Lists all listings in a given project and location.
 #
-# @param string parent Required. Format: projects/{project}/locations/{location}/dataExchanges/{data_exchange}
+# @param string project_id Required.
+# @param string location Required.
+# @param string data_exchange_id Required.
 # @param integer page_size Optional.
 # @param string page_token Optional.
-# @param string project_id Optional.
+# @param string billing_project_id Optional. Defaults to project_id.
 analyticshub_v1_projects_locations_dataExchanges_listings_list() {
-  local parent="$1"
-  local page_size="${2:-""}"
-  local page_token="${3:-""}"
-  local project_id="${4:-""}"
+  local project_id="$1"
+  local location="$2"
+  local data_exchange_id="$3"
+  local page_size="${4:-""}"
+  local page_token="${5:-""}"
+  local billing_project_id="${6:-$project_id}"
 
+  local parent="projects/${project_id}/locations/${location}/dataExchanges/${data_exchange_id}"
   local query_args=()
   if [[ -n "${page_size}" ]]; then query_args+=("pageSize=${page_size}"); fi
   if [[ -n "${page_token}" ]]; then query_args+=("pageToken=${page_token}"); fi
@@ -357,59 +380,88 @@ analyticshub_v1_projects_locations_dataExchanges_listings_list() {
   query_params=$(_build_query_params "${query_args[@]}")
 
   local url="${ANALYTICSHUB_V1_BASE_URL}/${parent}/listings${query_params}"
-  _call_api "GET" "${url}" "" "${project_id}"
+  _call_api "GET" "${url}" "" "${billing_project_id}"
 }
 
 # Creates a new listing.
 #
-# @param string parent Required. Format: projects/{project}/locations/{location}/dataExchanges/{data_exchange}
+# @param string project_id Required.
+# @param string location Required.
+# @param string data_exchange_id Required.
 # @param string request_body Required. Listing JSON.
 # @param string listing_id Required. The ID of the listing.
-# @param string project_id Optional.
+# @param string billing_project_id Optional. Defaults to project_id.
 analyticshub_v1_projects_locations_dataExchanges_listings_create() {
-  local parent="$1"
-  local request_body="$2"
-  local listing_id="$3"
-  local project_id="${4:-""}"
+  local project_id="$1"
+  local location="$2"
+  local data_exchange_id="$3"
+  local request_body="$4"
+  local listing_id="$5"
+  local billing_project_id="${6:-$project_id}"
 
+  local parent="projects/${project_id}/locations/${location}/dataExchanges/${data_exchange_id}"
   local query_params
   query_params=$(_build_query_params "listingId=${listing_id}")
 
   local url="${ANALYTICSHUB_V1_BASE_URL}/${parent}/listings${query_params}"
-  _call_api "POST" "${url}" "${request_body}" "${project_id}"
+  _call_api "POST" "${url}" "${request_body}" "${billing_project_id}"
 }
 
 # Gets the details of a listing.
 #
-# @param string name Required. Format: projects/{project}/locations/{location}/dataExchanges/{data_exchange}/listings/{listing}
-# @param string project_id Optional.
+# @param string project_id Required.
+# @param string location Required.
+# @param string data_exchange_id Required.
+# @param string listing_id Required.
+# @param string billing_project_id Optional. Defaults to project_id.
 analyticshub_v1_projects_locations_dataExchanges_listings_get() {
-  local name="$1"
-  local project_id="${2:-""}"
+  local project_id="$1"
+  local location="$2"
+  local data_exchange_id="$3"
+  local listing_id="$4"
+  local billing_project_id="${5:-$project_id}"
+
+  local name="projects/${project_id}/locations/${location}/dataExchanges/${data_exchange_id}/listings/${listing_id}"
   local url="${ANALYTICSHUB_V1_BASE_URL}/${name}"
-  _call_api "GET" "${url}" "" "${project_id}"
+  _call_api "GET" "${url}" "" "${billing_project_id}"
 }
 
 # Deletes a listing.
 #
-# @param string name Required. Format: projects/{project}/locations/{location}/dataExchanges/{data_exchange}/listings/{listing}
-# @param string project_id Optional.
+# @param string project_id Required.
+# @param string location Required.
+# @param string data_exchange_id Required.
+# @param string listing_id Required.
+# @param string billing_project_id Optional. Defaults to project_id.
 analyticshub_v1_projects_locations_dataExchanges_listings_delete() {
-  local name="$1"
-  local project_id="${2:-""}"
+  local project_id="$1"
+  local location="$2"
+  local data_exchange_id="$3"
+  local listing_id="$4"
+  local billing_project_id="${5:-$project_id}"
+
+  local name="projects/${project_id}/locations/${location}/dataExchanges/${data_exchange_id}/listings/${listing_id}"
   local url="${ANALYTICSHUB_V1_BASE_URL}/${name}"
-  _call_api "DELETE" "${url}" "" "${project_id}"
+  _call_api "DELETE" "${url}" "" "${billing_project_id}"
 }
 
 # Subscribes to a listing.
 #
-# @param string name Required. Format: projects/{project}/locations/{location}/dataExchanges/{data_exchange}/listings/{listing}
+# @param string project_id Required.
+# @param string location Required.
+# @param string data_exchange_id Required.
+# @param string listing_id Required.
 # @param string request_body Required. SubscribeListingRequest JSON.
-# @param string project_id Optional.
+# @param string billing_project_id Optional. Defaults to project_id.
 analyticshub_v1_projects_locations_dataExchanges_listings_subscribe() {
-  local name="$1"
-  local request_body="$2"
-  local project_id="${3:-""}"
+  local project_id="$1"
+  local location="$2"
+  local data_exchange_id="$3"
+  local listing_id="$4"
+  local request_body="$5"
+  local billing_project_id="${6:-$project_id}"
+
+  local name="projects/${project_id}/locations/${location}/dataExchanges/${data_exchange_id}/listings/${listing_id}"
   local url="${ANALYTICSHUB_V1_BASE_URL}/${name}:subscribe"
-  _call_api "POST" "${url}" "${request_body}" "${project_id}"
+  _call_api "POST" "${url}" "${request_body}" "${billing_project_id}"
 }

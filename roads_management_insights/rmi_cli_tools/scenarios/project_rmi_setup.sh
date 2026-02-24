@@ -60,7 +60,7 @@ step_enable_apis() {
     local project_id="${1:-${PROJECT_RMI_ID:-}}"
     if [[ -z "$project_id" ]]; then echo "Error: PROJECT_RMI_ID required"; exit 1; fi
     echo "Enabling APIs for $project_id..."
-    gcloud services enable roadsselection.googleapis.com --project "$project_id"
+    gcloud services enable roads.googleapis.com --project "$project_id"
     gcloud services enable analyticshub.googleapis.com --project "$project_id"
     echo "APIs enabled."
 }
@@ -70,7 +70,7 @@ step_verify_apis() {
     local project_id="${1:-${PROJECT_RMI_ID:-}}"
     if [[ -z "$project_id" ]]; then echo "Error: PROJECT_RMI_ID required"; exit 1; fi
     echo "Verifying enabled APIs for $project_id..."
-    gcloud services list --project "$project_id" --filter="config.name:roadsselection.googleapis.com"
+    gcloud services list --project "$project_id" --filter="config.name:roads.googleapis.com"
     gcloud services list --project "$project_id" --filter="config.name:analyticshub.googleapis.com"
 }
 

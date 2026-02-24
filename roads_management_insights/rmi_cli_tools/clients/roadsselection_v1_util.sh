@@ -36,18 +36,19 @@ source "${_SCRIPT_DIR}/roadsselection_v1.sh"
 #
 # Output: Stream of SelectedRoute resources in JSONL (Newline Delimited JSON) format.
 #
-# @param string parent Required. The parent project. Format: projects/{project}
-# @param integer page_size Optional. The number of results per page.
-# @param string project_id Optional. Project ID for quota/billing.
+# @param string project_id Required.
+# @param integer page_size Optional.
+# @param string page_token Optional.
+# @param string billing_project_id Optional. Defaults to project_id.
 roadsselection_v1_projects_selectedRoutes_list_all() {
-  local parent="$1"
+  local project_id="$1"
   local page_size="${2:-""}"
-  local project_id="${3:-""}"
-  local next_page_token=""
+  local next_page_token="${3:-""}"
+  local billing_project_id="${4:-$project_id}"
 
   while true; do
     local response
-    response=$(roadsselection_v1_projects_selectedRoutes_list "${parent}" "${page_size}" "${next_page_token}" "${project_id}")
+    response=$(roadsselection_v1_projects_selectedRoutes_list "${project_id}" "${page_size}" "${next_page_token}" "${billing_project_id}")
 
     # Check for API Error
     if echo "$response" | jq --exit-status '.error' > /dev/null 2>&1; then

@@ -33,18 +33,21 @@ source "${_SCRIPT_DIR}/analyticshub_v1.sh"
 #
 # Output: Stream of DataExchange resources in JSONL (Newline Delimited JSON) format.
 #
-# @param string parent Required.
+# @param string project_id Required.
+# @param string location Required.
 # @param integer page_size Optional.
-# @param string project_id Optional.
+# @param string page_token Optional.
+# @param string billing_project_id Optional. Defaults to project_id.
 analyticshub_v1_projects_locations_dataExchanges_list_all() {
-  local parent="$1"
-  local page_size="${2:-""}"
-  local project_id="${3:-""}"
-  local next_page_token=""
+  local project_id="$1"
+  local location="$2"
+  local page_size="${3:-""}"
+  local next_page_token="${4:-""}"
+  local billing_project_id="${5:-$project_id}"
 
   while true; do
     local response
-    response=$(analyticshub_v1_projects_locations_dataExchanges_list "${parent}" "${page_size}" "${next_page_token}" "${project_id}")
+    response=$(analyticshub_v1_projects_locations_dataExchanges_list "${project_id}" "${location}" "${page_size}" "${next_page_token}" "${billing_project_id}")
 
     if echo "$response" | jq --exit-status '.error' > /dev/null 2>&1; then
         echo "API Error: $(echo "$response" | jq --compact-output '.error')" >&2
@@ -62,18 +65,23 @@ analyticshub_v1_projects_locations_dataExchanges_list_all() {
 #
 # Output: Stream of Listing resources in JSONL (Newline Delimited JSON) format.
 #
-# @param string parent Required.
+# @param string project_id Required.
+# @param string location Required.
+# @param string data_exchange_id Required.
 # @param integer page_size Optional.
-# @param string project_id Optional.
+# @param string page_token Optional.
+# @param string billing_project_id Optional. Defaults to project_id.
 analyticshub_v1_projects_locations_dataExchanges_listings_list_all() {
-  local parent="$1"
-  local page_size="${2:-""}"
-  local project_id="${3:-""}"
-  local next_page_token=""
+  local project_id="$1"
+  local location="$2"
+  local data_exchange_id="$3"
+  local page_size="${4:-""}"
+  local next_page_token="${5:-""}"
+  local billing_project_id="${6:-$project_id}"
 
   while true; do
     local response
-    response=$(analyticshub_v1_projects_locations_dataExchanges_listings_list "${parent}" "${page_size}" "${next_page_token}" "${project_id}")
+    response=$(analyticshub_v1_projects_locations_dataExchanges_listings_list "${project_id}" "${location}" "${data_exchange_id}" "${page_size}" "${next_page_token}" "${billing_project_id}")
 
     if echo "$response" | jq --exit-status '.error' > /dev/null 2>&1; then
         echo "API Error: $(echo "$response" | jq --compact-output '.error')" >&2
