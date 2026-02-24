@@ -132,7 +132,7 @@ function generateGuideHtml() {
       <li><strong>Included Place Types:</strong> Start typing a place category (e.g., <code>restaurant</code>, <code>park</code>) and click a suggestion to add it as a tag.</li>
       <li><strong>Match Primary Type Only:</strong> Check this box to search strictly for places where the selected type is their <em>primary</em> classification (e.g., finding a "Restaurant" that is primarily a restaurant, not a hotel with a restaurant).</li>
       <li><strong>Business Status:</strong> Filter places by their operational status (Operational, Closed Temporarily, Closed Permanently, or Any). Default is <strong>Operational</strong>.</li>
-      <li><strong>Attribute Filters:</strong> Set min/max ratings or select checkboxes for amenities (e.g., "Offers Delivery").</li>
+      <li><strong>Attribute Filters:</strong> Filter by Price Level, set min/max ratings, or select checkboxes for amenities (e.g., "Offers Delivery").</li>
       <li><strong>Opening Hours:</strong> Select a <strong>Day of Week</strong> and time window (Not available in H3 Function mode).</li>
       <li><strong>Brand Filters (US Only):</strong> Filter by Brand Category or Brand Name (Not available in H3 Function mode).</li>
     </ul>
@@ -140,7 +140,7 @@ function generateGuideHtml() {
     <h2>5. Choosing Your Visualization</h2>
     <ul>
       <li><strong>Simple Count (Default):</strong> Results are displayed as numbers in a pop-up window.</li>
-      <li><strong>H3 Density Map:</strong> Check the <strong>Show H3 Density Map</strong> box to see a heatmap. Use the <strong>H3 Resolution</strong> slider to change the cell size. (This is always enabled in H3 Function mode).</li>
+      <li><strong>H3 Density Map:</strong> Check the <strong>Show H3 Density Map</strong> box to see a heatmap. Use the <strong>H3 Resolution</strong> slider (up to resolution 11) to change the cell size. (This is always enabled in H3 Function mode).</li>
     </ul>
 
     <h2>6. Running a Query and Managing the App</h2>

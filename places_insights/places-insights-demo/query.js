@@ -193,6 +193,9 @@ async function runQuery() {
             
             const bizStatus = document.getElementById('business-status-select').value;
             if (bizStatus) allFilters.push(`places.business_status = '${bizStatus}'`);
+
+            const priceLevel = document.getElementById('price-level-select').value;
+            if (priceLevel) allFilters.push(`places.price_level = '${priceLevel}'`);
             
             // Brand Filters (only applicable here, not in H3 Function)
             const brandNames = [...document.querySelectorAll('#selected-brands-list span')].map(s => s.textContent);
@@ -401,7 +404,13 @@ function buildH3FunctionQuery(countryCode) {
     if (!isNaN(minRating)) jsonParts.push(`'min_rating', ${minRating}`);
     if (!isNaN(maxRating)) jsonParts.push(`'max_rating', ${maxRating}`);
 
-    // 4. Boolean Attributes
+    // 4. Price Level
+    const priceLevel = document.getElementById('price-level-select').value;
+    if (priceLevel) {
+        jsonParts.push(`'price_level', ['${priceLevel}']`);
+    }
+
+    // 5. Boolean Attributes
     const attributes = [...document.querySelectorAll('.attribute-filter:checked')].map(cb => cb.name);
     attributes.forEach(attr => {
         jsonParts.push(`'${attr}', TRUE`);

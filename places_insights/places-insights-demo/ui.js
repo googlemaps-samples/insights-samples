@@ -82,6 +82,7 @@ function resetSidebarUI(targetMode = 'circle-search') {
     document.getElementById('min-rating-input').value = '';
     document.getElementById('max-rating-input').value = '';
     document.getElementById('business-status-select').value = 'OPERATIONAL';
+    document.getElementById('price-level-select').value = '';
     document.querySelectorAll('.attribute-filter').forEach(cb => cb.checked = false);
     
     // Reset Time
