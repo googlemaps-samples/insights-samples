@@ -74,13 +74,13 @@ function handleDemoTypeChange(e) {
         h3Toggle.checked = true;
         h3Toggle.disabled = true;
         
-        // Show Slider with Max 8
+        // Show Slider with Max 11
         document.getElementById('h3-resolution-controls').classList.remove('hidden');
         const h3Slider = document.getElementById('h3-resolution-slider');
-        h3Slider.max = '8';
-        if (parseInt(h3Slider.value) > 8) {
-            h3Slider.value = '8';
-            document.getElementById('h3-resolution-value').textContent = '8';
+        h3Slider.max = '11';
+        if (parseInt(h3Slider.value) > 11) {
+            h3Slider.value = '11';
+            document.getElementById('h3-resolution-value').textContent = '11';
         }
         
         // Always Hide Brand Filters for Function mode

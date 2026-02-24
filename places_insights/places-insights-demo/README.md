@@ -49,7 +49,7 @@ This application uses client-side OAuth 2.0 to authorize users to run BigQuery q
 3.  For "Application type", select **Web application**.
 4.  Give it a name (e.g., "Places Insights Demo").
 5.  Under **Authorized JavaScript origins**, click **+ ADD URI**.
-6.  Enter the origin for your local development server. For most  servers, this is `http://localhost:8000`.
+6.  Enter the origin for your local development server. For most servers, this is `http://localhost:8000`.
 7.  Click **CREATE**.
 8.  Copy the **Your Client ID** value. You will need this in the next step.
 
@@ -118,12 +118,12 @@ For a detailed walkthrough, click the **Help** button in the application's sideb
     *   **Places Count Per H3 (Function):** Uses server-side BigQuery functions for high-performance density mapping. This mode supports **low counts (0-4)** and **sample place markers**.
 4.  **Apply Filters:** Narrow your search using the collapsible filter sections:
     *   **Place Types:** Select types and optionally check **"Match Primary Type Only"** for stricter filtering.
-    *   **Attributes:** Filter by Rating, Business Status (Operational/Closed), Price, etc.
+    *   **Attributes:** Filter by Price Level, Rating, Business Status (Operational/Closed), and various amenities (e.g., "Offers Delivery").
     *   **Opening Hours:** Filter by day and time (Standard modes only).
     *   **Brands:** Filter by brand name or category (US Standard mode only).
 5.  **Visualize:**
     *   Leave **Show H3 Density Map** unchecked for simple aggregate counts (Standard modes only).
-    *   Check the box to visualize the results as a color-coded heatmap of hexagonal cells.
+    *   Check the box to visualize the results as a color-coded heatmap of hexagonal cells. You can use the **H3 Resolution slider** (supporting up to resolution 11) to adjust the granularity of the cells.
 6.  **Run Search:** Click the "Run Search" button to execute the query and see the results on the map.
 
 ### Interactive Features (H3 Function Mode)
