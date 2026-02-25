@@ -2,7 +2,7 @@
 
 This repository contains samples for the Insights products from Google Maps Platform.
 
-You can learn more about the products on the[product page](https://mapsplatform.google.com/maps-products/geospatial-analytics).
+You can learn more about the products on the [product page](https://mapsplatform.google.com/maps-products/geospatial-analytics).
 
 ### Street View Insights
 
