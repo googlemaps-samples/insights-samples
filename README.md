@@ -36,7 +36,7 @@ This project is licensed under the Apache License 2.0 - see the [`LICENSE`](LICE
 
 ## Code of Conduct
 
-This project has adopted the[Google Open Source Community Guidelines](CODE_OF_CONDUCT.md).
+This project has adopted the [Google Open Source Community Guidelines](CODE_OF_CONDUCT.md).
 
 ## Security
 
@@ -44,4 +44,4 @@ See [`SECURITY.md`](SECURITY.md) for details on how to report security vulnerabi
 
 ## Contributing
 
-See[`CONTRIBUTING.md`](CONTRIBUTING.md) for details on how to contribute to this project.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for details on how to contribute to this project.
