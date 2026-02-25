@@ -119,7 +119,7 @@ For custom integrations, use the bundled building blocks in the `clients/` direc
 ```bash
 source clients/roadsselection_v1_util.sh
 # List all routes in your project
-roadsselection_v1_projects_selectedRoutes_list_all "projects/$PROJECT_RMI_ID" "100" "$PROJECT_RMI_ID"
+roadsselection_v1_projects_selectedRoutes_list_all "$PROJECT_RMI_ID" "100"
 ```
 
 ## License

@@ -162,12 +162,14 @@ run_all() {
 
 # Internal function to handle subscription logic to an Analytics Hub data exchange.
 _subscribe_to_exchange() {
-    local exchange_path="$1"
-    local project_cloud_id="$2"
-    local dest_dataset="$3"
-    local dest_location="$4"
+    local src_project="$1"
+    local src_location="$2"
+    local src_exchange="$3"
+    local project_cloud_id="$4"
+    local dest_dataset="$5"
+    local dest_location="$6"
 
-    echo "Target Exchange: $exchange_path"
+    echo "Target Exchange: projects/$src_project/locations/$src_location/dataExchanges/$src_exchange"
     
     if ! command -v analyticshub_v1_projects_locations_dataExchanges_listings_list &> /dev/null; then
         echo "Error: Analytics Hub client not found. Ensure you are running from the 'dist' folder."
@@ -176,7 +178,7 @@ _subscribe_to_exchange() {
 
     echo "Fetching listings for exchange..."
     local listings_json
-    listings_json=$(analyticshub_v1_projects_locations_dataExchanges_listings_list "$exchange_path" "" "" "$project_cloud_id")
+    listings_json=$(analyticshub_v1_projects_locations_dataExchanges_listings_list "$src_project" "$src_location" "$src_exchange" "" "" "$project_cloud_id")
     
     local listing_name
     listing_name=$(echo "$listings_json" | jq -r '.listings[0].name // empty')
@@ -186,7 +188,10 @@ _subscribe_to_exchange() {
         return 1
     fi
 
-    echo "Found Listing: $listing_name"
+    local listing_id
+    listing_id=$(echo "$listing_name" | sed 's|.*/listings/||')
+
+    echo "Found Listing: $listing_id"
     
     # Prepare Subscription Request
     local dest_ref
@@ -197,7 +202,7 @@ _subscribe_to_exchange() {
     sub_req=$(create_subscribe_listing_request "$dest_ds")
 
     echo "Subscribing to listing..."
-    analyticshub_v1_projects_locations_dataExchanges_listings_subscribe "$listing_name" "$sub_req" "$project_cloud_id"
+    analyticshub_v1_projects_locations_dataExchanges_listings_subscribe "$src_project" "$src_location" "$src_exchange" "$listing_id" "$sub_req" "$project_cloud_id"
 }
 
 # Subscribes to a data exchange using a URL from the Google Cloud Console.
@@ -212,9 +217,8 @@ subscribe_from_console_url() {
         local src_project="${BASH_REMATCH[1]}"
         local src_location="${BASH_REMATCH[2]}"
         local src_exchange="${BASH_REMATCH[3]}"
-        local exchange_path="projects/$src_project/locations/$src_location/dataExchanges/$src_exchange"
         
-        _subscribe_to_exchange "$exchange_path" "$project_cloud_id" "$dest_dataset" "$dest_location"
+        _subscribe_to_exchange "$src_project" "$src_location" "$src_exchange" "$project_cloud_id" "$dest_dataset" "$dest_location"
     else
         echo "Error: Could not parse Analytics Hub URL."
         echo "Expected format: https://console.cloud.google.com/bigquery/analytics-hub/exchanges/projects/.../locations/.../dataExchanges/..."
@@ -230,8 +234,7 @@ subscribe_from_params() {
     local dest_dataset="${5:-rmi_data_dataset}"
     local dest_location="${6:-us}"
 
-    local exchange_path="projects/$src_project/locations/$src_location/dataExchanges/$src_exchange"
-    _subscribe_to_exchange "$exchange_path" "$project_cloud_id" "$dest_dataset" "$dest_location"
+    _subscribe_to_exchange "$src_project" "$src_location" "$src_exchange" "$project_cloud_id" "$dest_dataset" "$dest_location"
 }
 
 # Creates a Pub/Sub subscription to the RMI real-time topic in JSON format.

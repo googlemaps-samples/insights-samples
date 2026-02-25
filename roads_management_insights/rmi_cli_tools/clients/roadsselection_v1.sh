@@ -223,81 +223,81 @@ ROADS_SELECTION_V1_BASE_URL="https://roads.googleapis.com/selection/v1"
 
 # Creates multiple SelectedRoutes and starts a schedule.
 #
-# @param string parent Required. The project resource. Format: projects/{project}
+# @param string project_id Required.
 # @param string request_body Required. The BatchCreateSelectedRoutesRequest JSON.
-# @param string project_id Optional. Project ID for quota/billing.
+# @param string billing_project_id Optional. Defaults to project_id.
 roadsselection_v1_projects_selectedRoutes_batchCreate() {
-  local parent="$1"
+  local project_id="$1"
   local request_body="$2"
-  local project_id="${3:-}"
+  local billing_project_id="${3:-$project_id}"
+  local parent="projects/${project_id}"
   local url="${ROADS_SELECTION_V1_BASE_URL}/${parent}/selectedRoutes:batchCreate"
-  _call_api "POST" "${url}" "${request_body}" "${project_id}"
+  _call_api "POST" "${url}" "${request_body}" "${billing_project_id}"
 }
 
 # Creates a SelectedRoute and starts a schedule.
 #
-# @param string parent Required. The project resource. Format: projects/{project}
+# @param string project_id Required.
 # @param string request_body Required. The SelectedRoute JSON.
 # @param string selected_route_id Optional. The ID to use for the SelectedRoute.
-# @param string project_id Optional. Project ID for quota/billing.
+# @param string billing_project_id Optional. Defaults to project_id.
 roadsselection_v1_projects_selectedRoutes_create() {
-  local parent="$1"
+  local project_id="$1"
   local request_body="$2"
   local selected_route_id="${3:-}"
-  local project_id="${4:-}"
+  local billing_project_id="${4:-$project_id}"
   
+  local parent="projects/${project_id}"
   local query_params=""
   if [[ -n "${selected_route_id}" ]]; then
       query_params=$(_build_query_params "selectedRouteId=${selected_route_id}")
   fi
 
   local url="${ROADS_SELECTION_V1_BASE_URL}/${parent}/selectedRoutes${query_params}"
-  _call_api "POST" "${url}" "${request_body}" "${project_id}"
+  _call_api "POST" "${url}" "${request_body}" "${billing_project_id}"
 }
 
 # Deletes the specified SelectedRoute.
 #
-# @param string name Required. The name of the SelectedRoute to delete.
-# @param string project_id Optional. Project ID for quota/billing.
+# @param string project_id Required.
+# @param string selected_route_id Required.
+# @param string billing_project_id Optional. Defaults to project_id.
 roadsselection_v1_projects_selectedRoutes_delete() {
-  local name="$1"
-  local project_id="${2:-}"
+  local project_id="$1"
+  local selected_route_id="$2"
+  local billing_project_id="${3:-$project_id}"
+  local name="projects/${project_id}/selectedRoutes/${selected_route_id}"
   local url="${ROADS_SELECTION_V1_BASE_URL}/${name}"
-  _call_api "DELETE" "${url}" "" "${project_id}"
+  _call_api "DELETE" "${url}" "" "${billing_project_id}"
 }
 
 # Gets a SelectedRoute.
 #
-# @param string name Required. The name of the SelectedRoute to retrieve.
-# @param string project_id Optional. Project ID for quota/billing.
+# @param string project_id Required.
+# @param string selected_route_id Required.
+# @param string billing_project_id Optional. Defaults to project_id.
 roadsselection_v1_projects_selectedRoutes_get() {
-  local name="$1"
-  local project_id="${2:-}"
+  local project_id="$1"
+  local selected_route_id="$2"
+  local billing_project_id="${3:-$project_id}"
+  local name="projects/${project_id}/selectedRoutes/${selected_route_id}"
   local url="${ROADS_SELECTION_V1_BASE_URL}/${name}"
-  _call_api "GET" "${url}" "" "${project_id}"
+  _call_api "GET" "${url}" "" "${billing_project_id}"
 }
 
 # Lists all SelectedRoutes for the specified project.
 #
-# @param string parent Required. The parent project. Format: projects/{project}/selectedRoutes
-#                        Note: Discovery doc says 'parent' is projects/{project}/selectedRoutes
-#                        but usually list parent is just projects/{project}.
-#                        Checking path: "selection/v1/{+parent}/selectedRoutes"
-#                        This implies parent should be "projects/{project}" and the path appends "/selectedRoutes".
-#                        However, the parameter pattern says "^projects/[^/]+$" which is projects/{project}.
-#                        Wait, the discovery doc says:
-#                        "path": "selection/v1/{+parent}/selectedRoutes"
-#                        "parameter": "parent", "pattern": "^projects/[^/]+$"
-#                        So 'parent' is indeed 'projects/my-project'.
+# @param string project_id Required.
 # @param integer page_size Optional.
 # @param string page_token Optional.
-# @param string project_id Optional. Project ID for quota/billing.
+# @param string billing_project_id Optional. Defaults to project_id.
 roadsselection_v1_projects_selectedRoutes_list() {
-  local parent="$1"
+  local project_id="$1"
   local page_size="${2:-}"
   local page_token="${3:-}"
-  local project_id="${4:-}"
+  local billing_project_id="${4:-$project_id}"
   
+  local parent="projects/${project_id}"
   local query_args=()
   if [[ -n "${page_size}" ]]; then query_args+=("pageSize=${page_size}"); fi
   if [[ -n "${page_token}" ]]; then query_args+=("pageToken=${page_token}"); fi
@@ -306,5 +306,5 @@ roadsselection_v1_projects_selectedRoutes_list() {
   query_params=$(_build_query_params "${query_args[@]}")
 
   local url="${ROADS_SELECTION_V1_BASE_URL}/${parent}/selectedRoutes${query_params}"
-  _call_api "GET" "${url}" "" "${project_id}"
+  _call_api "GET" "${url}" "" "${billing_project_id}"
 }

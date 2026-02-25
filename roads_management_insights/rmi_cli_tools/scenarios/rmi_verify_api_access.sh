@@ -91,9 +91,8 @@ step_create_route() {
     if [[ -z "$SELECTED_ROUTE" ]]; then step_prepare_data; fi
 
     echo "--- Step 2: Create Selected Route in $project_id ---"
-    local parent="projects/$project_id"
     local response_create
-    response_create=$(roadsselection_v1_projects_selectedRoutes_create "$parent" "$SELECTED_ROUTE" "" "$project_id")
+    response_create=$(roadsselection_v1_projects_selectedRoutes_create "$project_id" "$SELECTED_ROUTE")
 
     # Check for errors
     if echo "$response_create" | jq -e '.error' >/dev/null; then
@@ -112,9 +111,12 @@ step_get_route() {
     local route_name="${2:-$ROUTE_NAME}"
     if [[ -z "$project_id" || -z "$route_name" ]]; then echo "Usage: step_get_route <PROJECT_ID> <ROUTE_NAME>"; exit 1; fi
 
-    echo "--- Step 3: Get Selected Route $route_name ---"
+    local route_id
+    route_id=$(echo "$route_name" | sed 's|.*/selectedRoutes/||')
+
+    echo "--- Step 3: Get Selected Route $route_id ---"
     local response_get
-    response_get=$(roadsselection_v1_projects_selectedRoutes_get "$route_name" "$project_id")
+    response_get=$(roadsselection_v1_projects_selectedRoutes_get "$project_id" "$route_id")
 
     if echo "$response_get" | jq -e '.error' >/dev/null; then
         echo "Error Getting Route:"
@@ -134,9 +136,8 @@ step_list_routes() {
     if [[ -z "$project_id" ]]; then echo "Error: PROJECT_RMI_ID required"; exit 1; fi
 
     echo "--- Step 4: List Selected Routes in $project_id ---"
-    local parent="projects/$project_id"
     local response_list
-    response_list=$(roadsselection_v1_projects_selectedRoutes_list "$parent" "100" "" "$project_id")
+    response_list=$(roadsselection_v1_projects_selectedRoutes_list "$project_id" "100")
 
     if echo "$response_list" | jq -e '.error' >/dev/null; then
         echo "Error Listing Routes:"
@@ -161,9 +162,12 @@ step_delete_route() {
     local route_name="${2:-$ROUTE_NAME}"
     if [[ -z "$project_id" || -z "$route_name" ]]; then echo "Usage: step_delete_route <PROJECT_ID> <ROUTE_NAME>"; exit 1; fi
 
-    echo "--- Step 5: Delete Selected Route $route_name ---"
+    local route_id
+    route_id=$(echo "$route_name" | sed 's|.*/selectedRoutes/||')
+
+    echo "--- Step 5: Delete Selected Route $route_id ---"
     local response_delete
-    response_delete=$(roadsselection_v1_projects_selectedRoutes_delete "$route_name" "$project_id")
+    response_delete=$(roadsselection_v1_projects_selectedRoutes_delete "$project_id" "$route_id")
 
     if echo "$response_delete" | jq -e '.error' >/dev/null; then
         echo "Error Deleting Route:"
@@ -180,9 +184,12 @@ step_verify_deletion() {
     local route_name="${2:-$ROUTE_NAME}"
     if [[ -z "$project_id" || -z "$route_name" ]]; then echo "Usage: step_verify_deletion <PROJECT_ID> <ROUTE_NAME>"; exit 1; fi
 
-    echo "--- Step 6: Verify Deletion of $route_name ---"
+    local route_id
+    route_id=$(echo "$route_name" | sed 's|.*/selectedRoutes/||')
+
+    echo "--- Step 6: Verify Deletion of $route_id ---"
     local response_get_again
-    response_get_again=$(roadsselection_v1_projects_selectedRoutes_get "$route_name" "$project_id")
+    response_get_again=$(roadsselection_v1_projects_selectedRoutes_get "$project_id" "$route_id")
 
     if echo "$response_get_again" | jq -e '.error.code == 404' >/dev/null; then
         echo "PASS: Route successfully deleted (Received 404 as expected)."
@@ -216,13 +223,13 @@ if [[ $# -eq 0 ]]; then
     exit 0
 fi
 
-case "$1" in
+case "" in
     all)
         shift
         run_all "$@"
         ;;
     step_*)
-        cmd="$1"
+        cmd=""
         shift
         "$cmd" "$@"
         ;;
