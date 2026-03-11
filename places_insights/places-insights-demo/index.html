@@ -92,19 +92,10 @@
       </div>
 
       <div id="region-search-controls" class="hidden">
-        <p class="info-text">Select a region type and enter name(s).</p>
+        <p class="info-text">Search for a region (e.g., city, state, zip code).</p>
         <div class="control-group">
-            <label for="region-type-select">Region Type</label>
-            <select id="region-type-select">
-                <option value="" disabled selected>-- Select location first --</option>
-            </select>
-        </div>
-        <div class="control-group">
-            <label for="region-name-input">Region Name(s)</label>
-            <div class="input-with-button">
-              <input type="text" id="region-name-input" placeholder="e.g., London, California...">
-              <button id="add-region-btn" class="secondary-button">+</button>
-            </div>
+          <label for="region-autocomplete-container">Region</label>
+          <div id="region-autocomplete-container"></div>
         </div>
         <ul id="selected-regions-list"></ul>
       </div>

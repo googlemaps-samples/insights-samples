@@ -38,36 +38,55 @@ function getPolygonSearchParams() {
 }
 
 async function getRegionSearchParams() {
-    const regionInputValue = document.getElementById('region-type-select').value;
-    const regionNameInput = toTitleCase(document.getElementById('region-name-input').value.trim());
-    const regionTags = [...document.querySelectorAll('#selected-regions-list span')].map(s => s.textContent);
+    const regionTags = [...document.querySelectorAll('#selected-regions-list .selected-region-tag')];
     
-    if (!regionInputValue || (!regionNameInput && regionTags.length === 0)) {
-        return { success: false, message: "Select a Region Type and enter at least one Region Name." };
+    if (regionTags.length === 0) {
+        return { success: false, message: "Search for and select at least one Region." };
     }
     
-    const uniqueRegionNames = [...new Set([...regionTags, regionNameInput].filter(Boolean))];
-    const [field, dataType] = regionInputValue.split('|');
-    const filter = buildRegionFilter(field, dataType, uniqueRegionNames);
-
-    updateStatus('Geocoding regions...');
-    const { Geocoder } = await google.maps.importLibrary("geocoding");
-    const bounds = new google.maps.LatLngBounds();
-    const geocodePromises = uniqueRegionNames.map(name => new Geocoder().geocode({ address: `${name}, ${selectedCountryName}` }));
-    
-    const resultsArray = await Promise.all(geocodePromises);
-    resultsArray.forEach(({ results }) => {
-        if (results.length > 0) bounds.union(results[0].geometry.viewport);
+    // Group tags by their target column and type to build the filter
+    const columnsToIds = {};
+    regionTags.forEach(tag => {
+        const col = tag.dataset.column;
+        const colType = tag.dataset.colType;
+        if (!columnsToIds[col]) columnsToIds[col] = { type: colType, ids: [] };
+        columnsToIds[col].ids.push(tag.dataset.id);
     });
 
-    if (bounds.isEmpty()) {
-        throw new Error(`Could not geocode any of the specified regions.`);
+    // Build exact match filters using the Place IDs based on their column data type
+    const filterParts = [];
+    for (const [col, data] of Object.entries(columnsToIds)) {
+        const idList = data.ids.map(id => `'${id}'`).join(', ');
+        if (data.type === 'STRING') {
+            filterParts.push(`places.${col} IN (${idList})`);
+        } else {
+            filterParts.push(`EXISTS (SELECT 1 FROM UNNEST(places.${col}) AS id WHERE id IN (${idList}))`);
+        }
     }
-    map.fitBounds(bounds);
+    const filter = `(${filterParts.join(' OR ')})`;
+
+    // Calculate map bounds from tags, prioritizing the viewport for accurate framing
+    const bounds = new google.maps.LatLngBounds();
+    let hasBounds = false;
+
+    regionTags.forEach(tag => {
+        if (tag.dataset.north) {
+            const sw = { lat: parseFloat(tag.dataset.south), lng: parseFloat(tag.dataset.west) };
+            const ne = { lat: parseFloat(tag.dataset.north), lng: parseFloat(tag.dataset.east) };
+            bounds.union(new google.maps.LatLngBounds(sw, ne));
+            hasBounds = true;
+        } else if (tag.dataset.lat) {
+            bounds.extend({ lat: parseFloat(tag.dataset.lat), lng: parseFloat(tag.dataset.lng) });
+            hasBounds = true;
+        }
+    });
+    
+    if (hasBounds) {
+        map.fitBounds(bounds);
+    }
 
     return {
-        success: true, filter, center: bounds.getCenter(), searchAreaVar: '',
-        isMultiRegion: uniqueRegionNames.length > 1, regionType: field, regionDataType: dataType
+        success: true, filter, center: bounds.getCenter(), searchAreaVar: ''
     };
 }
 
@@ -199,9 +218,11 @@ async function runQuery() {
             
             // Brand Filters (only applicable here, not in H3 Function)
             const brandNames = [...document.querySelectorAll('#selected-brands-list span')].map(s => s.textContent);
+            const pendingBrandInput = document.getElementById('brand-name-input').value.trim();
+            if (pendingBrandInput && !brandNames.includes(pendingBrandInput)) {
+                brandNames.push(pendingBrandInput);
+            }
             if (brandNames.length > 0) allFilters.push(buildBrandFilter(brandNames));
-            
-            // Brand Category is removed as we no longer have brands.json data
             
             const openingDay = document.getElementById('day-of-week-select').value;
             const hoursFilter = buildOpeningHoursFilter(openingDay, document.getElementById('start-time-input').value, document.getElementById('end-time-input').value);
@@ -241,7 +262,7 @@ async function runQuery() {
                 const h3Res = parseInt(document.getElementById('h3-resolution-slider').value, 10);
                 sqlQuery = buildH3DensityQuery(searchParams.searchAreaVar, fromClause, whereClause, h3Res);
             } else {
-                sqlQuery = buildAggregateQuery(searchParams.searchAreaVar, fromClause, whereClause, placeTypes, isBrandQuery, searchParams.isMultiRegion, searchParams.regionType, searchParams.regionDataType);
+                sqlQuery = buildAggregateQuery(searchParams.searchAreaVar, fromClause, whereClause, placeTypes, isBrandQuery);
             }
             lastExecutedQuery = sqlQuery;
 
@@ -292,8 +313,6 @@ function buildBrandFilter(brandNames) {
     return `brands.name IN (${sanitizedNames})`;
 }
 
-// Brand Category Filter removed
-
 function buildOpeningHoursFilter(day, startTime, endTime) {
     if (!day || (!startTime && !endTime)) return { unnestClause: '', whereClause: '' };
     const unnestClause = `, UNNEST(places.regular_opening_hours.${day}) AS opening_period`;
@@ -317,21 +336,9 @@ function buildRatingFilter(min, max) {
     return '';
 }
 
-function buildRegionFilter(regionType, regionDataType, regionNames) {
-    if (!regionType || !regionNames || regionNames.length === 0) return '';
-    const sanitizedNames = regionNames.map(name => `'${name.replace(/'/g, "\\'")}'`).join(', ');
-    if (regionDataType === 'STRING') {
-        return `places.${regionType} IN (${sanitizedNames})`;
-    }
-    return `EXISTS (SELECT 1 FROM UNNEST(places.${regionType}) AS name WHERE name IN (${sanitizedNames}))`;
-}
-
 // --- UNIFIED QUERY BUILDERS ---
 
-function buildAggregateQuery(searchAreaVar, fromClause, whereClause, types, isBrandQuery, isMultiRegion, regionType, regionDataType) {
-    if (isMultiRegion && regionDataType === 'STRING') {
-        return `${searchAreaVar} SELECT WITH AGGREGATION_THRESHOLD places.${regionType} AS region_name, COUNT(*) AS count ${fromClause} ${whereClause} GROUP BY region_name ORDER BY count DESC`;
-    }
+function buildAggregateQuery(searchAreaVar, fromClause, whereClause, types, isBrandQuery) {
     if (isBrandQuery) {
         return `${searchAreaVar} SELECT WITH AGGREGATION_THRESHOLD brands.name, COUNT(places.id) AS count ${fromClause} ${whereClause} GROUP BY brands.name ORDER BY count DESC`;
     }

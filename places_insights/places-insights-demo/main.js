@@ -72,9 +72,12 @@ function handleStartDemo() {
       const brandFilters = document.getElementById('brand-filters');
       // Logic for Brand Filters visibility
       let isUS = false;
+      let countryCode;
       if (DATASET === 'SAMPLE') {
-          isUS = SAMPLE_LOCATIONS[selectedCountryName] === 'us';
+          countryCode = SAMPLE_LOCATIONS[selectedCountryName];
+          isUS = countryCode === 'us';
       } else {
+          countryCode = COUNTRY_CODES[selectedCountryName];
           isUS = selectedCountryName === 'United States';
       }
 
@@ -84,7 +87,11 @@ function handleStartDemo() {
         brandFilters.classList.add('hidden');
       }
 
-      populateRegionTypes(selectedCountryName);
+      // Restrict Region Autocomplete to the active country
+      if (window.regionAutocomplete) {
+          window.regionAutocomplete.includedRegionCodes = [countryCode];
+      }
+
       startDemo(selectedCountryName);
     } else { 
       alert("Please select a location to begin."); 
@@ -100,22 +107,6 @@ function handleChangeCountryClick() {
     resetSidebarUI();
     clearAllOverlays(true);
     invalidateQueryState();
-}
-
-/**
- * Handles clicks on the "+" button to add a region to the list.
- */
-function handleAddRegionClick() {
-    const regionInput = document.getElementById('region-name-input');
-    const regionList = document.getElementById('selected-regions-list');
-    const regionName = regionInput.value.trim();
-
-    if (regionName) {
-        addTag(toTitleCase(regionName), regionList); // Apply Title Case here
-        regionInput.value = '';
-        regionInput.focus();
-        invalidateQueryState();
-    }
 }
 
 /**
@@ -192,41 +183,49 @@ function handleCopyQueryClick() {
 
 
 /**
- * Populates the Region Type dropdown based on the selected country's configuration.
+ * Initializes the Place Autocomplete (New) web components for Region search.
  */
-function populateRegionTypes(locationName) {
-    const select = document.getElementById('region-type-select');
-    select.innerHTML = '';
+async function initializeRegionSearch() {
+    const { PlaceAutocompleteElement } = await google.maps.importLibrary("places");
+    const container = document.getElementById('region-autocomplete-container');
 
-    let countryCode;
-    if (DATASET === 'SAMPLE') {
-        countryCode = SAMPLE_LOCATIONS[locationName];
-    } else {
-        countryCode = COUNTRY_CODES[locationName];
-    }
+    const autocomplete = new PlaceAutocompleteElement();
+    container.appendChild(autocomplete);
 
-    const regionFields = REGION_FIELD_CONFIG[countryCode];
-
-    if (regionFields && regionFields.length > 0) {
-        const defaultOption = document.createElement('option');
-        defaultOption.value = '';
-        defaultOption.textContent = '-- Select a region type --';
-        defaultOption.disabled = true;
-        defaultOption.selected = true;
-        select.appendChild(defaultOption);
+    autocomplete.addEventListener('gmp-select', async ({ placePrediction }) => {
+        if (!placePrediction) return;
+        invalidateQueryState();
         
-        regionFields.forEach(field => {
-            const option = document.createElement('option');
-            option.value = `${field.field}|${field.type}`;
-            option.textContent = field.label;
-            select.appendChild(option);
-        });
-    } else {
-        const disabledOption = document.createElement('option');
-        disabledOption.textContent = 'Region search not available';
-        disabledOption.disabled = true;
-        select.appendChild(disabledOption);
-    }
+        const place = placePrediction.toPlace();
+        // Request the viewport field to properly frame the region on the map
+        await place.fetchFields({ fields: ['id', 'displayName', 'types', 'location', 'viewport'] });
+        
+        let targetColumn = null;
+        if (place.types) {
+            for (const type of place.types) {
+                if (REGION_TYPE_TO_BQ_COLUMN[type]) {
+                    targetColumn = REGION_TYPE_TO_BQ_COLUMN[type];
+                    break;
+                }
+            }
+        }
+
+        if (!targetColumn) {
+            alert(`The selected place type is not supported as a search region. Please select a valid city, state, or neighborhood.`);
+            autocomplete.inputValue = '';
+            return;
+        }
+
+        if (place.location || place.viewport) {
+            addRegionTag(place.displayName, place.id, targetColumn, place.location, place.viewport);
+        } else {
+            alert("Could not retrieve location for this place.");
+        }
+        
+        autocomplete.inputValue = '';
+    });
+    
+    window.regionAutocomplete = autocomplete;
 }
 
 /**
@@ -296,7 +295,6 @@ window.onload = () => {
     demoTypeSelect: document.getElementById('demo-type-select'),
     startButton: document.getElementById("start-demo-btn"),
     changeCountryBtn: document.getElementById('change-country-btn'),
-    addRegionBtn: document.getElementById('add-region-btn'),
     addBrandBtn: document.getElementById('add-brand-btn'),
     showHelpBtn: document.getElementById('show-help-btn'),
     guideModal: document.getElementById('guide-modal'),
@@ -325,7 +323,6 @@ window.onload = () => {
   elements.copyQueryBtn.addEventListener('click', handleCopyQueryClick);
   elements.startButton.addEventListener("click", handleStartDemo);
   elements.changeCountryBtn.addEventListener('click', handleChangeCountryClick);
-  elements.addRegionBtn.addEventListener('click', handleAddRegionClick);
   elements.addBrandBtn.addEventListener('click', handleAddBrandClick);
   elements.showHelpBtn.addEventListener('click', showHelpModal);
   elements.closeHelpBtn.addEventListener('click', () => hideModal('guide-modal'));
@@ -362,6 +359,7 @@ window.onload = () => {
 
   initializeIdentityServices();
   initializeAutocomplete(document.getElementById('place-type-input'));
+  initializeRegionSearch();
   initializeRouteSearch();
   initializeAccordion();
 

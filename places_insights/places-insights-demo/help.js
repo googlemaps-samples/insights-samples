@@ -94,13 +94,13 @@ function generateGuideHtml() {
 
     <h3>C. Region Search</h3>
     <p>
-      This powerful mode allows you to search by administrative names like cities, states, or postal codes instead of drawing on the map.
+      This powerful mode allows you to search by administrative regions like cities, states, or postal codes using Place Autocomplete.
     </p>
     <ol>
       <li>Select <strong>Region Search</strong> from the "Demo Type" dropdown.</li>
-      <li>Choose a <strong>Region Type</strong> from the dropdown. This list is dynamically populated based on the selected ${locationTypeLower}.</li>
-      <li>Enter a name in the <strong>Region Name(s)</strong> input box (e.g., "London").</li>
-      <li><strong>(Optional) Add Multiple Regions:</strong> To search across several regions at once, click the <code>+</code> button after typing each name.</li>
+      <li>Start typing a region name in the <strong>Region</strong> input box (e.g., "Manhattan").</li>
+      <li>Select the correct region from the dropdown suggestions. This guarantees accurate results by using the exact Place ID.</li>
+      <li><strong>(Optional) Add Multiple Regions:</strong> To search across several regions at once, continue searching and adding more places to the list.</li>
     </ol>
 
     <h3>D. Route Search</h3>
@@ -134,7 +134,7 @@ function generateGuideHtml() {
       <li><strong>Business Status:</strong> Filter places by their operational status (Operational, Closed Temporarily, Closed Permanently, or Any). Default is <strong>Operational</strong>.</li>
       <li><strong>Attribute Filters:</strong> Filter by Price Level, set min/max ratings, or select checkboxes for amenities (e.g., "Offers Delivery").</li>
       <li><strong>Opening Hours:</strong> Select a <strong>Day of Week</strong> and time window (Not available in H3 Function mode).</li>
-      <li><strong>Brand Filters (US Only):</strong> Filter by Brand Category or Brand Name (Not available in H3 Function mode).</li>
+      <li><strong>Brand Filters (US Only):</strong> Filter by Brand Name (Not available in H3 Function mode).</li>
     </ul>
 
     <h2>5. Choosing Your Visualization</h2>

@@ -69,8 +69,13 @@ function resetSidebarUI(targetMode = 'circle-search') {
 
     document.getElementById('wkt-input').value = '';
     document.getElementById('wkt-input').classList.remove('invalid');
-    document.getElementById('region-name-input').value = '';
+    
+    // Reset Region Search
     document.getElementById('selected-regions-list').innerHTML = '';
+    if (window.regionAutocomplete) {
+        window.regionAutocomplete.inputValue = '';
+    }
+
     document.getElementById('route-radius-input').value = '100';
     
     // Reset Filters
@@ -132,6 +137,50 @@ function addTag(text, listElement) {
     removeBtn.onclick = () => {
         tag.remove();
         invalidateQueryState(); // Invalidate when a tag is removed
+    };
+
+    tag.appendChild(textSpan);
+    tag.appendChild(removeBtn);
+    listElement.appendChild(tag);
+}
+
+/**
+ * Adds a region tag that explicitly stores its Place ID, column, data type, and viewport.
+ */
+function addRegionTag(name, id, columnObj, location, viewport) {
+    const listElement = document.getElementById('selected-regions-list');
+    if ([...listElement.querySelectorAll('.selected-region-tag')].some(el => el.dataset.id === id)) return;
+
+    const tag = document.createElement('li');
+    tag.className = 'selected-type-tag selected-region-tag';
+    tag.dataset.id = id;
+    tag.dataset.column = columnObj.column;
+    tag.dataset.colType = columnObj.type;
+    
+    // Store Viewport for accurate bounding box
+    if (viewport) {
+        const vp = viewport.toJSON();
+        tag.dataset.north = vp.north;
+        tag.dataset.south = vp.south;
+        tag.dataset.east = vp.east;
+        tag.dataset.west = vp.west;
+    }
+    
+    // Always store location as a fallback
+    if (location) {
+        tag.dataset.lat = location.lat();
+        tag.dataset.lng = location.lng();
+    }
+
+    const textSpan = document.createElement('span');
+    textSpan.textContent = name;
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-tag-btn';
+    removeBtn.innerHTML = '&times;';
+    removeBtn.onclick = () => {
+        tag.remove();
+        invalidateQueryState();
     };
 
     tag.appendChild(textSpan);

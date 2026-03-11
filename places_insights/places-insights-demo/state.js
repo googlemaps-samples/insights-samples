@@ -52,101 +52,27 @@ const SAMPLE_LOCATIONS = {
 
 // Holds the data from brands.json, loaded at startup.
 let BRANDS_DATA = [];
-// Configuration for country-specific region search fields, now with explicit types.
-const REGION_FIELD_CONFIG = {
-  'au': [
-    { label: 'State / Territory', field: 'administrative_area_level_1_name', type: 'STRING' },
-    { label: 'City / Locality', field: 'locality_names', type: 'ARRAY' },
-    { label: 'Postal Code', field: 'postal_code_names', type: 'ARRAY' }
-  ],
-  'br': [
-    { label: 'State', field: 'administrative_area_level_1_name', type: 'STRING' },
-    { label: 'City / Municipality', field: 'administrative_area_level_2_name', type: 'STRING' },
-    { label: 'Locality', field: 'locality_names', type: 'ARRAY' },
-    { label: 'Postal Code', field: 'postal_code_names', type: 'ARRAY' },
-    { label: 'Neighborhood', field: 'sublocality_level_1_names', type: 'ARRAY' }
-  ],
-  'ca': [
-    { label: 'Province / Territory', field: 'administrative_area_level_1_name', type: 'STRING' },
-    { label: 'City / Locality', field: 'locality_names', type: 'ARRAY' },
-    { label: 'Neighborhood', field: 'neighborhood_names', type: 'ARRAY' },
-    { label: 'Postal Code', field: 'postal_code_names', type: 'ARRAY' }
-  ],
-  'de': [
-    { label: 'State', field: 'administrative_area_level_1_name', type: 'STRING' },
-    { label: 'District', field: 'administrative_area_level_3_name', type: 'STRING' },
-    { label: 'City / Locality', field: 'locality_names', type: 'ARRAY' },
-    { label: 'Postal Code', field: 'postal_code_names', type: 'ARRAY' },
-    { label: 'Sublocality / Borough', field: 'sublocality_level_1_names', type: 'ARRAY' }
-  ],
-  'es': [
-    { label: 'Autonomous Community', field: 'administrative_area_level_1_name', type: 'STRING' },
-    { label: 'Province', field: 'administrative_area_level_2_name', type: 'STRING' },
-    { label: 'City / Locality', field: 'locality_names', type: 'ARRAY' },
-    { label: 'Neighborhood', field: 'neighborhood_names', type: 'ARRAY' },
-    { label: 'Postal Code', field: 'postal_code_names', type: 'ARRAY' }
-  ],
-  'fr': [
-    { label: 'Region', field: 'administrative_area_level_1_name', type: 'STRING' },
-    { label: 'Department', field: 'administrative_area_level_2_name', type: 'STRING' },
-    { label: 'City / Locality', field: 'locality_names', type: 'ARRAY' },
-    { label: 'Postal Code', field: 'postal_code_names', type: 'ARRAY' },
-    { label: 'Sublocality', field: 'sublocality_level_1_names', type: 'ARRAY' }
-  ],
-  'gb': [
-    { label: 'Country', field: 'administrative_area_level_1_name', type: 'STRING' },
-    { label: 'City / Locality', field: 'locality_names', type: 'ARRAY' },
-    { label: 'Postal Town', field: 'postal_town_names', type: 'ARRAY' },
-    { label: 'Postal Code', field: 'postal_code_names', type: 'ARRAY' }
-  ],
-  'in': [
-    { label: 'State', field: 'administrative_area_level_1_name', type: 'STRING' },
-    { label: 'District', field: 'administrative_area_level_3_name', type: 'STRING' },
-    { label: 'City / Locality', field: 'locality_names', type: 'ARRAY' },
-    { label: 'Postal Code (PIN)', field: 'postal_code_names', type: 'ARRAY' },
-    { label: 'Sublocality', field: 'sublocality_level_1_names', type: 'ARRAY' }
-  ],
-  'id': [
-    { label: 'Province', field: 'administrative_area_level_1_name', type: 'STRING' },
-    { label: 'Regency / City', field: 'administrative_area_level_2_name', type: 'STRING' },
-    { label: 'District', field: 'administrative_area_level_3_name', type: 'STRING' },
-    { label: 'Village / Kelurahan', field: 'administrative_area_level_4_name', type: 'STRING' },
-    { label: 'City / Locality', field: 'locality_names', type: 'ARRAY' },
-    { label: 'Postal Code', field: 'postal_code_names', type: 'ARRAY' }
-  ],
-  'it': [
-    { label: 'Region', field: 'administrative_area_level_1_name', type: 'STRING' },
-    { label: 'Province', field: 'administrative_area_level_2_name', type: 'STRING' },
-    { label: 'Municipality (Comune)', field: 'administrative_area_level_3_name', type: 'STRING' },
-    { label: 'Postal Code', field: 'postal_code_names', type: 'ARRAY' }
-  ],
-  'jp': [
-    { label: 'Prefecture', field: 'administrative_area_level_1_name', type: 'STRING' },
-    { label: 'City / Locality', field: 'locality_names', type: 'ARRAY' },
-    { label: 'Postal Code', field: 'postal_code_names', type: 'ARRAY' },
-    { label: 'Sublocality', field: 'sublocality_level_1_names', type: 'ARRAY' }
-  ],
-  'mx': [
-    { label: 'State', field: 'administrative_area_level_1_name', type: 'STRING' },
-    { label: 'Municipality', field: 'administrative_area_level_2_name', type: 'STRING' },
-    { label: 'City / Locality', field: 'locality_names', type: 'ARRAY' },
-    { label: 'Postal Code', field: 'postal_code_names', type: 'ARRAY' }
-  ],
-  'ch': [
-    { label: 'Canton', field: 'administrative_area_level_1_name', type: 'STRING' },
-    { label: 'District', field: 'administrative_area_level_2_name', type: 'STRING' },
-    { label: 'Municipality / Locality', field: 'locality_names', type: 'ARRAY' },
-    { label: 'Postal Code', field: 'postal_code_names', type: 'ARRAY' }
-  ],
-  'us': [
-    { label: 'State', field: 'administrative_area_level_1_name', type: 'STRING' },
-    { label: 'County', field: 'administrative_area_level_2_name', type: 'STRING' },
-    { label: 'City / Locality', field: 'locality_names', type: 'ARRAY' },
-    { label: 'Neighborhood', field: 'neighborhood_names', type: 'ARRAY' },
-    { label: 'Postal Code', field: 'postal_code_names', type: 'ARRAY' }
-  ]
-};
 
+// Maps Places API Types to their exact BigQuery Columns and Data Types
+const REGION_TYPE_TO_BQ_COLUMN = {
+  'administrative_area_level_1': { column: 'administrative_area_level_1_id', type: 'STRING' },
+  'administrative_area_level_2': { column: 'administrative_area_level_2_id', type: 'STRING' },
+  'administrative_area_level_3': { column: 'administrative_area_level_3_id', type: 'STRING' },
+  'administrative_area_level_4': { column: 'administrative_area_level_4_id', type: 'STRING' },
+  'administrative_area_level_5': { column: 'administrative_area_level_5_id', type: 'STRING' },
+  'administrative_area_level_6': { column: 'administrative_area_level_6_id', type: 'STRING' },
+  'administrative_area_level_7': { column: 'administrative_area_level_7_id', type: 'STRING' },
+  'locality': { column: 'locality_ids', type: 'ARRAY' },
+  'sublocality': { column: 'sublocality_level_1_ids', type: 'ARRAY' },
+  'sublocality_level_1': { column: 'sublocality_level_1_ids', type: 'ARRAY' },
+  'sublocality_level_2': { column: 'sublocality_level_2_ids', type: 'ARRAY' },
+  'sublocality_level_3': { column: 'sublocality_level_3_ids', type: 'ARRAY' },
+  'sublocality_level_4': { column: 'sublocality_level_4_ids', type: 'ARRAY' },
+  'sublocality_level_5': { column: 'sublocality_level_5_ids', type: 'ARRAY' },
+  'neighborhood': { column: 'neighborhood_ids', type: 'ARRAY' },
+  'postal_code': { column: 'postal_code_ids', type: 'ARRAY' },
+  'postal_town': { column: 'postal_town_ids', type: 'ARRAY' }
+};
 
 // --- MAP & OVERLAY STATE ---
 // References to Google Maps and deck.gl objects.
