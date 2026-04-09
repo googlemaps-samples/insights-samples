@@ -15,8 +15,8 @@
 """
 Route Registration Export Tool
 
-A utility script to merge new routes from a GeoJSON file (extracted from the Route Registration Tool)
-into an RMI project export JSON.
+A utility script to convert a GeoJSON file (extracted from the Route Registration Tool)
+into an RMI project export JSON format.
 """
 
 import json
@@ -149,33 +149,46 @@ def main(config_path: str):
     p_info = config.get('project_info', {})
     route_set = config.get('route_settings', {})
 
-    base_json_path = paths.get('base_export_json_file')
     geojson_path = paths.get('input_geojson_file')
     output_json_path = paths.get('output_export_json_file')
 
-    if not all([base_json_path, geojson_path, output_json_path]):
+    if not all([geojson_path, output_json_path]):
         logger.error("Missing required paths in config.yaml")
         sys.exit(1)
 
-    # Load base export
-    logger.info(f"Loading base export: {base_json_path}")
-    with open(base_json_path, 'r') as f:
-        export_data = json.load(f)
+    # Build Project Object
+    project_id = p_info.get('id', 1)
+    project_name = p_info.get('project_name', 'sample-project')
+    
+    export_data = {
+        "project": {
+            "id": project_id,
+            "project_name": project_name,
+            "jurisdiction_boundary_geojson": p_info.get('jurisdiction_boundary_geojson', '{}'),
+            "google_cloud_project_id": p_info.get('google_cloud_project_id', ''),
+            "google_cloud_project_number": p_info.get('google_cloud_project_number', ''),
+            "subscription_id": p_info.get('subscription_id', ''),
+            "dataset_name": p_info.get('dataset_name', 'historical_roads_data'),
+            "viewstate": p_info.get('viewstate', '{}'),
+            "map_snapshot": ""
+        },
+        "routes": []
+    }
 
-    project_id = export_data.get('project', {}).get('id', 1)
     tag = p_info.get('tag', 'default')
 
     # Extract routes from GeoJSON
+    logger.info(f"Processing routes from: {geojson_path}")
     new_routes = process_geojson_to_routes(geojson_path, project_id, tag, route_set)
     
     # Merge
-    export_data['routes'].extend(new_routes)
-    logger.info(f"Merged {len(new_routes)} new routes. Total: {len(export_data['routes'])}")
+    export_data['routes'] = new_routes
+    logger.info(f"Generated {len(new_routes)} routes in RMI format.")
 
     # Save
     with open(output_json_path, 'w') as f:
         json.dump(export_data, f, indent=4)
-    logger.info(f"Successfully saved updated export to: {output_json_path}")
+    logger.info(f"Successfully saved export JSON to: {output_json_path}")
 
 if __name__ == "__main__":
     config_file = "config.yaml"
