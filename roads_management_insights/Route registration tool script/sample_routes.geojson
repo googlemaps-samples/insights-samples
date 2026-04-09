@@ -1,0 +1,23 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-71.05673485, 42.34077361],
+          [-71.05632465, 42.34111504]
+        ]
+      },
+      "properties": {
+        "uuid": "dummy-uuid-1",
+        "name": "Test Route 1",
+        "sync_status": "unsynced",
+        "tag": "boston-sample",
+        "route_type": "imported",
+        "length": 0.05
+      }
+    }
+  ]
+}

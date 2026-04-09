@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Configuration for updating the Export JSON from CSV
+# Configuration for updating the Export JSON from GeoJSON
 project_info:
   id: 1
   project_name: "boston"
@@ -23,22 +23,14 @@ project_info:
   tag: "boston-sample"
 
 paths:
-  # Path to the CSV file containing the new routes
-  input_csv_file: "../route_registration_from_csv/sample2.csv"
+  # Path to the GeoJSON file containing the routes extracted from the registration tool
+  input_geojson_file: "sample_routes.geojson"
   # Path to the base export JSON file (exported from RMI)
   base_export_json_file: "base_export.json"
   # Path where the updated export JSON will be saved
   output_export_json_file: "sample_export.json"
 
-csv_format:
-  # Column names in the CSV file
-  segment_id_column: "SEGMENT_ID"
-  geometry_wkt_column: "shape_wkt"
-  length_column: "Shape_Leng"
-
 route_settings:
-  # Prefix for automatically generated route names
-  route_name_prefix: "new-route-"
   route_type: "imported"
   sync_status: "unsynced"
   is_enabled: 1
