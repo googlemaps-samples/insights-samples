@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Configuration for generating the RMI Export JSON from GeoJSON
+# Configuration for generating/updating the RMI Export JSON from GeoJSON
 project_info:
   id: 1
   project_name: "sample-project"
@@ -28,6 +28,9 @@ project_info:
 paths:
   # Path to the GeoJSON file containing the routes extracted from the registration tool
   input_geojson_file: "sample_input.geojson"
+  # (Optional) Path to a base export JSON file to merge routes into.
+  # If commented out or empty, a new project JSON will be created from project_info.
+  # base_export_json_file: "sample_project.json"
   # Path where the generated RMI export JSON will be saved
   output_export_json_file: "sample_data.json"
 

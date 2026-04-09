@@ -26,7 +26,7 @@ import sys
 import os
 import logging
 from datetime import datetime
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 
 # --- Configuration & Logging ---
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
@@ -151,39 +151,48 @@ def main(config_path: str):
 
     geojson_path = paths.get('input_geojson_file')
     output_json_path = paths.get('output_export_json_file')
+    base_json_path = paths.get('base_export_json_file')
 
     if not all([geojson_path, output_json_path]):
         logger.error("Missing required paths in config.yaml")
         sys.exit(1)
 
-    # Build Project Object
-    project_id = p_info.get('id', 1)
-    project_name = p_info.get('project_name', 'sample-project')
-    
-    export_data = {
-        "project": {
-            "id": project_id,
-            "project_name": project_name,
-            "jurisdiction_boundary_geojson": p_info.get('jurisdiction_boundary_geojson', '{}'),
-            "google_cloud_project_id": p_info.get('google_cloud_project_id', ''),
-            "google_cloud_project_number": p_info.get('google_cloud_project_number', ''),
-            "subscription_id": p_info.get('subscription_id', ''),
-            "dataset_name": p_info.get('dataset_name', 'historical_roads_data'),
-            "viewstate": p_info.get('viewstate', '{}'),
-            "map_snapshot": ""
-        },
-        "routes": []
-    }
+    # Initialize or Load Export Data
+    if base_json_path and os.path.exists(base_json_path):
+        logger.info(f"Loading base export: {base_json_path}")
+        with open(base_json_path, 'r') as f:
+            export_data = json.load(f)
+        # Update project metadata from config if provided
+        for key, val in p_info.items():
+            if key in export_data['project']:
+                export_data['project'][key] = val
+    else:
+        logger.info("Generating new project structure from config.")
+        export_data = {
+            "project": {
+                "id": p_info.get('id', 1),
+                "project_name": p_info.get('project_name', 'sample-project'),
+                "jurisdiction_boundary_geojson": p_info.get('jurisdiction_boundary_geojson', '{}'),
+                "google_cloud_project_id": p_info.get('google_cloud_project_id', ''),
+                "google_cloud_project_number": p_info.get('google_cloud_project_number', ''),
+                "subscription_id": p_info.get('subscription_id', ''),
+                "dataset_name": p_info.get('dataset_name', 'historical_roads_data'),
+                "viewstate": p_info.get('viewstate', '{}'),
+                "map_snapshot": ""
+            },
+            "routes": []
+        }
 
+    project_id = export_data['project'].get('id', 1)
     tag = p_info.get('tag', 'default')
 
     # Extract routes from GeoJSON
     logger.info(f"Processing routes from: {geojson_path}")
     new_routes = process_geojson_to_routes(geojson_path, project_id, tag, route_set)
     
-    # Merge
-    export_data['routes'] = new_routes
-    logger.info(f"Generated {len(new_routes)} routes in RMI format.")
+    # Merge (append if base exists, otherwise replace)
+    export_data['routes'].extend(new_routes)
+    logger.info(f"Merged {len(new_routes)} new routes. Total: {len(export_data['routes'])}")
 
     # Save
     with open(output_json_path, 'w') as f:
