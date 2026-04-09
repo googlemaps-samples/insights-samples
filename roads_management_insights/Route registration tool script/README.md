@@ -12,10 +12,10 @@ The tool reads a base export JSON file (typically exported from the RMI interfac
 
 ## Files
 
-- `route_registration_tool.py`: The main Python script that performs the conversion.
+- `main.py`: The main Python script that performs the conversion.
 - `config.yaml`: Configuration file for project info, file paths, and CSV format.
 - `base_export.json`: A template export file used as the starting point.
-- `sample_export.json`: A sample output file containing the merged route data.
+- `sample_routes.geojson`: A sample GeoJSON input file.
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ pip install PyYAML
 3. Run the script:
 
 ```bash
-python3 route_registration_tool.py config.yaml
+python3 main.py config.yaml
 ```
 
 The script will generate a new JSON file as specified in the `output_export_json_file` path of your configuration.
