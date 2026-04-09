@@ -20,21 +20,25 @@ project_info:
   google_cloud_project_number: "1024202510105"
   subscription_id: "rmi-sub-1024202510105"
   dataset_name: "historical_roads_data"
-  tag: "boston1"
+  tag: "boston-sample"
 
 paths:
-  # Adjusted to the relative location of the CSV
-  input_csv: "../route_registration_from_csv/sample2.csv"
-  base_json: "/Users/sarthakgy/Organized_Files/Archives_and_Installers/export_boston.json"
-  output_json: "./sample_export_data.json"
+  # Path to the CSV file containing the new routes
+  input_csv_file: "../route_registration_from_csv/sample2.csv"
+  # Path to the base export JSON file (exported from RMI)
+  base_export_json_file: "base_export.json"
+  # Path where the updated export JSON will be saved
+  output_export_json_file: "sample_export.json"
 
 csv_format:
+  # Column names in the CSV file
   segment_id_column: "SEGMENT_ID"
-  wkt_column: "shape_wkt"
+  geometry_wkt_column: "shape_wkt"
   length_column: "Shape_Leng"
 
 route_settings:
-  name_prefix: "route-salt-lake-city-"
+  # Prefix for automatically generated route names
+  route_name_prefix: "new-route-"
   route_type: "imported"
   sync_status: "unsynced"
   is_enabled: 1
