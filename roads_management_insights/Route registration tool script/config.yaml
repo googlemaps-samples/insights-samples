@@ -14,14 +14,15 @@
 
 # Configuration for generating the RMI Export JSON from GeoJSON
 project_info:
+  id: 1
   project_name: "sample-project"
-  # google_cloud_project_id: "your-project-id"
-  # google_cloud_project_number: "123456789"
-  # subscription_id: "rmi-sub-123456789"
+  google_cloud_project_id: "redacted-project-id"
+  google_cloud_project_number: "1234567890"
+  subscription_id: "redacted-subscription-id"
   dataset_name: "historical_roads_data"
   tag: "sample-tag"
   # The jurisdiction boundary in GeoJSON format (as a string or object)
-  jurisdiction_boundary_geojson: '{"type":"FeatureCollection","features":[]}'
+  jurisdiction_boundary_geojson: '{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"coordinates":[[[-71.0951,42.3130],[-71.0941,42.3122],[-71.0936,42.3105],[-71.0951,42.3130]]],"type":"Polygon"}}]}'
   viewstate: '{"center": {"lat": 42.3125, "lng": -71.0802}, "zoom": 15}'
 
 paths:

@@ -6,17 +6,38 @@
       "geometry": {
         "type": "LineString",
         "coordinates": [
-          [-71.05673485, 42.34077361],
-          [-71.05632465, 42.34111504]
+          [-71.08190, 42.31489],
+          [-71.08170, 42.31440],
+          [-71.08090, 42.31357],
+          [-71.07986, 42.31394],
+          [-71.08142, 42.31385]
         ]
       },
       "properties": {
-        "uuid": "dummy-uuid-1",
-        "name": "Test Route 1",
+        "uuid": "a2d74d5d-1133-4f2c-aea5-9f30b80966f3",
+        "name": "sample-route-1",
         "sync_status": "unsynced",
-        "tag": "boston-sample",
-        "route_type": "imported",
-        "length": 0.05
+        "tag": "sample-tag",
+        "route_type": "drawn",
+        "length": 0.735
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-71.08352, 42.31469],
+          [-71.08326, 42.31535]
+        ]
+      },
+      "properties": {
+        "uuid": "28cbc22a-68de-4fd9-bbf8-e7f51c5eb5f2",
+        "name": "sample-route-2",
+        "sync_status": "unsynced",
+        "tag": "sample-tag",
+        "route_type": "drawn",
+        "length": 0.077
       }
     }
   ]
