@@ -1,0 +1,27 @@
+
+# Configuration for updating the Boston Export JSON from CSV
+project_info:
+  id: 1
+  project_name: "boston"
+  google_cloud_project_id: "rmi-sandbox"
+  google_cloud_project_number: "1024202510105"
+  subscription_id: "rmi-sub-1024202510105"
+  dataset_name: "historical_roads_data"
+  tag: "boston1"
+
+paths:
+  # Adjusted to the relative location from within the new subdirectory
+  input_csv: "../sample2.csv"
+  base_json: "/Users/sarthakgy/Organized_Files/Archives_and_Installers/export_boston.json"
+  output_json: "./export_boston_v2.json"
+
+csv_format:
+  segment_id_column: "SEGMENT_ID"
+  wkt_column: "shape_wkt"
+  length_column: "Shape_Leng"
+
+route_settings:
+  name_prefix: "route-salt-lake-city-"
+  route_type: "imported"
+  sync_status: "unsynced"
+  is_enabled: 1

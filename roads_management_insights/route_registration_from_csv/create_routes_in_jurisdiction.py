@@ -42,6 +42,9 @@ class APIRequestError(Exception):
     """Custom exception for API request failures."""
     pass
 
+# --- Global Variables ---
+LOG_FILE = "route_creator_log.txt"
+
 # --- Logging Function ---
 def write_log(message):
     """Writes a message to the log file with a timestamp."""
