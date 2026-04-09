@@ -10,8 +10,8 @@ project_info:
   tag: "boston1"
 
 paths:
-  # Adjusted to the relative location from within the new subdirectory
-  input_csv: "../sample2.csv"
+  # Adjusted to the relative location of the CSV
+  input_csv: "../route_registration_from_csv/sample2.csv"
   base_json: "/Users/sarthakgy/Organized_Files/Archives_and_Installers/export_boston.json"
   output_json: "./export_boston_v2.json"
 

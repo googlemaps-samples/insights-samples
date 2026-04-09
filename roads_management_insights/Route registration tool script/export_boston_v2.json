@@ -11794,7 +11794,7 @@
             "segment_order": null
         },
         {
-            "uuid": "97162b66-0c49-4dba-8ffd-69cdfe22134c",
+            "uuid": "5b9687a3-4d82-42cf-b6b9-58428afb67fa",
             "project_id": 1,
             "route_name": "route-salt-lake-city-1",
             "origin": "{\"lat\": 42.34077360600003, \"lng\": -71.05673484599998}",
@@ -11812,8 +11812,8 @@
             "segmentation_config": null,
             "sync_status": "unsynced",
             "is_enabled": 1,
-            "created_at": "2026-04-09 10:00:58",
-            "updated_at": "2026-04-09 10:00:58",
+            "created_at": "2026-04-09 10:05:44",
+            "updated_at": "2026-04-09 10:05:44",
             "deleted_at": null,
             "tag": "boston1",
             "start_lat": 42.34077360600003,
@@ -11837,7 +11837,7 @@
             "segment_order": null
         },
         {
-            "uuid": "5d4f4722-3eed-492d-b6b3-9587c2741f8d",
+            "uuid": "8ea8829d-0cd8-45e9-8ef9-b99725c6843e",
             "project_id": 1,
             "route_name": "route-salt-lake-city-2",
             "origin": "{\"lat\": 42.341115036000076, \"lng\": -71.05632465199994}",
@@ -11855,8 +11855,8 @@
             "segmentation_config": null,
             "sync_status": "unsynced",
             "is_enabled": 1,
-            "created_at": "2026-04-09 10:00:58",
-            "updated_at": "2026-04-09 10:00:58",
+            "created_at": "2026-04-09 10:05:44",
+            "updated_at": "2026-04-09 10:05:44",
             "deleted_at": null,
             "tag": "boston1",
             "start_lat": 42.341115036000076,
@@ -11880,7 +11880,7 @@
             "segment_order": null
         },
         {
-            "uuid": "d2af6454-ca80-44a0-8ad8-6631d22eb059",
+            "uuid": "33f83d69-8b1b-41e1-a0d5-66ab6a983a85",
             "project_id": 1,
             "route_name": "route-salt-lake-city-3",
             "origin": "{\"lat\": 42.34145518200006, \"lng\": -71.05593803699998}",
@@ -11898,8 +11898,8 @@
             "segmentation_config": null,
             "sync_status": "unsynced",
             "is_enabled": 1,
-            "created_at": "2026-04-09 10:00:58",
-            "updated_at": "2026-04-09 10:00:58",
+            "created_at": "2026-04-09 10:05:44",
+            "updated_at": "2026-04-09 10:05:44",
             "deleted_at": null,
             "tag": "boston1",
             "start_lat": 42.34145518200006,
@@ -11923,7 +11923,7 @@
             "segment_order": null
         },
         {
-            "uuid": "fb10c538-b9b5-44f5-a3b3-6a768e24c514",
+            "uuid": "7244ad19-b422-48df-8bdb-efc2a3f91024",
             "project_id": 1,
             "route_name": "route-salt-lake-city-4",
             "origin": "{\"lat\": 42.34182395800008, \"lng\": -71.05550336999994}",
@@ -11941,8 +11941,8 @@
             "segmentation_config": null,
             "sync_status": "unsynced",
             "is_enabled": 1,
-            "created_at": "2026-04-09 10:00:58",
-            "updated_at": "2026-04-09 10:00:58",
+            "created_at": "2026-04-09 10:05:44",
+            "updated_at": "2026-04-09 10:05:44",
             "deleted_at": null,
             "tag": "boston1",
             "start_lat": 42.34182395800008,
@@ -11966,7 +11966,7 @@
             "segment_order": null
         },
         {
-            "uuid": "5758816c-6618-4c43-aca4-7c6a964fe3a4",
+            "uuid": "5968906c-da4b-441d-bef8-1ef3eb7d8abc",
             "project_id": 1,
             "route_name": "route-salt-lake-city-5",
             "origin": "{\"lat\": 42.34222752800008, \"lng\": -71.05501943799999}",
@@ -11984,8 +11984,8 @@
             "segmentation_config": null,
             "sync_status": "unsynced",
             "is_enabled": 1,
-            "created_at": "2026-04-09 10:00:58",
-            "updated_at": "2026-04-09 10:00:58",
+            "created_at": "2026-04-09 10:05:44",
+            "updated_at": "2026-04-09 10:05:44",
             "deleted_at": null,
             "tag": "boston1",
             "start_lat": 42.34222752800008,
@@ -12009,7 +12009,7 @@
             "segment_order": null
         },
         {
-            "uuid": "5ad40a0d-a5ad-4282-bf0d-865eb4587cd4",
+            "uuid": "77d5a887-be31-44b5-85d7-0d84ec5074f2",
             "project_id": 1,
             "route_name": "route-salt-lake-city-6",
             "origin": "{\"lat\": 42.34259559800006, \"lng\": -71.05457945499995}",
@@ -12027,8 +12027,8 @@
             "segmentation_config": null,
             "sync_status": "unsynced",
             "is_enabled": 1,
-            "created_at": "2026-04-09 10:00:58",
-            "updated_at": "2026-04-09 10:00:58",
+            "created_at": "2026-04-09 10:05:44",
+            "updated_at": "2026-04-09 10:05:44",
             "deleted_at": null,
             "tag": "boston1",
             "start_lat": 42.34259559800006,
@@ -12052,7 +12052,7 @@
             "segment_order": null
         },
         {
-            "uuid": "ca94b5a1-e202-49b6-9925-39ff565d3526",
+            "uuid": "4926584d-c5cc-45e0-aad1-0ee6efafc947",
             "project_id": 1,
             "route_name": "route-salt-lake-city-7",
             "origin": "{\"lat\": 42.34285168700006, \"lng\": -71.05427917899993}",
@@ -12070,8 +12070,8 @@
             "segmentation_config": null,
             "sync_status": "unsynced",
             "is_enabled": 1,
-            "created_at": "2026-04-09 10:00:58",
-            "updated_at": "2026-04-09 10:00:58",
+            "created_at": "2026-04-09 10:05:44",
+            "updated_at": "2026-04-09 10:05:44",
             "deleted_at": null,
             "tag": "boston1",
             "start_lat": 42.34285168700006,
@@ -12095,7 +12095,7 @@
             "segment_order": null
         },
         {
-            "uuid": "60f8849c-e9cf-4cbf-9bd6-e3b3f787a48e",
+            "uuid": "b8d44b36-9652-4a42-a0a2-4de7bf6d7d49",
             "project_id": 1,
             "route_name": "route-salt-lake-city-8",
             "origin": "{\"lat\": 42.34872699300007, \"lng\": -71.04974932499994}",
@@ -12113,8 +12113,8 @@
             "segmentation_config": null,
             "sync_status": "unsynced",
             "is_enabled": 1,
-            "created_at": "2026-04-09 10:00:58",
-            "updated_at": "2026-04-09 10:00:58",
+            "created_at": "2026-04-09 10:05:44",
+            "updated_at": "2026-04-09 10:05:44",
             "deleted_at": null,
             "tag": "boston1",
             "start_lat": 42.34872699300007,
