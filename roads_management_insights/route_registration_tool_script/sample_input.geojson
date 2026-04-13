@@ -14,12 +14,8 @@
         ]
       },
       "properties": {
-        "uuid": "a2d74d5d-1133-4f2c-aea5-9f30b80966f3",
         "name": "sample-route-1",
-        "sync_status": "unsynced",
-        "tag": "sample-tag",
-        "route_type": "drawn",
-        "length": 0.735
+        "tag": "sample-tag"
       }
     },
     {
@@ -32,12 +28,8 @@
         ]
       },
       "properties": {
-        "uuid": "28cbc22a-68de-4fd9-bbf8-e7f51c5eb5f2",
         "name": "sample-route-2",
-        "sync_status": "unsynced",
-        "tag": "sample-tag",
-        "route_type": "drawn",
-        "length": 0.077
+        "tag": "sample-tag"
       }
     }
   ]

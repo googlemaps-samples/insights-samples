@@ -1,0 +1,49 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Configuration for generating/updating the RMI Export JSON from GeoJSON
+#
+# When paths.base_export_file points to an existing export, the project block is
+# loaded from that file. project_info is optional: list only fields you want to override.
+# (tag applies to new routes only, not the project record.)
+#
+# When there is no base file, project_info populates the new project (defaults apply for
+# omitted keys). Example overrides: tag, project_name, dataset_name, viewstate, etc.
+project_info: {}
+# project_info:
+#   id: 1
+#   project_name: "sample-project"
+#   google_cloud_project_id: "redacted-project-id"
+#   google_cloud_project_number: "1234567890"
+#   subscription_id: "redacted-subscription-id"
+#   dataset_name: "historical_roads_data"
+#   tag: "sample-tag"
+#   # The jurisdiction boundary in GeoJSON format (as a string or object)
+#   jurisdiction_boundary_geojson: '{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"coordinates":[[[-71.0951,42.3130],[-71.0941,42.3122],[-71.0936,42.3105],[-71.0951,42.3130]]],"type":"Polygon"}}]}'
+#   viewstate: '{"center": {"lat": 42.3125, "lng": -71.0802}, "zoom": 15}'
+#   map_snapshot: ""
+
+paths:
+  # Path to the route input. Supports .geojson or .zip (first .geojson inside ZIP is used)
+  input_geojson_file: "sample_input.geojson"
+  # (Optional) Path to a base export file to merge routes into (.zip only).
+  # If commented out or empty, a new project JSON will be created from project_info.
+  base_export_file: "project.zip"
+  # Output path (.zip only). The export JSON is written inside the ZIP.
+  output_export_file: "output_project.zip"
+
+route_settings:
+  route_type: "imported"
+  sync_status: "unsynced"
+  is_enabled: 1
