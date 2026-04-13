@@ -25,8 +25,10 @@ import yaml
 import sys
 import os
 import logging
+import zipfile
 from datetime import datetime
 from typing import List, Tuple, Dict, Any, Optional
+from pyproj import Geod
 
 # --- Configuration & Logging ---
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
@@ -52,18 +54,98 @@ def encode_polyline(points: List[Tuple[float, float]]) -> str:
         last_lng = lng_int
     return res
 
-def process_geojson_to_routes(geojson_path: str, project_id: int, tag: str, route_set: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Parses GeoJSON features and converts them to RMI route entries."""
+
+_WGS84_GEOD = Geod(ellps="WGS84")
+
+
+def _polyline_length_km(points: List[Tuple[float, float]]) -> float:
+    """Returns total geodesic polyline length in kilometers using pyproj."""
+    if len(points) < 2:
+        return 0.0
+    lats = [lat for lat, _ in points]
+    lngs = [lng for _, lng in points]
+    return _WGS84_GEOD.line_length(lngs, lats) / 1000.0
+
+
+def _load_geojson_data(geojson_path: str) -> Dict[str, Any]:
+    """Loads GeoJSON from a .geojson file or from a .zip archive."""
     if not os.path.exists(geojson_path):
         logger.error(f"GeoJSON file not found: {geojson_path}")
         sys.exit(1)
 
+    lower_path = geojson_path.lower()
     try:
-        with open(geojson_path, 'r') as f:
-            geojson_data = json.load(f)
+        if lower_path.endswith(".zip"):
+            with zipfile.ZipFile(geojson_path, "r") as zf:
+                members = [
+                    name for name in zf.namelist()
+                    if not name.endswith("/") and name.lower().endswith(".geojson")
+                ]
+                if not members:
+                    logger.error(
+                        "Input ZIP does not contain a .geojson file: %s",
+                        geojson_path,
+                    )
+                    sys.exit(1)
+                selected = members[0]
+                logger.info("Reading GeoJSON from ZIP member: %s", selected)
+                with zf.open(selected) as f:
+                    return json.load(f)
+        if lower_path.endswith(".geojson"):
+            with open(geojson_path, "r") as f:
+                return json.load(f)
+        logger.error("Unsupported input file format (use .geojson or .zip): %s", geojson_path)
+        sys.exit(1)
     except Exception as e:
         logger.error(f"Failed to load GeoJSON: {e}")
         sys.exit(1)
+
+
+def _save_export_data(output_path: str, export_data: Dict[str, Any]) -> None:
+    """Saves export JSON inside a ZIP file."""
+    lower_path = output_path.lower()
+    if not lower_path.endswith(".zip"):
+        logger.error("Unsupported output format (use .zip): %s", output_path)
+        sys.exit(1)
+
+    inner_name = f"{os.path.splitext(os.path.basename(output_path))[0]}.json"
+    payload = json.dumps(export_data, indent=4).encode("utf-8")
+    with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(inner_name, payload)
+    logger.info("Wrote export JSON to ZIP member: %s", inner_name)
+
+
+def _load_export_data(base_export_path: str) -> Dict[str, Any]:
+    """Loads export JSON from a .zip archive."""
+    lower_path = base_export_path.lower()
+    if not lower_path.endswith(".zip"):
+        logger.error("Unsupported base export format (use .zip): %s", base_export_path)
+        sys.exit(1)
+
+    try:
+        with zipfile.ZipFile(base_export_path, "r") as zf:
+            members = [
+                name for name in zf.namelist()
+                if not name.endswith("/") and name.lower().endswith(".json")
+            ]
+            if not members:
+                logger.error(
+                    "Base export ZIP does not contain a .json file: %s",
+                    base_export_path,
+                )
+                sys.exit(1)
+            selected = members[0]
+            logger.info("Reading base export from ZIP member: %s", selected)
+            with zf.open(selected) as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error("Failed to load base export: %s", e)
+        sys.exit(1)
+
+
+def process_geojson_to_routes(geojson_path: str, project_id: int, tag: str, route_set: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Parses GeoJSON features and converts them to RMI route entries."""
+    geojson_data = _load_geojson_data(geojson_path)
 
     routes = []
     features = geojson_data.get('features', [])
@@ -90,7 +172,8 @@ def process_geojson_to_routes(geojson_path: str, project_id: int, tag: str, rout
         center_lng = sum(p[1] for p in points) / len(points)
         
         route_entry = {
-            "uuid": props.get('uuid', str(uuid.uuid4())),
+            # Always generate fresh UUIDs for imported routes (ignore input UUID).
+            "uuid": str(uuid.uuid4()),
             "project_id": project_id,
             "route_name": props.get('name', f"route-{uuid.uuid4().hex[:8]}"),
             "origin": json.dumps({"lat": start_lat, "lng": start_lng}),
@@ -98,15 +181,18 @@ def process_geojson_to_routes(geojson_path: str, project_id: int, tag: str, rout
             "waypoints": json.dumps([[p[1], p[0]] for p in waypoints]) if waypoints else None,
             "center": json.dumps({"lat": center_lat, "lng": center_lng}),
             "encoded_polyline": encode_polyline(points),
-            "route_type": props.get('route_type', route_set.get('route_type', 'imported')),
-            "length": float(props.get('length', 0.0)),
+            # Route type is fixed for imported registrations.
+            "route_type": "drawn",
+            # Always calculate length from geometry; input length is ignored.
+            "length": _polyline_length_km(points),
             "parent_route_id": None,
             "has_children": 0,
             "is_segmented": 0,
             "segmentation_type": None,
             "segmentation_points": None,
             "segmentation_config": None,
-            "sync_status": props.get('sync_status', route_set.get('sync_status', 'unsynced')),
+            # Sync status is fixed for imported registrations.
+            "sync_status": "unsynced",
             "is_enabled": route_set.get('is_enabled', 1),
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -136,6 +222,30 @@ def process_geojson_to_routes(geojson_path: str, project_id: int, tag: str, rout
     
     return routes
 
+
+# Keys allowed under project_info in YAML that apply to routes only, not export project.*
+_PROJECT_INFO_NON_PROJECT_KEYS = frozenset({"tag"})
+
+
+def _merge_project_overrides(project: Dict[str, Any], p_info: Dict[str, Any]) -> None:
+    """Apply project_info keys onto export project; skip route-only keys like tag."""
+    for key, val in p_info.items():
+        if key in _PROJECT_INFO_NON_PROJECT_KEYS:
+            continue
+        project[key] = val
+
+
+def _default_route_tag(export_data: Dict[str, Any], p_info: Dict[str, Any]) -> str:
+    """Tag for new routes: config override, else first existing route, else 'default'."""
+    if "tag" in p_info and p_info["tag"] is not None:
+        return str(p_info["tag"])
+    for route in export_data.get("routes") or []:
+        t = route.get("tag")
+        if t:
+            return str(t)
+    return "default"
+
+
 def main(config_path: str):
     """Main execution entry point."""
     if not os.path.exists(config_path):
@@ -146,12 +256,12 @@ def main(config_path: str):
         config = yaml.safe_load(f)
 
     paths = config.get('paths', {})
-    p_info = config.get('project_info', {})
+    p_info = config.get('project_info') or {}
     route_set = config.get('route_settings', {})
 
     geojson_path = paths.get('input_geojson_file')
-    output_json_path = paths.get('output_export_json_file')
-    base_json_path = paths.get('base_export_json_file')
+    base_json_path = paths.get('base_export_file') or paths.get('base_export_json_file')
+    output_json_path = paths.get('output_export_file') or paths.get('output_export_json_file')
 
     if not all([geojson_path, output_json_path]):
         logger.error("Missing required paths in config.yaml")
@@ -160,12 +270,15 @@ def main(config_path: str):
     # Initialize or Load Export Data
     if base_json_path and os.path.exists(base_json_path):
         logger.info(f"Loading base export: {base_json_path}")
-        with open(base_json_path, 'r') as f:
-            export_data = json.load(f)
-        # Update project metadata from config if provided
-        for key, val in p_info.items():
-            if key in export_data['project']:
-                export_data['project'][key] = val
+        export_data = _load_export_data(base_json_path)
+        # Project metadata comes entirely from the base file; project_info only overrides
+        # keys you list (omit project_info or use {} to keep the base project unchanged).
+        if p_info:
+            proj = export_data.setdefault("project", {})
+            _merge_project_overrides(proj, p_info)
+            applied = sorted(k for k in p_info if k not in _PROJECT_INFO_NON_PROJECT_KEYS)
+            if applied:
+                logger.info("Applied project_info overrides: %s", ", ".join(applied))
     else:
         logger.info("Generating new project structure from config.")
         export_data = {
@@ -178,13 +291,13 @@ def main(config_path: str):
                 "subscription_id": p_info.get('subscription_id', ''),
                 "dataset_name": p_info.get('dataset_name', 'historical_roads_data'),
                 "viewstate": p_info.get('viewstate', '{}'),
-                "map_snapshot": ""
+                "map_snapshot": p_info.get("map_snapshot", "")
             },
             "routes": []
         }
 
     project_id = export_data['project'].get('id', 1)
-    tag = p_info.get('tag', 'default')
+    tag = _default_route_tag(export_data, p_info)
 
     # Extract routes from GeoJSON
     logger.info(f"Processing routes from: {geojson_path}")
@@ -195,8 +308,7 @@ def main(config_path: str):
     logger.info(f"Merged {len(new_routes)} new routes. Total: {len(export_data['routes'])}")
 
     # Save
-    with open(output_json_path, 'w') as f:
-        json.dump(export_data, f, indent=4)
+    _save_export_data(output_json_path, export_data)
     logger.info(f"Successfully saved export JSON to: {output_json_path}")
 
 if __name__ == "__main__":

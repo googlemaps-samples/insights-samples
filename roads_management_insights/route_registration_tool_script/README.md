@@ -8,8 +8,8 @@ The tool reads a GeoJSON file containing route geometries (LineStrings), parses 
 - Coordinate extraction from GeoJSON.
 - Polyline encoding for the Google Roads API.
 - Bounding box and center point calculation.
-- UUID generation for new routes.
 - Merging with existing export files.
+- Writing output as zipped `.zip`.
 
 ## Files
 
@@ -22,20 +22,21 @@ The tool reads a GeoJSON file containing route geometries (LineStrings), parses 
 
 - Python 3.x
 - `PyYAML` library
+- `pyproj` library
 
 To install dependencies:
 ```bash
-pip install PyYAML
+pip install PyYAML pyproj
 ```
 
 ## Usage
 
-1. Configure your project details and file paths in `config.yaml`.
-2. (Optional) Provide an existing export JSON in the `base_export_json_file` path to merge new routes into it.
+1. Configure file paths (and optional settings) in `config.yaml`.
+2. (Optional) Set `base_export_file` to an existing export ZIP to merge new routes into it. The `project` section is taken from that file; use `project_info` only for fields you want to override.
 3. Run the script:
 
 ```bash
 python3 main.py config.yaml
 ```
 
-The script will generate or update the JSON file as specified in the `output_export_json_file` path of your configuration.
+The script will generate or update the JSON file as specified in the `output_export_file` path of your configuration.
