@@ -10,7 +10,6 @@ This directory contains a progressive series of Jupyter notebooks designed to on
 | **02** | [Route Setting](./02_route_setting.ipynb) | Developers | [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/googlemaps-samples/insights-samples/blob/main/roads_management_insights/tutorials/02_route_setting.ipynb) | Registering routes via REST. |
 | **03** | [BigQuery Verification](./03_bq_verification.ipynb) | Data Analysts | [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/googlemaps-samples/insights-samples/blob/main/roads_management_insights/tutorials/03_bq_verification.ipynb) | Trend analysis and SQL audits. |
 | **04** | [Pub/Sub Real-time](./04_pubsub_verification.ipynb) | Operations | [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/googlemaps-samples/insights-samples/blob/main/roads_management_insights/tutorials/04_pubsub_verification.ipynb) | JSON traffic feeds & BQ subs. |
-| **05** | [Roads v2 Preview](./05_roads_v2_testing.ipynb) | Partners | [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/googlemaps-samples/insights-samples/blob/main/roads_management_insights/tutorials/05_roads_v2_testing.ipynb) | Topology and GPS snapping. |
 
 ## 🛠 Prerequisites
 
