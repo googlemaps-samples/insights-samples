@@ -53,7 +53,7 @@ else:
 
 # Agent Definition
 bq_agent = Agent(
-    model="gemini-3-flash-preview",
+    model="gemini-3.5-flash",
     name="bigquery_agent",
     description=(
         "Agent to answer questions about BigQuery data and execute SQL queries."
@@ -63,7 +63,7 @@ bq_agent = Agent(
 )
 
 root_agent = Agent(
-    model="gemini-3-flash-preview",
+    model="gemini-3.5-flash",
     name="RMI_agent",
     description=(
         "Agent to answer questions about RMI data residing in BigQuery."
