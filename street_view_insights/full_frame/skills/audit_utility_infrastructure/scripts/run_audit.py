@@ -71,14 +71,15 @@ def parse_args():
     
     # Task inputs
     parser.add_argument("--image", help="Path to local image file or gs:// URI (required for 'inspect').")
-    parser.add_argument("--asset-id", help="Target asset ID for BigQuery lookup (used in 'inspect' or 'reconcile').")
+    parser.add_argument("--asset-id", help="Target asset ID or observation ID for BigQuery lookup.")
     parser.add_argument("--cropped-image", help="Cropped image for comparison task.")
     parser.add_argument("--full-image", help="Full-frame image for comparison task.")
     
     # BigQuery connection arguments
-    parser.add_argument("--project", default=os.getenv("GOOGLE_CLOUD_PROJECT"), help="Google Cloud project ID.")
-    parser.add_argument("--dataset", default=os.getenv("BIGQUERY_DATASET", "imagery_insights___us"), help="BigQuery dataset name.")
-    parser.add_argument("--table", default="full_frame_observations_latest", help="BigQuery observations table name.")
+    parser.add_argument("--project", default=os.getenv("GOOGLE_CLOUD_PROJECT", "imagery-insights-sandbox"), 
+                        help="Google Cloud project ID.")
+    parser.add_argument("--dataset", default=os.getenv("BIGQUERY_DATASET", "imagery_insights___us"), 
+                        help="BigQuery dataset name.")
     
     # Gemini model arguments
     parser.add_argument("--location", default="global", help="Google Cloud location/region.")
@@ -98,51 +99,45 @@ def convert_to_gs_uri(image_url: str) -> str:
         print(f"Warning: failed to convert URL to GCS URI: {e}", file=sys.stderr)
     return image_url
 
-def query_image_from_bq(args):
+def query_image_from_bq(args, table_name):
     from google.cloud import bigquery
     client_bq = bigquery.Client(project=args.project)
-    project_id = client_bq.project
-    if not project_id:
-        raise ValueError("Could not resolve Google Cloud project ID.")
+    project_id = client_bq.project or args.project
         
-    print(f"Querying BQ for observation: {args.asset_id}...", file=sys.stderr)
+    print(f"Querying BQ table `{project_id}.{args.dataset}.{table_name}` for: {args.asset_id}...", file=sys.stderr)
     query = f"""
     SELECT gcs_uri, bbox, asset_type
-    FROM `{project_id}.{args.dataset}.{args.table}`
-    WHERE observation_id = @assetId OR asset_id = @assetId
+    FROM `{project_id}.{args.dataset}.{table_name}`
+    WHERE observation_id = @id OR asset_id = @id OR pano_id = @id
     LIMIT 1
     """
     job_config = bigquery.QueryJobConfig(
-        query_parameters=[bigquery.ScalarQueryParameter("assetId", "STRING", args.asset_id)]
+        query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", args.asset_id)]
     )
     rows = list(client_bq.query(query, job_config=job_config).result())
     if not rows:
-        raise ValueError(f"No image observation found for ID: {args.asset_id}")
+        raise ValueError(f"No image observation found in {table_name} for ID: {args.asset_id}")
     return rows[0].gcs_uri, rows[0].bbox, rows[0].asset_type, project_id
 
-def query_asset_observations(args):
+def query_asset_observations(args, table_name):
     from google.cloud import bigquery
     client_bq = bigquery.Client(project=args.project)
-    project_id = client_bq.project
-    if not project_id:
-        raise ValueError("Could not resolve Google Cloud project ID.")
+    project_id = client_bq.project or args.project
         
     query = f"""
-    SELECT gcs_uri, detection_time, heading, pitch
-    FROM `{project_id}.{args.dataset}.{args.table}`
-    WHERE asset_id = @assetId
+    SELECT gcs_uri, detection_time, camera_pose.heading as heading, camera_pose.pitch as pitch
+    FROM `{project_id}.{args.dataset}.{table_name}`
+    WHERE asset_id = @id OR observation_id = @id
     ORDER BY detection_time ASC
     """
     job_config = bigquery.QueryJobConfig(
-        query_parameters=[bigquery.ScalarQueryParameter("assetId", "STRING", args.asset_id)]
+        query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", args.asset_id)]
     )
     rows = list(client_bq.query(query, job_config=job_config).result())
     return rows, project_id
 
 def detect_data_type(image_path):
-    """Simple heuristic: wide aspect ratio (width > 1.5 * height) -> full-frame, else cropped."""
     if image_path.startswith("gs://"):
-        # Since it's GCS, default to auto/full-frame context
         return "full_frame"
     try:
         with Image.open(image_path) as img:
@@ -155,6 +150,7 @@ def detect_data_type(image_path):
 
 def main():
     args = parse_args()
+    table_name = "cropped_observations_latest" if args.data_type == "cropped" else "full_frame_observations_latest"
     
     if args.task == "inspect":
         if not args.image and not args.asset_id:
@@ -167,30 +163,20 @@ def main():
         
         if args.image:
             image_uri = args.image
-            if not project_id:
-                try:
-                    from google.cloud import bigquery
-                    client_bq = bigquery.Client()
-                    project_id = client_bq.project
-                except Exception:
-                    pass
         else:
             try:
-                image_uri, bbox_raw, asset_type, project_id = query_image_from_bq(args)
+                image_uri, bbox_raw, asset_type, project_id = query_image_from_bq(args, table_name)
             except Exception as e:
                 print(f"Error querying BigQuery: {e}", file=sys.stderr)
                 sys.exit(1)
                 
         gcs_uri = convert_to_gs_uri(image_uri)
         
-        # Decide prompt based on data-type flag / auto-detect
         data_type = args.data_type
         if data_type == "auto":
             data_type = detect_data_type(gcs_uri)
-            print(f"Auto-detected image data-type: {data_type}", file=sys.stderr)
             
         system_prompt = FULL_FRAME_INSPECTION_PROMPT if data_type == "full_frame" else CROPPED_INSPECTION_PROMPT
-        
         client = genai.Client(vertexai=True, project=project_id, location=args.location)
         
         try:
@@ -223,7 +209,7 @@ def main():
             sys.exit(1)
             
         try:
-            observations, project_id = query_asset_observations(args)
+            observations, project_id = query_asset_observations(args, table_name)
             print(f"Found {len(observations)} observations for reconciliation.", file=sys.stderr)
         except Exception as e:
             print(f"Error querying BigQuery: {e}", file=sys.stderr)
@@ -242,7 +228,8 @@ def main():
             
             contents.append(f"\n--- Observation {i} ---")
             contents.append(f"Timestamp: {obs_time}")
-            contents.append(f"Camera Heading: {obs.heading} degrees, Pitch: {obs.pitch} degrees")
+            if hasattr(obs, "heading") and obs.heading:
+                contents.append(f"Camera Heading: {obs.heading} degrees, Pitch: {obs.pitch} degrees")
             
             try:
                 image_part = types.Part.from_uri(file_uri=gcs_uri, mime_type="image/jpeg")
@@ -282,7 +269,6 @@ def main():
                 pass
                 
         client = genai.Client(vertexai=True, project=project_id, location=args.location)
-        
         audit_prompt = """Identify and audit the utility pole or street asset present. List sub-attachments and notes on leaning or decay."""
         
         def run_inference(image_path, label):

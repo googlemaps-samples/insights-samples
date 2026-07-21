@@ -53,121 +53,66 @@ def parse_args():
     
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--image", help="Path to local image file(s) or gs:// URI(s), comma-separated.")
-    group.add_argument("--track-id", help="Lookup track ID in BigQuery to find the image sequence.")
-    group.add_argument("--coordinates", help="Lookup nearest track by coordinates in format 'lat,lng'.")
+    group.add_argument("--track-id", help="Lookup capture/pano/observation ID in BigQuery.")
+    group.add_argument("--coordinates", help="Lookup nearest observation by coordinates in format 'lat,lng'.")
     
     # BigQuery connection arguments
-    parser.add_argument("--project", default=os.getenv("GOOGLE_CLOUD_PROJECT"), help="Google Cloud project ID.")
-    parser.add_argument("--dataset", default=os.getenv("BIGQUERY_DATASET", "home_depot_full_scene"), help="BigQuery dataset name.")
-    parser.add_argument("--tracks-table", default="tracks_unnested", help="BigQuery tracks table name.")
-    parser.add_argument("--urls-table", default="urls_new", help="BigQuery URLs table name.")
+    parser.add_argument("--project", default=os.getenv("GOOGLE_CLOUD_PROJECT", "imagery-insights-sandbox"), 
+                        help="Google Cloud project ID.")
+    parser.add_argument("--dataset", default=os.getenv("BIGQUERY_DATASET", "imagery_insights___us"), 
+                        help="BigQuery dataset name.")
+    parser.add_argument("--table", default="pano_observations_latest", 
+                        help="BigQuery table name.")
     
     # Gemini model arguments
     parser.add_argument("--location", default="global", help="Google Cloud location/region.")
     parser.add_argument("--model", default="gemini-3.5-flash", help="Model to use (e.g. gemini-3.5-flash).")
     return parser.parse_args()
 
-def convert_to_gs_uri(image_url: str) -> str:
-    if image_url.startswith("gs://"):
-        return image_url
-    try:
-        clean_url = image_url.replace("https://", "")
-        domain, path = clean_url.split("/", 1)
-        if "storage" in domain or "googleapis" in domain:
-            path = urllib.parse.unquote(path)
-            return f"gs://{path}"
-    except Exception as e:
-        print(f"Warning: failed to convert URL to GCS URI: {e}", file=sys.stderr)
-    return image_url
-
-def check_table_exists(client_bq, project_id, dataset, table_name) -> bool:
-    from google.cloud import bigquery
-    query = f"""
-    SELECT table_name 
-    FROM `{project_id}`.`{dataset}`.INFORMATION_SCHEMA.TABLES 
-    WHERE table_name = @table_name
-    """
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=[bigquery.ScalarQueryParameter("table_name", "STRING", table_name)]
-    )
-    try:
-        rows = list(client_bq.query(query, job_config=job_config).result())
-        return len(rows) > 0
-    except Exception:
-        return False
-
 def query_images_from_bq(args):
     from google.cloud import bigquery
     client_bq = bigquery.Client(project=args.project)
-    project_id = client_bq.project
-    if not project_id:
-        raise ValueError("Could not resolve Google Cloud project ID.")
-        
-    is_new_schema = check_table_exists(client_bq, project_id, args.dataset, "pano_observations_latest")
+    project_id = client_bq.project or args.project
     
-    if is_new_schema:
-        print(f"Detected Pano Observations schema in dataset '{args.dataset}'...", file=sys.stderr)
-        pano_table = "pano_observations_latest"
+    if args.track_id:
+        print(f"Querying BQ table `{project_id}.{args.dataset}.{args.table}` for ID: {args.track_id}...", file=sys.stderr)
+        query = f"""
+        SELECT gcs_uri 
+        FROM `{project_id}.{args.dataset}.{args.table}` 
+        WHERE capture_id = @id OR pano_id = @id OR observation_id = @id 
+        LIMIT 5
+        """
+        job_config = bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", args.track_id)])
+        rows = list(client_bq.query(query, job_config=job_config).result())
+        if not rows:
+            raise ValueError(f"No image observations found in BigQuery for ID: {args.track_id}")
+        return [row.gcs_uri for row in rows], project_id
         
-        if args.track_id:
-            query = f"SELECT gcs_uri FROM `{project_id}`.`{args.dataset}`.`{pano_table}` WHERE capture_id = @trackId OR pano_id = @trackId LIMIT 5"
-            job_config = bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("trackId", "STRING", args.track_id)])
-            rows = list(client_bq.query(query, job_config=job_config).result())
-            return [row.gcs_uri for row in rows], project_id
-            
-        elif args.coordinates:
-            parts = args.coordinates.split(",")
-            lat, lng = float(parts[0]), float(parts[1])
-            query = f"""
-            WITH nearest_pano AS (
-              SELECT capture_id
-              FROM `{project_id}`.`{args.dataset}`.`{pano_table}`
-              ORDER BY ST_DISTANCE(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude), ST_GEOGPOINT(@lng, @lat)) ASC
-              LIMIT 1
-            )
-            SELECT gcs_uri FROM `{project_id}`.`{args.dataset}`.`{pano_table}` WHERE capture_id IN (SELECT capture_id FROM nearest_pano) LIMIT 5
-            """
-            job_config = bigquery.QueryJobConfig(query_parameters=[
-                bigquery.ScalarQueryParameter("lng", "FLOAT64", lng),
-                bigquery.ScalarQueryParameter("lat", "FLOAT64", lat)
-            ])
-            rows = list(client_bq.query(query, job_config=job_config).result())
-            return [row.gcs_uri for row in rows], project_id
-            
-    else:
-        print(f"Using classic Tracks/URLs schema in dataset '{args.dataset}'...", file=sys.stderr)
-        if args.track_id:
-            query = f"""
-            SELECT u.signedUrl FROM `{project_id}`.`{args.dataset}`.`{args.tracks_table}` AS t,
-            UNNEST(t.observationIds) AS observationId WITH OFFSET AS offset
-            INNER JOIN `{project_id}`.`{args.dataset}`.`{args.urls_table}` AS u ON observationId = u.observationId
-            WHERE t.trackId = @trackId ORDER BY offset ASC LIMIT 5
-            """
-            job_config = bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("trackId", "STRING", args.track_id)])
-            rows = list(client_bq.query(query, job_config=job_config).result())
-            return [row.signedUrl for row in rows], project_id
-            
-        elif args.coordinates:
-            parts = args.coordinates.split(",")
-            lat, lng = float(parts[0]), float(parts[1])
-            query = f"""
-            WITH nearest_track AS (
-              SELECT trackId, observationIds
-              FROM `{project_id}`.`{args.dataset}`.`{args.tracks_table}`
-              ORDER BY ST_DISTANCE(geometry, ST_GEOGPOINT(@lng, @lat)) ASC
-              LIMIT 1
-            )
-            SELECT u.signedUrl FROM nearest_track, UNNEST(observationIds) AS observationId WITH OFFSET AS offset
-            INNER JOIN `{project_id}`.`{args.dataset}`.`{args.urls_table}` AS u ON observationId = u.observationId
-            ORDER BY offset ASC LIMIT 5
-            """
-            job_config = bigquery.QueryJobConfig(query_parameters=[
-                bigquery.ScalarQueryParameter("lng", "FLOAT64", lng),
-                bigquery.ScalarQueryParameter("lat", "FLOAT64", lat)
-            ])
-            rows = list(client_bq.query(query, job_config=job_config).result())
-            return [row.signedUrl for row in rows], project_id
-            
+    elif args.coordinates:
+        parts = args.coordinates.split(",")
+        lat, lng = float(parts[0]), float(parts[1])
+        print(f"Querying BQ table `{project_id}.{args.dataset}.{args.table}` near: {lat}, {lng}...", file=sys.stderr)
+        query = f"""
+        WITH nearest_pano AS (
+          SELECT capture_id
+          FROM `{project_id}.{args.dataset}.{args.table}`
+          ORDER BY ST_DISTANCE(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude), ST_GEOGPOINT(@lng, @lat)) ASC
+          LIMIT 1
+        )
+        SELECT gcs_uri 
+        FROM `{project_id}.{args.dataset}.{args.table}` 
+        WHERE capture_id IN (SELECT capture_id FROM nearest_pano) 
+        LIMIT 5
+        """
+        job_config = bigquery.QueryJobConfig(query_parameters=[
+            bigquery.ScalarQueryParameter("lng", "FLOAT64", lng),
+            bigquery.ScalarQueryParameter("lat", "FLOAT64", lat)
+        ])
+        rows = list(client_bq.query(query, job_config=job_config).result())
+        if not rows:
+            raise ValueError(f"No image observations found near coordinates: {lat}, {lng}")
+        return [row.gcs_uri for row in rows], project_id
+        
     return [], project_id
 
 def main():
@@ -176,13 +121,6 @@ def main():
     
     if args.image:
         image_paths = [path.strip() for path in args.image.split(",")]
-        if not project_id:
-            try:
-                from google.cloud import bigquery
-                client_bq = bigquery.Client()
-                project_id = client_bq.project
-            except Exception:
-                pass
     else:
         try:
             image_paths, project_id = query_images_from_bq(args)
@@ -196,18 +134,16 @@ def main():
         
     client = genai.Client(vertexai=True, project=project_id, location=args.location)
     
-    # Select prompt based on task
     system_prompt = ROAD_MATERIAL_PROMPT if args.task == "material" else LOGISTICS_BARRIERS_PROMPT
     contents = [system_prompt, "\n\nBEGIN IMAGE SEQUENCE:\n"]
     
     for path in image_paths:
-        clean_path = convert_to_gs_uri(path)
         try:
-            if clean_path.startswith("gs://"):
-                image_part = types.Part.from_uri(file_uri=clean_path, mime_type="image/jpeg")
+            if path.startswith("gs://"):
+                image_part = types.Part.from_uri(file_uri=path, mime_type="image/jpeg")
             else:
                 from PIL import Image
-                img = Image.open(clean_path)
+                img = Image.open(path)
                 if img.mode in ("RGBA", "P"):
                     img = img.convert("RGB")
                 img_byte_arr = BytesIO()
@@ -215,7 +151,7 @@ def main():
                 image_part = types.Part.from_bytes(data=img_byte_arr.getvalue(), mime_type="image/jpeg")
             contents.append(image_part)
         except Exception as e:
-            print(f"Error loading image {clean_path}: {e}", file=sys.stderr)
+            print(f"Error loading image {path}: {e}", file=sys.stderr)
             sys.exit(1)
             
     contents.append("\n\nEND IMAGE SEQUENCE. Provide the JSON analysis.")
