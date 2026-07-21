@@ -21,12 +21,12 @@ Run the script from the repository root directory, specifying the task with `--t
 
 ### Task 1: Building Vantage Point Audit
 ```bash
-python3 street_view_insights/pano/skills/audit_building_envelope/scripts/run_audit.py --task vantage --coordinates <lat,lng>
+python3 street_view_insights/panoramic/skills/audit_building_envelope/scripts/run_audit.py --task vantage --coordinates <lat,lng>
 ```
 
 ### Task 2: Roof Edge Audit
 ```bash
-python3 street_view_insights/pano/skills/audit_building_envelope/scripts/run_audit.py --task roof --observation-id <observation_id> --output <output_directory>
+python3 street_view_insights/panoramic/skills/audit_building_envelope/scripts/run_audit.py --task roof --observation-id <observation_id> --output <output_directory>
 ```
 
 ### Input Options

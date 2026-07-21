@@ -21,12 +21,12 @@ Run the script from the repository root directory, specifying the task with `--t
 
 ### Task 1: Road Material Audit
 ```bash
-python3 street_view_insights/pano/skills/audit_road_and_logistics/scripts/run_audit.py --task material --track-id <track_id>
+python3 street_view_insights/panoramic/skills/audit_road_and_logistics/scripts/run_audit.py --task material --track-id <track_id>
 ```
 
 ### Task 2: Logistics Barrier Audit
 ```bash
-python3 street_view_insights/pano/skills/audit_road_and_logistics/scripts/run_audit.py --task barriers --coordinates <lat,lng>
+python3 street_view_insights/panoramic/skills/audit_road_and_logistics/scripts/run_audit.py --task barriers --coordinates <lat,lng>
 ```
 
 ### Input Options
