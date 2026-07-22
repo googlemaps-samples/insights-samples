@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-PROJECT_ID="imagery-insights-sandbox"
+PROJECT_ID="${GOOGLE_CLOUD_PROJECT:-YOUR_PROJECT_ID}"
 REGION="us-central1"
 SERVICE_NAME="streetview-imagery-insights-mcp"
 IMAGE_TAG="us-central1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${SERVICE_NAME}:latest"

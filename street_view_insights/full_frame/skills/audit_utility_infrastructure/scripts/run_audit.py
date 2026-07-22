@@ -76,7 +76,7 @@ def parse_args():
     parser.add_argument("--full-image", help="Full-frame image for comparison task.")
     
     # BigQuery connection arguments
-    parser.add_argument("--project", default=os.getenv("GOOGLE_CLOUD_PROJECT", "imagery-insights-sandbox"), 
+    parser.add_argument("--project", default=os.getenv("GOOGLE_CLOUD_PROJECT", "YOUR_PROJECT_ID"), 
                         help="Google Cloud project ID.")
     parser.add_argument("--dataset", default=os.getenv("BIGQUERY_DATASET", "imagery_insights___us"), 
                         help="BigQuery dataset name.")
