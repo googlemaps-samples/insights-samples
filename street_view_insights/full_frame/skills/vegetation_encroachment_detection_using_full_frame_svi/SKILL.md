@@ -19,7 +19,7 @@ Run the script from the repository root directory:
 
 ### Audit All Full-Frame Observations for an Asset ID
 ```bash
-python3 street_view_insights/full_frame/skills/vegetation_encroachment_detection_using_full_frame_svi/scripts/analyze_vegetation_encroachment.py --asset-id <asset_id>
+python3 street_view_insights/full_frame/skills/vegetation_encroachment_detection_using_full_frame_svi/scripts/analyze_vegetation_encroachment.py --asset-id "t1:9737b62559f98bc84a3c9532b4449ccb:ffff01ee"
 ```
 
 ### Audit a Specific Observation ID
