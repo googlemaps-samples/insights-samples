@@ -4,21 +4,20 @@ import sys
 import json
 import argparse
 import urllib.parse
-from io import BytesIO
-from PIL import Image
 from google import genai
 from google.genai import types
 
 PROMPT = """You are an expert utility vegetation management & asset inspection engineer.
-You are provided with multiple panoramic/full-frame street view images and cropped asset views of a utility pole.
+You are provided with full-frame street view images from Google Cloud Storage along with target asset bounding box coordinates from BigQuery.
 
-Your task is to perform a comprehensive Vegetation Encroachment & Hazard Audit:
-1. **Asset Verification**: Confirm if the cropped pole views across all observations represent the same physical utility asset.
-2. **Vegetation & Tree Encroachment Analysis**:
+Your task is to perform a remote Vegetation Encroachment & Hazard Audit:
+1. **Target Asset Bounding Box**: Use the provided bounding box coordinates [xmin, ymin, xmax, ymax] to focus on the target utility pole within the full-frame scene. If needed, write and run Python code execution to inspect crop coordinates.
+2. **Multi-Observation Asset Verification**: Confirm if the target utility pole across all provided image URIs represents the exact same physical asset.
+3. **Vegetation Encroachment & Clearance Audit**:
    - Inspect surrounding trees, branches, and foliage relative to the pole and overhead lines.
    - Detect if branches are touching, overhanging, or dangerously close (< 10 feet) to wires or pole attachments.
    - Rate the overall Vegetation Hazard Level: [None | Low | Moderate | Severe / High Risk].
-3. **Actionable Findings**: Provide a clear 1-3 sentence summary of vegetation hazards and recommended trimming actions.
+4. **Actionable Findings**: Provide a clear summary of vegetation hazards and recommended trimming actions.
 
 Return your response strictly in structured JSON format matching this schema:
 {
@@ -39,11 +38,11 @@ Return your response strictly in structured JSON format matching this schema:
 """
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Utility Pole Vegetation Encroachment Detection Skill.")
+    parser = argparse.ArgumentParser(description="Cloud-Native Utility Pole Vegetation Encroachment Detection Skill.")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--asset-id", help="Lookup all full-frame observations for an asset ID in BigQuery.")
     group.add_argument("--observation-id", help="Lookup a specific full-frame observation ID in BigQuery.")
-    group.add_argument("--image", help="Direct full-frame local image path or gs:// URI.")
+    group.add_argument("--image", help="Direct gs:// URI to full-frame image in Google Cloud Storage.")
     
     parser.add_argument("--output", help="Optional output JSON file path.")
     
@@ -101,46 +100,6 @@ def query_observations_from_bq(args):
         raise ValueError(f"No full-frame observations found in BigQuery for ID: {target_id}")
     return rows, project_id
 
-def download_and_crop_asset(gcs_uri: str, bbox: dict, project_id: str):
-    """Downloads image bytes from GCS and returns (full_image_bytes, cropped_image_bytes)."""
-    from google.cloud import storage
-    storage_client = storage.Client(project=project_id if project_id != "YOUR_PROJECT_ID" else None)
-    
-    if gcs_uri.startswith("gs://"):
-        path_parts = gcs_uri[5:].split('/', 1)
-        bucket = storage_client.bucket(path_parts[0])
-        blob = bucket.blob(path_parts[1])
-        full_bytes = blob.download_as_bytes()
-    else:
-        with open(gcs_uri, "rb") as f:
-            full_bytes = f.read()
-            
-    img = Image.open(BytesIO(full_bytes)).convert("RGB")
-    
-    cropped_bytes = full_bytes
-    if bbox and isinstance(bbox, dict) and 'lo' in bbox and 'hi' in bbox:
-        try:
-            xmin = bbox['lo']['x']
-            ymin = bbox['lo']['y']
-            xmax = bbox['hi']['x']
-            ymax = bbox['hi']['y']
-            
-            w, h = img.size
-            # Clamp coordinates
-            left = max(0, min(xmin, w - 1))
-            top = max(0, min(ymin, h - 1))
-            right = max(left + 1, min(xmax, w))
-            bottom = max(top + 1, min(ymax, h))
-            
-            cropped_img = img.crop((left, top, right, bottom))
-            crop_buf = BytesIO()
-            cropped_img.save(crop_buf, format="JPEG", quality=95)
-            cropped_bytes = crop_buf.getvalue()
-        except Exception as e:
-            print(f"Warning: Bounding box crop failed ({e}), using full image.", file=sys.stderr)
-            
-    return full_bytes, cropped_bytes
-
 def main():
     args = parse_args()
     project_id = args.project
@@ -155,13 +114,13 @@ def main():
                 project_id = client_bq.project
             except Exception:
                 pass
-        observations_data.append({"gcs_uri": gcs_uri, "bbox": None, "obs_id": "local"})
+        observations_data.append({"gcs_uri": gcs_uri, "bbox": None, "obs_id": "remote"})
     else:
         try:
             rows, project_id = query_observations_from_bq(args)
             for row in rows:
                 observations_data.append({
-                    "gcs_uri": row.gcs_uri,
+                    "gcs_uri": convert_to_gs_uri(row.gcs_uri),
                     "bbox": row.bbox,
                     "obs_id": row.observation_id,
                     "asset_id": row.asset_id
@@ -172,29 +131,27 @@ def main():
             
     client = genai.Client(vertexai=True, project=project_id, location=args.location)
     
-    contents = [PROMPT, "\n\nBEGIN ASSET OBSERVATION IMAGES:\n"]
+    contents = [PROMPT, "\n\nREMOTE GCS OBSERVATION IMAGES & BOUNDING BOXES:\n"]
     
     for i, obs in enumerate(observations_data):
-        gcs_uri = convert_to_gs_uri(obs["gcs_uri"])
+        gcs_uri = obs["gcs_uri"]
         bbox = obs.get("bbox")
         obs_id = obs.get("obs_id")
         
-        print(f"Loading observation {obs_id} ({gcs_uri})...", file=sys.stderr)
+        contents.append(f"\n--- Observation {i+1} (ID: {obs_id}) ---")
+        contents.append(f"GCS URI: {gcs_uri}")
+        if bbox and isinstance(bbox, dict) and 'lo' in bbox and 'hi' in bbox:
+            contents.append(f"Target Bounding Box (xmin, ymin, xmax, ymax): [{bbox['lo']['x']}, {bbox['lo']['y']}, {bbox['hi']['x']}, {bbox['hi']['y']}]")
+            
+        # Pass GCS URI directly without downloading local bytes
         try:
-            full_bytes, cropped_bytes = download_and_crop_asset(gcs_uri, bbox, project_id)
-            
-            contents.append(f"\n--- Observation {i+1} (ID: {obs_id}) ---")
-            contents.append("Full Frame View (Context):")
-            contents.append(types.Part.from_bytes(data=full_bytes, mime_type="image/jpeg"))
-            
-            if bbox:
-                contents.append("Cropped Bounding Box Asset View (Target Pole):")
-                contents.append(types.Part.from_bytes(data=cropped_bytes, mime_type="image/jpeg"))
+            image_part = types.Part.from_uri(file_uri=gcs_uri, mime_type="image/jpeg")
+            contents.append(image_part)
         except Exception as e:
-            print(f"Error loading observation {obs_id}: {e}", file=sys.stderr)
+            print(f"Error attaching GCS URI {gcs_uri}: {e}", file=sys.stderr)
             sys.exit(1)
             
-    contents.append("\n\nEND OBSERVATIONS. Provide structured JSON audit.")
+    contents.append("\n\nEND OBSERVATIONS. Analyze GCS images and target bounding boxes remotely and return structured JSON audit.")
     
     try:
         response = client.models.generate_content(
@@ -202,10 +159,12 @@ def main():
             contents=contents,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                temperature=0.1
+                temperature=0.1,
+                tools=[{"code_execution": {}}]
             )
         )
-        output_json = response.text
+        output_text_parts = [part.text for part in response.candidates[0].content.parts if part.text]
+        output_json = "\n".join(output_text_parts).strip()
         print(output_json)
         
         if args.output:
@@ -215,7 +174,7 @@ def main():
             print(f"Successfully saved vegetation encroachment report to {args.output}", file=sys.stderr)
             
     except Exception as e:
-        print(f"Encroachment analysis failed: {e}", file=sys.stderr)
+        print(f"Remote encroachment analysis failed: {e}", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":
