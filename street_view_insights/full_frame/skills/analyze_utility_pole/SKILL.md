@@ -1,9 +1,9 @@
 ---
-name: audit-utility-infrastructure
-description: Perform visual audits on utility poles/infrastructure using either cropped or full-frame images. Reconciles observations over time or benchmarks cropped vs full-frame views.
+name: analyze-utility-pole
+description: Perform visual audits on utility poles and attachments using either cropped or full-frame images. Reconciles observations over time or benchmarks cropped vs full-frame views.
 ---
 
-# Audit Utility Infrastructure
+# Analyze Utility Pole
 
 Use this skill to audit utility pole attachments, materials, and conditions. It supports both cropped (object-level) and full-frame (scene-level) images, adapting prompts based on input data-type.
 
@@ -24,23 +24,23 @@ Run the script from the repository root directory, specifying the task with `--t
 
 ### Task 1: Utility Pole Audit (Cropped or Full-Frame)
 ```bash
-python3 street_view_insights/full_frame/skills/audit_utility_infrastructure/scripts/run_audit.py --task inspect --observation-id <observation_id>
+python3 street_view_insights/full_frame/skills/analyze_utility_pole/scripts/analyze_utility_pole.py --task inspect --observation-id <observation_id>
 ```
 
 #### Explicit Data-Type Selection
 By default, the script auto-detects if the input image is cropped or full-frame. You can explicitly override this with `--data-type`:
 ```bash
-python3 street_view_insights/full_frame/skills/audit_utility_infrastructure/scripts/run_audit.py --task inspect --image <crop_image.jpg> --data-type cropped
+python3 street_view_insights/full_frame/skills/analyze_utility_pole/scripts/analyze_utility_pole.py --task inspect --image <crop_image.jpg> --data-type cropped
 ```
 
 ### Task 2: Reconcile Chronological Observations
 ```bash
-python3 street_view_insights/full_frame/skills/audit_utility_infrastructure/scripts/run_audit.py --task reconcile --asset-id <asset_id>
+python3 street_view_insights/full_frame/skills/analyze_utility_pole/scripts/analyze_utility_pole.py --task reconcile --asset-id <asset_id>
 ```
 
 ### Task 3: Compare Cropped vs Full-Frame Efficiency
 ```bash
-python3 street_view_insights/full_frame/skills/audit_utility_infrastructure/scripts/run_audit.py --task compare --cropped-image <cropped_pole.jpg> --full-image <full_pole.jpg>
+python3 street_view_insights/full_frame/skills/analyze_utility_pole/scripts/analyze_utility_pole.py --task compare --cropped-image <cropped_pole.jpg> --full-image <full_pole.jpg>
 ```
 
 ### Optional Arguments

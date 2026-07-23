@@ -15,7 +15,7 @@ street_view_insights/
 ├── full_frame/                              # Wide-angle contextual scene analytics
 │   ├── notebooks/                           # Full-frame contextual analysis notebooks
 │   └── skills/                              # Production ADK skills for full-frame data
-│       ├── audit_utility_infrastructure/    # Multi-view utility pole inspection & reconciliation
+│       ├── analyze_utility_pole/              # Multi-view utility pole inspection & reconciliation
 │       └── vegetation_encroachment_detection_using_full_frame_svi/ # Multi-view vegetation hazard audit
 └── panoramic/                               # 360-degree panoramic scene analytics
     ├── notebooks/                           # Panoramic sequential & material analysis notebooks
@@ -64,8 +64,8 @@ python3 street_view_insights/full_frame/skills/vegetation_encroachment_detection
     --asset-id "t1:9737b62559f98bc84a3c9532b4449ccb:ffff01ee"
 ```
 
-### 3. Utility Infrastructure Audit (Full-Frame & Cropped)
+### 3. Utility Pole Analysis (Full-Frame & Cropped)
 ```bash
-python3 street_view_insights/full_frame/skills/audit_utility_infrastructure/scripts/run_audit.py \
+python3 street_view_insights/full_frame/skills/analyze_utility_pole/scripts/analyze_utility_pole.py \
     --task inspect --asset-id "o1:3087164f7ab094a3bc8f8b2fc27aa426:00250082"
 ```
