@@ -1,9 +1,9 @@
 ---
-name: detect-surface-materials
+name: surface-material-detection-using-panoramic-svi
 description: Classify ground and road surface materials (Paved Asphalt, Concrete, Gravel, Dirt, Mud, Cobblestone, Unpaved) and evaluate surface degradation/cracking from panoramic imagery.
 ---
 
-# Detect Surface Materials
+# Surface Material Detection Using Panoramic SVI
 
 Use this skill to audit road, driveway, or terrain surface materials and assess ground conditions using panoramic street view imagery.
 
@@ -19,17 +19,17 @@ Run the script from the repository root directory:
 
 ### Audit by BigQuery Observation or Capture ID
 ```bash
-python3 street_view_insights/panoramic/skills/detect_surface_materials/scripts/detect_material.py --observation-id <observation_id>
+python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py --observation-id <observation_id>
 ```
 
 ### Audit by GPS Coordinates
 ```bash
-python3 street_view_insights/panoramic/skills/detect_surface_materials/scripts/detect_material.py --coordinates <lat,lng>
+python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py --coordinates <lat,lng>
 ```
 
 ### Audit by Direct Image Path or GCS URI
 ```bash
-python3 street_view_insights/panoramic/skills/detect_surface_materials/scripts/detect_material.py --image <image_path_or_gs_uri>
+python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py --image <image_path_or_gs_uri>
 ```
 
 ### Optional Arguments
