@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from flask import Flask, render_template, jsonify, send_from_directory
-import json
+from flask import Flask, render_template, send_from_directory
 import os
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
