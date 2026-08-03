@@ -60,7 +60,7 @@ gcloud run deploy $APP_NAME \
   --platform=managed \
   --allow-unauthenticated \
   --port=8080 \
-  --set-env-vars="MAPS_API_KEY=${MAPS_API_KEY}"
+  --set-env-vars="MAPS_API_KEY=${MAPS_API_KEY}" \
   --project=$PROJECT_ID
 ```
 
