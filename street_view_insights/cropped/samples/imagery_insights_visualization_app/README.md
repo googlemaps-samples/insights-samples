@@ -33,6 +33,10 @@ Services required:
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com --project=$PROJECT_ID
 ```
 
+## Optional Requirements.
+
+Acquire a Google Maps API key using instructions [here](https://developers.google.com/maps/documentation/javascript/get-api-key).
+
 ### Requires Roles
 
 To get the permissions that you need to complete this quickstart, ask your administrator to grant you the following IAM roles:
@@ -47,6 +51,7 @@ To get the permissions that you need to complete this quickstart, ask your admin
 To build and deploy this application, you can use the following `gcloud` command from your terminal, after navigating into the `streetview_visualization_app` directory:
 
 ```bash
+MAPS_API_KEY=<your Google Maps API key>
 APP_NAME=svi-visualization-app
 REGION=us-central1
 gcloud run deploy $APP_NAME \
@@ -55,6 +60,7 @@ gcloud run deploy $APP_NAME \
   --platform=managed \
   --allow-unauthenticated \
   --port=8080 \
+  --set-env-vars="MAPS_API_KEY=${MAPS_API_KEY}"
   --project=$PROJECT_ID
 ```
 

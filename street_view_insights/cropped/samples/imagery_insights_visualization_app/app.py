@@ -18,13 +18,17 @@ import os
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 
+_CONTEXT = {
+    'maps_api_key': os.getenv('MAPS_API_KEY')
+}
+
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', **_CONTEXT)
 
 @app.route('/3d_view')
 def three_d_view():
-    return render_template('3d_view.html')
+    return render_template('3d_view.html', **_CONTEXT)
 
 @app.route('/data/<filename>')
 def get_data(filename):

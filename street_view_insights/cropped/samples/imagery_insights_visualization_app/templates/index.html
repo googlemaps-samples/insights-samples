@@ -72,7 +72,7 @@
         <img id="static-streetview-image" src="" alt="Static Street View">
     </div>
 
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBfU1npB62Js8WBJoJ8ZJ0RujeVk8aQifw&libraries=streetView,visualization&callback=initMap"></script>
+    <script src="{{ url_for('static', filename='script.js') }}" data-mapsapikey="{{ maps_api_key }}"></script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=streetView,visualization&callback=initMap"></script>
 </body>
 </html>
