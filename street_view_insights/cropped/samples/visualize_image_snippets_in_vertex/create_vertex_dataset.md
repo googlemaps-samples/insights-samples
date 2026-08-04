@@ -16,8 +16,8 @@ Once generated, the JSONL file is uploaded to your specified Google Cloud Storag
 Open the `create_vertex_dataset.py` script and examine the Default Configuration variables explicitly defined at the top of the file. You may modify these directly in the code or pass them via command-line arguments.
 
 The required args are:
-- `PROJECT_ID`: The GCP Project ID (e.g., `imagery-insights-d1xs9z`)
-- `BUCKET_NAME`: The destination Google Cloud Storage bucket where the JSONL file will be uploaded (e.g., `god_level_bucket`).
+- `PROJECT_ID`: The GCP Project ID
+- `BUCKET_NAME`: The destination Google Cloud Storage bucket where the JSONL file will be uploaded 
 
 The optional args are:
 - `TABLE_ID`: The BigQuery table id from which to fetch the raw image URIs. Ensure the table contains a column named `gcs_uri` (e.g., `full_frame_latest_observations`)
