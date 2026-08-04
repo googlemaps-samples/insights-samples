@@ -7,7 +7,7 @@ from google.cloud import bigquery
 from google.cloud import storage
 
 # Default configuration
-DATASET_ID = "imagery_insights___preview___us"
+DATASET_ID = "imagery_insights_sample_dataset___us"
 TABLE_ID = "cropped_observations_latest"
 GCS_DESTINATION_FOLDER = "street_view_insights"
 LIMIT_URLS = 10
@@ -27,7 +27,7 @@ def export_to_vertex_jsonl(project_id, table_path, bucket_name, gcs_folder, outp
             SELECT
                 gcs_uri,
                 ARRAY_AGG(DISTINCT asset_type IGNORE NULLS) as labels
-            FROM `{table_path}`
+            FROM {table_path}
             WHERE gcs_uri IS NOT NULL AND gcs_uri LIKE 'gs://%'
             GROUP BY gcs_uri
             {limit_clause}
@@ -37,7 +37,7 @@ def export_to_vertex_jsonl(project_id, table_path, bucket_name, gcs_folder, outp
         # Just grab unique image URIs for an unlabelled dataset
         query = f"""
             SELECT DISTINCT gcs_uri
-            FROM `{table_path}`
+            FROM {table_path}
             WHERE gcs_uri IS NOT NULL AND gcs_uri LIKE 'gs://%'
             {limit_clause}
         """
@@ -101,8 +101,8 @@ if __name__ == "__main__":
 
     # Construct dynamic output filename: dataset_limit_random4.jsonl
     random_suffix = ''.join(random.choices(string.ascii_lowercase, k=4))
-    table_path = f"{args.table_id}.{args.dataset_id}.{args.table_id}"
-    out_file = f"{args.dataset_name}_{args.limit}_{random_suffix}.jsonl"
+    table_path = f"`{args.project_id}`.`{args.dataset_id}`.`{args.table_id}`"
+    out_file = f"{args.dataset_id}_{args.limit}_{random_suffix}.jsonl"
 
     export_to_vertex_jsonl(
         project_id=args.project_id,
