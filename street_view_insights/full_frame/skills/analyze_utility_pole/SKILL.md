@@ -15,7 +15,7 @@ It supports three main tasks:
 ## Prerequisites
 
 The python environment must have:
-- `google-genai`, `pandas-gbq`, and `pillow` libraries installed.
+- `google-genai`, `google-cloud-bigquery`, and `pillow` libraries installed.
 - Valid Google Cloud credentials to run BigQuery and Vertex AI queries.
 
 ## Instructions
