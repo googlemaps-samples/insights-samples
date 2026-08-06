@@ -69,7 +69,7 @@ Run the skill:
 If you created a python virtual environment above, you can easily deactivate and remove it as follows:
 
 ```sh
-$ .venv/bin/deactivate
+$ deactivate
 
 $ rm -rf .venv
 ```
