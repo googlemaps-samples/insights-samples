@@ -65,16 +65,5 @@ python3 street_view_insights/full_frame/skills/vegetation_encroachment_detection
 ```
 
 ### 3. Utility Pole Analysis (Full-Frame & Cropped)
-```bash
-PROJECT_ID=...
-DATASET_ID=...
-ASSET_ID=...
-IMAGE_VARIANT_TYPE="cropped"
 
-python3 street_view_insights/full_frame/skills/analyze_utility_pole/scripts/analyze_utility_pole.py \
-    --project=$PROJECT_ID \
-    --dataset=$DATASET_ID \
-    --task inspect \
-    --data-type=$IMAGE_VARIANT_TYPE \
-    --asset-id $ASSET_ID
-```
+Please see instructions [here](./full_frame/README.md#skills).
