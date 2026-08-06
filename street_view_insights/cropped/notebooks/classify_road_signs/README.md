@@ -2,6 +2,13 @@
 
 This notebook demonstrates how to use the Gemini 2.5 Flash model through Vertex AI to classify road signs from images.
 
+## Available Notebooks
+
+1. **`Road_signs_classification.ipynb`**:
+   A lightweight demonstration that fetches image URIs from BigQuery, passes them to Gemini, and prints the classification findings in a structured JSON format.
+2. **`classify_road_signs_and_save_in_bq.ipynb`**:
+   An end-to-end pipeline that performs the same classification but goes a step further. It extracts rich metadata (geographic coordinates, bounding boxes, capture times), creates a destination table in your personal BigQuery project, streams the generated insights into the table, and visualizes the dataset using a Pandas DataFrame.
+
 ## Overview
 
 The notebook performs the following steps:
