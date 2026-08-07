@@ -2,6 +2,8 @@ import os
 import json
 import base64
 import requests
+import subprocess
+
 from flask import Flask, request
 from google.cloud import bigquery, pubsub_v1, tasks_v2
 from dotenv import load_dotenv
@@ -45,7 +47,12 @@ def setup_and_shard():
     if not SERVICE_URL:
         raise ValueError("SERVICE_URL environment variable not set.")
     print(f"Using SERVICE_URL: {SERVICE_URL}")
-    response = requests.post(f"{SERVICE_URL}/setup")
+
+    token = subprocess.check_output(['gcloud', 'auth', 'print-identity-token']).decode('utf-8').strip()
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    response = requests.post(f"{SERVICE_URL}/setup", headers=headers)
+    
     response.raise_for_status()
     task_queue_id = response.json()["task_queue_id"]
     run_id = task_queue_id.split("-")[-1]
@@ -54,7 +61,7 @@ def setup_and_shard():
         f.write(f"\nRUN_ID={run_id}")
     print(f"Setup complete. Using task queue: {task_queue_id}")
 
-    source_table_id = f"{GCP_PROJECT}.{BIGQUERY_SOURCE_DATASET}.{BIGQUERY_SOURCE_TABLE}"
+    source_table_id = f"imagery-insights-d1xs9z.{BIGQUERY_SOURCE_DATASET}.{BIGQUERY_SOURCE_TABLE}"
     
     # Get the total number of rows
     query = BIGQUERY_COUNT_QUERY.format(source_table=source_table_id)
@@ -96,6 +103,7 @@ def setup_and_shard():
         }
         publisher.publish(topic_path, json.dumps(message).encode("utf-8"))
         print(f"Published message: {message}")
+
 
 @app.route("/", methods=["POST"])
 def process_shard():

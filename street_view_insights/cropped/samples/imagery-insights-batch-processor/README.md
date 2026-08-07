@@ -137,4 +137,4 @@ bash scripts/teardown.sh
 To test the `/process` endpoint locally, first install the dependencies as shown in Step 4, then run the test script:
 
 ```bash
-python src/tests/test_process_endpoint.py
+python tests/test_process_endpoint.py
