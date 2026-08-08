@@ -159,8 +159,7 @@ def main():
             contents=contents,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                temperature=0.1,
-                tools=[{"code_execution": {}}]
+                temperature=0.1
             )
         )
         output_text_parts = [part.text for part in response.candidates[0].content.parts if part.text]
