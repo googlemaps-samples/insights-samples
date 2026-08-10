@@ -27,8 +27,8 @@ environment variables.
 The required args are:
 
 -   arg `--project_id` or env variable `GOOGLE_CLOUD_PROJECT`: Your Project ID
--   arg `--bucket_name` or env variable `GCS_BUCKET_NAME`: The destination Google
-    Cloud Storage bucket where the JSONL file will be uploaded
+-   arg `--bucket_name` or env variable `GCS_BUCKET_NAME`: The destination
+    Google Cloud Storage bucket where the JSONL file will be uploaded
 
 The optional args are:
 
@@ -37,13 +37,15 @@ The optional args are:
     (e.g., `cropped_observations_latest`).
 -   `--dataset_id` or variable `DATASET_ID`: The name of the dataset.
 -   `--gcs_folder` or variable `GCS_DESTINATION_FOLDER`: The folder *inside* the
-    GCS bucket where the JSONL file will be stored (e.g., `street_view_insights`).
+    GCS bucket where the JSONL file will be stored (e.g.,
+    `street_view_insights`).
 -   `--limit` or variable `LIMIT_URLS`: The maximum number of URLs to fetch from
     the table (useful for creating small sample datasets).
 -   `--include_labels`: Include `asset_type` as labels in Vertex AI Multi-Label
     Classification format. Ensure the table contains an `asset_type` column.
 
-The output filename will be determined by the dataset ID, limit, and a random 4-letter suffix.
+The output filename will be determined by the dataset ID, limit, and a random
+4-letter suffix.
 
 ## 2. Run the Script
 
@@ -59,18 +61,18 @@ python3 create_vertex_dataset.py
 
 # Or, override the variables using command-line arguments
 python3 create_vertex_dataset.py \
-    --limit 500 \
     --project_id "${PROJECT_ID}" \
     --dataset_id "imagery_insights___us" \
     --table_id "cropped_observations_latest" \
     --bucket_name ${BUCKET_NAME} \
+    --limit 500 \
     --include_labels
 ```
 
 The script will query BigQuery, locally generate a JSONL file ending with a
 random 4-letter alphanumeric suffix to guarantee uniqueness (e.g.
-`imagery_insights___us_500_abcd.jsonl`),
-and upload it to your destination GCS bucket.
+`imagery_insights___us_500_abcd.jsonl`), and upload it to your destination GCS
+bucket.
 
 At the end of the script's output, it will print the **GCS URI** of the uploaded
 file. **Copy this URI**, you will need it in the next step.
