@@ -50,22 +50,81 @@ All notebooks and skills query directly from the canonical dataset views in BigQ
 
 ---
 
-## 🚀 Running Production Skills
+## 🚀 Running Production Skills {#skills}
 
-### 1. Surface Material Detection (Panoramic)
-```bash
-python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py \
-    --observation-id <observation_id>
+### Pre-requesites
+
+1. Install the [Antigravity CLI](https://antigravity.google/product/antigravity-cli).
+
+2. Set up your [Application Default Credentials](http://https://docs.cloud.google.com/docs/authentication/provide-credentials-adc) (ADC):
+
+```sh
+gcloud auth application-default login
 ```
 
-### 2. Vegetation Encroachment Detection (Full-Frame)
-```bash
-python3 street_view_insights/full_frame/skills/vegetation_encroachment_detection_using_full_frame_svi/scripts/analyze_vegetation_encroachment.py \
-    --asset-id "t1:9737b62559f98bc84a3c9532b4449ccb:ffff01ee"
+3. _(Recommended)_ Set your GCP project ID in your shell environment:
+
+```sh
+export GOOGLE_CLOUD_PROJECT="YOUR_PROJECT_ID"
 ```
 
-### 3. Utility Pole Analysis (Full-Frame & Cropped)
-```bash
-python3 street_view_insights/full_frame/skills/analyze_utility_pole/scripts/analyze_utility_pole.py \
-    --task inspect --asset-id "o1:3087164f7ab094a3bc8f8b2fc27aa426:00250082"
+4. _(Recommended)_ Use a python [virtual environment](https://docs.python.org/3/library/venv.html) for any python package dependencies
+installed by the skill:
+
+```sh
+# create virtual environment
+$ python3 -m venv .venv
+$ source .venv/bin/activate
+```
+
+### Loading the skill
+
+Run the Antigravity CLI:
+
+```sh
+$ agy
+```
+
+Load the skills directly such as:
+
+```
+Load skill at 'street_view_insights/full_frame/skills/analyze_utility_pole'
+
+Load skill at 'street_view_insights/full_frame/skills/vegetation_encroachment_detection_using_full_frame_svi'
+
+Load skill at 'street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi'
+```
+
+> Alternatively, you can reference these folders via standard Antigravity CLI agent skills folders as described [here](https://antigravity.google/docs/cli/plugins#agent-skills).
+
+Run the skill of your choice:
+
+```
+/analyze-utility-pole Inspect the utility pole from asset t1:...
+
+/analyze-utility-pole Reconcile images for asset t1:...
+
+/analyze-utility-pole Compare images for asset t1:...
+
+/vegetation-encroachment-detection-using-full-frame-svi Audit full-frame observations for asset t1:...
+
+/vegetation-encroachment-detection-using-full-frame-svi Audit a specific observation o1:...
+
+/vegetation-encroachment-detection-using-full-frame-svi Audit a direct image gs://...
+
+/surface-material-detection-using-panoramic-svi Audit observation o1:...
+
+/surface-material-detection-using-panoramic-svi Audit GPS coordinates <lat,lng>
+
+/surface-material-detection-using-panoramic-svi Audit a direct image gs://...
+```
+
+### Cleanup
+
+If you created a python virtual environment above, you can easily deactivate and remove it as follows:
+
+```sh
+$ deactivate
+
+$ rm -rf .venv
 ```

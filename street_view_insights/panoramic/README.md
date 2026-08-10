@@ -8,3 +8,7 @@ This directory contains Jupyter notebooks demonstrating analysis and processing 
 - **[House Image Discovery with Cost](file:///Users/sarthakgy/Desktop/insights-samples/street_view_insights/panoramic/notebooks/house_image_discovery_with_cost.ipynb)**: Demonstrates how to spatially filter, visually analyze, and cluster street-view imagery to discover target houses and calculate API costs using Gemini.
 - **[Surface Material Detection](file:///Users/sarthakgy/Desktop/insights-samples/street_view_insights/panoramic/notebooks/surface_material_detection.ipynb)**: Showcases how to classify road surface material (Paved, Gravel, Mud, Dirt) from panorama or full scene imagery.
 - **[Agentic Roof Edge Detection](file:///Users/sarthakgy/Desktop/insights-samples/street_view_insights/panoramic/notebooks/agentic_roof_edge_detection.ipynb)**: Demonstrates a pipeline to fetch imagery, perform lens distortion correction, and trace visible roof edges using Gemini 3.5 Flash and code execution.
+
+## Skills {#skills}
+
+Please see instructions [here](../README.md#skills).
