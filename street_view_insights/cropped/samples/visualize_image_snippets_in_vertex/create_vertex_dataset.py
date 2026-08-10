@@ -7,10 +7,12 @@ from google.cloud import bigquery
 from google.cloud import storage
 
 # Default configuration
-DATASET_ID = "imagery_insights_sample_dataset___us"
+DATASET_ID = "imagery_insights___us"
 TABLE_ID = "cropped_observations_latest"
 GCS_DESTINATION_FOLDER = "street_view_insights"
 LIMIT_URLS = 10
+PROJECT_ID = os.getenv('GOOGLE_CLOUD_PROJECT') 
+BUCKET_NAME = os.getenv('GCS_BUCKET_NAME')
 
 def export_to_vertex_jsonl(project_id, table_path, bucket_name, gcs_folder, output_filename, include_labels, limit):
     """
@@ -89,10 +91,10 @@ def export_to_vertex_jsonl(project_id, table_path, bucket_name, gcs_folder, outp
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Export image URLs from BigQuery to a JSONL file for Vertex AI.")
-    parser.add_argument("--project_id", type=str, required=True, help="Google Cloud Project ID")
+    parser.add_argument("--project_id", type=str, default=PROJECT_ID, help="Google Cloud Project ID")
     parser.add_argument("--table_id", type=str, default=TABLE_ID, help="BigQuery Table ID")
     parser.add_argument("--dataset_id", type=str, default=DATASET_ID, help="BigQuery Dataset ID")
-    parser.add_argument("--bucket_name", type=str, required=True, help="Destination GCS Bucket Name")
+    parser.add_argument("--bucket_name", type=str, default=BUCKET_NAME, help="Destination GCS Bucket Name")
     parser.add_argument("--gcs_folder", type=str, default=GCS_DESTINATION_FOLDER, help="Destination GCS Folder Path")
     parser.add_argument("--limit", type=int, default=LIMIT_URLS, help="Maximum number of URLs to fetch")
     parser.add_argument("--include_labels", action="store_true", help="Include asset_class as labels in Vertex AI Multi-Label Classification format.")
