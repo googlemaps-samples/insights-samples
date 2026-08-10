@@ -1,6 +1,6 @@
 # Road Sign Classification with Gemini
 
-This notebook demonstrates how to use the Gemini 2.5 Flash model through Vertex AI to classify road signs from images.
+This notebook demonstrate how to use the Gemini 2.5 Flash model through Vertex AI to classify road signs from images.
 
 ## Available Notebooks
 
