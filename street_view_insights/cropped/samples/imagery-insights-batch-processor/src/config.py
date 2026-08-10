@@ -14,9 +14,8 @@ BIGQUERY_RESULTS_DATASET = "imagery_insights_analysis"
 BIGQUERY_RESULTS_TABLE = "resolution_road_signs_evaluations"
 BIGQUERY_CLOUD_TASKS_TABLE = "populate_tasks_from_bq"
 
-# --- FIX 2: Apply the new schema workaround for the Cropped variant ---
-BIGQUERY_SOURCE_DATASET = "imagery_insights___us"
-BIGQUERY_SOURCE_TABLE = "cropped_observations_latest"
+BIGQUERY_SOURCE_DATASET = os.environ.get("BIGQUERY_SOURCE_DATASET", "imagery_insights___us")
+BIGQUERY_SOURCE_TABLE = os.environ.get("BIGQUERY_SOURCE_TABLE", "cropped_observations_latest")
 
 BIGQUERY_SOURCE_QUERY = """
 SELECT
@@ -52,7 +51,7 @@ SUBSCRIPTION_ID_PREFIX = "populate-tasks-sub-"
 # Load from environment variables instead of hardcoded URLs!
 BATCH_SIZE = 100
 STATE_FILE = "populate_state.json"
-SERVICE_URL = os.environ.get("SERVICE_URL")
+ANALYZE_SERVICE_URL = os.environ.get("ANALYZE_SERVICE_URL")
 POPULATE_SERVICE_URL = os.environ.get("POPULATE_SERVICE_URL")
 SERVICE_ACCOUNT_EMAIL = os.environ.get("SERVICE_ACCOUNT_EMAIL")
 

@@ -1,6 +1,6 @@
 # Use the official lightweight Python image.
 # https://hub.docker.com/_/python
-FROM python:3.9-slim
+FROM python:3.13-slim
 
 # Allow statements and log messages to be sent straight to the logs
 # without being buffered.
