@@ -15,7 +15,8 @@
  */
 
 
-const API_KEY = "";
+const currentScript = document.currentScript;
+const API_KEY = currentScript.dataset.mapsapikey ? currentScript.dataset.mapsapikey : "";
 let panorama, map;
 let currentItemIndex = 0;
 let currentOverlayOrMarker = null;
