@@ -1,10 +1,10 @@
--- This query retrieves all observations for a specific asset ID from the all_observations table.
+-- This query retrieves all observations for a specific asset ID from the 'cropped_observations_latest' table.
 -- It returns details such as the snapshot_id, location, detection time, and GCS URI of the observation.
+-- Results ordered by recency of when the observation was captured (capture_time).
 
--- Define a variable for the asset ID to query.
-DECLARE asset_id_to_query STRING DEFAULT 'your_specific_asset_id';
+-- Query Parameters:
+--  @asset_id_to_query: ID for the asset (format is t1:a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0:a0a0a0a0)
 
--- TODO: Replace '<project_id>' with your project ID and '<dataset_id>' with your dataset ID.
 SELECT
   t0.snapshot_id,
   t0.asset_id,
@@ -18,8 +18,8 @@ SELECT
   t0.gcs_uri,
   t0.map_url
 FROM
-  `<project_id>`.`<dataset_id>`.`all_observations` AS t0
+  `cropped_observations_latest` AS t0
 WHERE
-  t0.asset_id = asset_id_to_query
+  t0.asset_id = @asset_id_to_query
 ORDER BY
-  t0.detection_time DESC;
+  t0.capture_time DESC;
