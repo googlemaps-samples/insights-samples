@@ -16,9 +16,9 @@ The notebook automates the process of analyzing utility pole images to detect th
 Before running the notebook, you must update the variables in the "Configuration" section with your own settings:
 
 *   `PROJECT_ID`: Your Google Cloud Project ID.
-*   `MODEL_ID`: The Gemini model to be used (e.g., "gemini-1.5-flash-001").
-*   `BIGQUERY_DATASET_ID`: The ID of the BigQuery dataset containing the image data.
-*   `BIGQUERY_TABLE`: The ID of the BigQuery table with the image URIs.
+*   `MODEL_ID`: The Gemini model to be used (e.g., "gemini-3.5-flash").
+*   `DATASET_ID`: The ID of the BigQuery dataset containing the image data.
+*   `TABLE_ID`: The ID of the BigQuery table with the image URIs.
 *   `ASSET_TYPE`: The asset type to filter for in the BigQuery table (e.g., "ASSET_CLASS_UTILITY_POLE").
 *   `LIMIT`: The maximum number of images to process.
 
