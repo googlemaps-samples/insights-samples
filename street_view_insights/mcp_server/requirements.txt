@@ -1,8 +1,8 @@
-mcp
-google-genai
-google-cloud-bigquery
-google-cloud-storage
-pillow
-numpy
-uvicorn
-fastapi
+mcp ~= 1.29
+fastmcp ~= 3.4.7
+google-genai ~= 2.17
+google-cloud-bigquery ~= 3.43
+google-cloud-storage ~= 3.13.1
+pillow ~= 12.3
+numpy ~= 2.5.2
+fastapi ~= 0.141.1
