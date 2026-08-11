@@ -2,6 +2,8 @@ import os
 import json
 import base64
 import requests
+import subprocess
+
 from flask import Flask, request
 from google.cloud import bigquery, pubsub_v1, tasks_v2
 from dotenv import load_dotenv
@@ -21,7 +23,7 @@ from config import (
 
 load_dotenv()
 
-SERVICE_URL = os.getenv("SERVICE_URL")
+ANALYZE_SERVICE_URL = os.getenv("ANALYZE_SERVICE_URL")
 POPULATE_SERVICE_URL = os.getenv("POPULATE_SERVICE_URL")
 
 # Configuration
@@ -35,17 +37,26 @@ tasks_client = tasks_v2.CloudTasksClient()
 
 app = Flask(__name__)
 
-def setup_and_shard():
+def setup_and_shard(source_project_id=None):
     """
     Calls the /setup endpoint, cleans up and creates Pub/Sub
     resources, and publishes shard messages.
     """
     # Call the /setup endpoint
     print("Calling /setup endpoint...")
-    if not SERVICE_URL:
-        raise ValueError("SERVICE_URL environment variable not set.")
-    print(f"Using SERVICE_URL: {SERVICE_URL}")
-    response = requests.post(f"{SERVICE_URL}/setup")
+    if not ANALYZE_SERVICE_URL:
+        raise ValueError("ANALYZE_SERVICE_URL environment variable not set.")
+    print(f"Using ANALYZE_SERVICE_URL: {ANALYZE_SERVICE_URL}")
+
+    import google.auth.transport.requests
+    import google.oauth2.id_token
+    
+    auth_req = google.auth.transport.requests.Request()
+    token = google.oauth2.id_token.fetch_id_token(auth_req, audience=ANALYZE_SERVICE_URL)
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    response = requests.post(f"{ANALYZE_SERVICE_URL}/setup", headers=headers)
+    
     response.raise_for_status()
     task_queue_id = response.json()["task_queue_id"]
     run_id = task_queue_id.split("-")[-1]
@@ -53,9 +64,10 @@ def setup_and_shard():
         f.write(f"\nTASK_QUEUE_ID={task_queue_id}")
         f.write(f"\nRUN_ID={run_id}")
     print(f"Setup complete. Using task queue: {task_queue_id}")
+    # Use the provided project ID from the command line, or default to config.GCP_PROJECT
+    project_to_use = source_project_id if source_project_id else GCP_PROJECT
+    source_table_id = f"{project_to_use}.{BIGQUERY_SOURCE_DATASET}.{BIGQUERY_SOURCE_TABLE}"
 
-    source_table_id = f"{GCP_PROJECT}.{BIGQUERY_SOURCE_DATASET}.{BIGQUERY_SOURCE_TABLE}"
-    
     # Get the total number of rows
     query = BIGQUERY_COUNT_QUERY.format(source_table=source_table_id)
     total_rows = next(bq_client.query(query).result()).total_rows
@@ -96,6 +108,7 @@ def setup_and_shard():
         }
         publisher.publish(topic_path, json.dumps(message).encode("utf-8"))
         print(f"Published message: {message}")
+
 
 @app.route("/", methods=["POST"])
 def process_shard():
@@ -155,7 +168,17 @@ def process_shard():
 # while the Cloud Run entrypoint in the `deploy.sh` script will point to the `app` object.
 
 if __name__ == "__main__":
-    setup_and_shard()
+    import argparse
+    parser = argparse.ArgumentParser(description="Populate Cloud Tasks for Batch Processing.")
+    parser.add_argument(
+        "--project-id", 
+        type=str, 
+        help="The GCP project ID containing the source BigQuery dataset. Defaults to the configured GCP_PROJECT.",
+        default=None
+    )
+    args = parser.parse_args()
+    
+    setup_and_shard(source_project_id=args.project_id)
 else:
     # This is the entrypoint for the Cloud Run service
     gunicorn_app = app

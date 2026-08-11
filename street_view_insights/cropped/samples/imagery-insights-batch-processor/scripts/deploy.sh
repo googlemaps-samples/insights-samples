@@ -39,6 +39,10 @@ gcloud services enable \
     bigquery.googleapis.com \
     pubsub.googleapis.com
 
+# This is a preventative measure since IAM policies do not take effect immediately. They are "eventually consistent".
+# 
+# See https://cloud.devsite.corp.google.com/iam/docs/service-accounts-create#creating
+sleep 60
 # --- IAM Permissions ---
 echo "Granting IAM permissions..."
 gcloud projects add-iam-policy-binding $PROJECT_ID \

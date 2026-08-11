@@ -15,15 +15,15 @@ This guide provides a single, cohesive set of instructions to get the applicatio
 1.  **Google Cloud SDK:** Ensure you have the `gcloud` command-line tool installed and initialized.
 2.  **Authentication:** You must be authenticated with `gcloud`. Run `gcloud auth login` if you haven't already.
 3.  **Project:** Your `gcloud` CLI must be configured with a default project. Run `gcloud config set project YOUR_PROJECT_ID` to set it.
+4.  **BigQuery Dataset Setup:** Ensure your project has access to the required BigQuery source dataset. You must also create a destination dataset (e.g., run `bq mk imagery_insights_analysis`) and ensure your service account has the proper read/write permissions to create tables and insert data.
 
 ### Step 2: Configure Deployment Settings
 
-1.  Navigate to the `scripts` directory.
-2.  **Manually create** a `deploy.env` file by copying the example template. This file provides the necessary configuration for the deployment script itself.
+1.  **Manually create** a `deploy.env` file by copying the example template. This file provides the necessary configuration for the deployment script itself.
     ```bash
     cp scripts/deploy.env.example scripts/deploy.env
     ```
-3.  Open `scripts/deploy.env` and replace the placeholder values with your specific GCP project information:
+2.  Open `scripts/deploy.env` and replace the placeholder values with your specific GCP project information:
     *   `PROJECT_ID`: Your Google Cloud project ID.
     *   `REGION`: The GCP region where you want to deploy the services (e.g., `us-central1`).
     *   `SERVICE_ACCOUNT_EMAIL`: The email of the service account that the Cloud Run services will use.
@@ -59,9 +59,10 @@ pip install -r requirements.txt
 
 ### Step 5: Start the Processing
 
-Run the population script from the root of the project. This will kick off the entire automated workflow.
+Set the required environment variables, then run the population script from the root of the project. This will kick off the entire automated workflow.
 
 ```bash
+export ANALYZE_SERVICE_URL="your_deployed_analyze_service_url"
 bash scripts/populate.sh
 ```
 
@@ -124,6 +125,14 @@ You can monitor the progress of the image analysis by viewing the Cloud Tasks qu
 
 The results of the analysis will be stored in the BigQuery results table.
 
+## Testing
+
+To test the `/process` endpoint locally, first install the dependencies as shown in Step 4, then run the test script:
+
+```bash
+python src/test_process_endpoint.py
+```
+
 ## Teardown
 
 To delete the resources created by the application, run the `teardown.sh` script from the root of the project.
@@ -131,10 +140,3 @@ To delete the resources created by the application, run the `teardown.sh` script
 ```bash
 bash scripts/teardown.sh
 ```
-
-## Testing
-
-To test the `/process` endpoint locally, first install the dependencies as shown in Step 4, then run the test script:
-
-```bash
-python src/tests/test_process_endpoint.py

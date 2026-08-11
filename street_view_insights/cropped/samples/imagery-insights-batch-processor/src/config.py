@@ -1,17 +1,22 @@
-# GCP Project Configuration
-GCP_PROJECT = "sarthaks-lab"
-LOCATION = "us-central1"
-
 import os
 import importlib.util
+import google.auth
 from google.cloud import bigquery
+
+# --- FIX 1: GCP Project Configuration ---
+# Use environment variables instead of hardcoded 'sarthaks-lab'
+_, auth_project = google.auth.default()
+GCP_PROJECT = os.environ.get("PROJECT_ID", os.environ.get("GCP_PROJECT", auth_project))
+LOCATION = os.environ.get("REGION", "us-central1")
 
 # BigQuery Configuration
 BIGQUERY_RESULTS_DATASET = "imagery_insights_analysis"
 BIGQUERY_RESULTS_TABLE = "resolution_road_signs_evaluations"
 BIGQUERY_CLOUD_TASKS_TABLE = "populate_tasks_from_bq"
-BIGQUERY_SOURCE_DATASET = "imagery_insights___preview___us"
-BIGQUERY_SOURCE_TABLE = "latest_observations"
+
+BIGQUERY_SOURCE_DATASET = os.environ.get("BIGQUERY_SOURCE_DATASET", "imagery_insights___us")
+BIGQUERY_SOURCE_TABLE = os.environ.get("BIGQUERY_SOURCE_TABLE", "cropped_observations_latest")
+
 BIGQUERY_SOURCE_QUERY = """
 SELECT
   t1.asset_id,
@@ -42,15 +47,17 @@ SHARD_SIZE = 50
 POPULATE_TOPIC_ID_PREFIX = "populate-tasks-topic-"
 SUBSCRIPTION_ID_PREFIX = "populate-tasks-sub-"
 
-# Cloud Run Configuration
+# --- FIX 3: Cloud Run Configuration ---
+# Load from environment variables instead of hardcoded URLs!
 BATCH_SIZE = 100
 STATE_FILE = "populate_state.json"
-SERVICE_URL = "https://analyze-volume-images-635092392839.us-central1.run.app"
-POPULATE_SERVICE_URL = "https://populate-tasks-635092392839.us-central1.run.app"
-SERVICE_ACCOUNT_EMAIL = "635092392839-compute@developer.gserviceaccount.com"
+ANALYZE_SERVICE_URL = os.environ.get("ANALYZE_SERVICE_URL")
+POPULATE_SERVICE_URL = os.environ.get("POPULATE_SERVICE_URL")
+SERVICE_ACCOUNT_EMAIL = os.environ.get("SERVICE_ACCOUNT_EMAIL")
 
-# Gemini Model Configuration
-GEMINI_MODEL = "gemini-2.5-flash"
+# --- FIX 4: Gemini Model Configuration ---
+# Upgraded to 3.5 flash to prevent deprecation 404 errors
+GEMINI_MODEL = "gemini-3.5-flash"
 
 def load_prompts_from_directory(directory):
     prompts = {}
