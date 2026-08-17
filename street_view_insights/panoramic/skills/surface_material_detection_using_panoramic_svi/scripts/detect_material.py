@@ -11,19 +11,27 @@ from google.cloud import bigquery, storage
 from google.genai import types
 
 SURFACE_MATERIAL_PROMPT = """Act as a civil engineering material analyst specializing in road and ground surfaces. 
-Analyze the provided panoramic street view image and accurately identify the dominant surface material and ground characteristics.
+Analyze the provided panoramic street view image, accurately identify the dominant surface material, and assess pavement condition.
 
 Follow these evaluation steps:
 1. **Identify Primary Ground Surface**: Delineate the main traveled road, pathway, or ground surface area.
-2. **Visual Evidence Extraction**: Observe texture, micro-structure, reflectance, color, aggregate size, and wear/cracking patterns.
-3. **Classify Material**: Classify into standard civil surface types (Paved Asphalt, Concrete, Gravel, Dirt, Mud, Cobblestone, Turf, Unpaved).
+2. **Granular Material Classification**: Classify into standard civil surface types:
+   - Asphalt Concrete (Paved)
+   - Portland Cement Concrete (Paved)
+   - Pavers / Cobblestone
+   - Unpaved Gravel
+   - Dirt / Soil
+   - Mud
+3. **Pavement Condition Index (PCI) & Distress Detection**:
+   - Pavement Health: Good | Fair | Poor | N/A (Unpaved)
+   - Distresses Detected: Potholes, Alligator Cracking, Longitudinal Cracks, Rutting, Sealed Cracks, Ruts, None
 
 Return your analysis strictly in structured JSON format matching this schema:
 {
-  "primary_material": "[Paved Asphalt | Concrete | Gravel | Dirt | Mud | Cobblestone | Unpaved]",
-  "secondary_materials": ["list of secondary materials present, e.g. Concrete Shoulder, Gravel Edge"],
-  "confidence_score": "0-100%",
-  "surface_condition": "[Good | Fair | Damaged/Potholes | Severely Degraded]",
+  "primary_material": "[Asphalt Concrete (Paved) | Portland Cement Concrete (Paved) | Pavers / Cobblestone | Unpaved Gravel | Dirt / Soil | Mud]",
+  "pavement_condition": "[Good | Fair | Poor | N/A (Unpaved)]",
+  "distress_features_detected": ["Potholes", "Alligator Cracking", "None"],
+  "confidence_score": "High | Medium | Low",
   "visual_reasoning": "[1-3 sentences describing specific visual cues supporting the classification]"
 }
 """
