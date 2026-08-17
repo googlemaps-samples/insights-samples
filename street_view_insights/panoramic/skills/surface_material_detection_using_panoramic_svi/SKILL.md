@@ -37,4 +37,4 @@ python3 street_view_insights/panoramic/skills/surface_material_detection_using_p
 - `--project` (Optional): Google Cloud project ID.
 - `--dataset` (Optional): BigQuery dataset name (defaults to `imagery_insights___us`).
 - `--table` (Optional): BigQuery panoramic observations table (defaults to `pano_observations_latest`).
-- `--model` (Optional): Gemini model to use (defaults to `gemini-3.5-flash`).
+- `--model` (Optional): Gemini model to use (defaults to `gemini-3.7-flash`).

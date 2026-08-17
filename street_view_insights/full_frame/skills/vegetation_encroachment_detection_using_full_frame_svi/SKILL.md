@@ -37,4 +37,4 @@ python3 street_view_insights/full_frame/skills/vegetation_encroachment_detection
 - `--project` (Optional): Google Cloud project ID.
 - `--dataset` (Optional): BigQuery dataset name (defaults to `imagery_insights___us`).
 - `--table` (Optional): BigQuery full-frame observations table (defaults to `full_frame_observations_latest`).
-- `--model` (Optional): Gemini model to use (defaults to `gemini-3.5-flash`).
+- `--model` (Optional): Gemini model to use (defaults to `gemini-3.7-flash`).

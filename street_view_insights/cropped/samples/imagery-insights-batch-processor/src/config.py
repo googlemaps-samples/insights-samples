@@ -57,7 +57,7 @@ SERVICE_ACCOUNT_EMAIL = os.environ.get("SERVICE_ACCOUNT_EMAIL")
 
 # --- FIX 4: Gemini Model Configuration ---
 # Upgraded to 3.5 flash to prevent deprecation 404 errors
-GEMINI_MODEL = "gemini-3.5-flash"
+GEMINI_MODEL = "gemini-3.7-flash"
 
 def load_prompts_from_directory(directory):
     prompts = {}

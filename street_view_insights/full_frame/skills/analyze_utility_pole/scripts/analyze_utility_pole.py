@@ -85,7 +85,7 @@ def parse_args():
     
     # Gemini model arguments
     parser.add_argument("--location", default="global", help="Google Cloud location/region.")
-    parser.add_argument("--model", default="gemini-3.5-flash", help="Model to use (e.g. gemini-3.5-flash).")
+    parser.add_argument("--model", default="gemini-3.7-flash", help="Model to use (e.g. gemini-3.7-flash).")
     return parser.parse_args()
 
 def convert_to_gs_uri(image_url: str) -> str:
