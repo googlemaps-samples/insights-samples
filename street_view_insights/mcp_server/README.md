@@ -8,22 +8,34 @@ It implements a **strict Data Loss Prevention (DLP) boundary**: no raw images or
 
 ## 1. Using the Hosted MCP Server
 
-To use the already-deployed instance in your MCP-compatible IDE or client (e.g. Cursor, Claude Desktop, Windsurf, or custom python agents), add the following configuration to your `mcp_config.json` file:
+To use the already-deployed instance in your MCP-compatible IDE or [Antigravity CLI](https://antigravity.google/docs/cli/mcp#antigravity-cli), add the following configuration to your `mcp_config.json` file:
 
 ```json
 {
   "mcpServers": {
     "streetview-imagery-insights": {
-      "url": "https://streetview-imagery-insights-mcp-769602582640.us-central1.run.app/sse"
+      "url": "<use the service url generated from your deployment>"
     }
   }
 }
+```
+
+Your service url (after deployment) can be retrieved using:
+
+```
+gcloud run services describe streetview-imagery-insights-mcp \
+  --project "${PROJECT_ID}" \
+  --region "${REGION}"
 ```
 
 ### Supported Tools
 
 Once connected, your agent will have access to the following 5 tools:
 1. **`list_assets`**: Find assets by type or within a geographic radius (uses BigQuery).
+   * **Example:**
+     ```bash
+     streetview-imagery-insights list_assets <gcp-project>.imagery_insights___us
+     ```
 2. **`get_asset_observations`**: Retrieve all historical image captures/observations for a specific asset.
 3. **`analyze_cropped_asset`**: Downloads full-frame image, crops to asset bounding box, runs Gemini analysis in GCP, and returns text results.
 4. **`analyze_full_frame_context`**: Submits full-frame image (optionally with bounding box drawn) to Gemini for contextual scene understanding.
@@ -49,7 +61,39 @@ If you wish to host your own instance of the MCP server, follow these steps:
   gcloud config set project <YOUR_PROJECT_ID>
   ```
 
-### Deployment
+### Local Development / Running Locally
+To test the server locally:
+1. Configure the harness by updating the JSON as follows:
+   ```json
+   {
+     "mcpServers": {
+       "streetview-imagery-insights": {
+         "url": "http://localhost:8080/mcp"
+       }
+     }
+   }
+   ```
+2. Create a virtual environment and activate it:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+4. Run the server to override the SSE transport with plain unauthenticated HTTP:
+   ```bash
+   MCP_TRANSPORT=http python main.py
+   ```
+   *Note: Ensure your terminal has access to GCP credentials (`GOOGLE_APPLICATION_CREDENTIALS` or configured via `gcloud`).*
+5. To deactivate and clean up the virtual environment:
+   ```bash
+   deactivate
+   rm -rf .venv
+   ```
+
+### Cloud Run Deployment
 1. Navigate to the `mcp_server` directory:
    ```bash
    cd street_view_insights/mcp_server
@@ -65,14 +109,4 @@ The script will automatically:
 3. Push the container image to GCP Artifact Registry.
 4. Deploy the container to a new Google Cloud Run service named `streetview-imagery-insights-mcp` with unauthenticated access allowed.
 
-### Local Development / Running Locally
-To test the server locally:
-1. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. Run the server using `stdio` transport:
-   ```bash
-   python main.py
-   ```
-   *Note: Ensure your terminal has access to GCP credentials (`GOOGLE_APPLICATION_CREDENTIALS` or configured via `gcloud`).*
+> If your GCP project or organization does not allow unauthenticated applications, modify the `--allow-unauthenticated` flag (in `deploy.sh`)  with `--no-allow-unauthenticated` when you deploy.  You can then use [gcloud run services proxy](https://docs.cloud.google.com/sdk/gcloud/reference/run/services/proxy) to connect from your local machine to the Cloud Run application.

@@ -8,11 +8,10 @@ from google.cloud import bigquery
 from google.cloud import storage
 from google import genai
 from google.genai import types
-from mcp.server.fastmcp import FastMCP
-import uvicorn
+from fastmcp import FastMCP
 
 # Initialize FastMCP Server
-mcp = FastMCP("Street View Imagery Insights", host="0.0.0.0")
+mcp = FastMCP("Street View Imagery Insights")
 
 CACHE_DIR = "/tmp/mcp_image_cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
@@ -109,6 +108,22 @@ def equirectangular_to_perspective(src_image_path, heading_deg, pitch_deg, fov_d
     out_data = src_data[px_y, px_x]
     return Image.fromarray(out_data)
 
+def resolve_dataset(dataset_ref: str, default_project: str) -> tuple[str, str]:
+    """Resolves dataset reference to project and dataset IDs.
+    
+    Handles:
+      - "dataset_id" -> (default_project, "dataset_id")
+      - "project_id.dataset_id" -> ("project_id", "dataset_id")
+      - "project_id:dataset_id" -> ("project_id", "dataset_id")
+    """
+    if "." in dataset_ref:
+        project_id, dataset_id = dataset_ref.split(".", 1)
+        return project_id, dataset_id
+    elif ":" in dataset_ref:
+        project_id, dataset_id = dataset_ref.split(":", 1)
+        return project_id, dataset_id
+    return default_project, dataset_ref
+
 # --- MCP Tools ---
 
 @mcp.tool()
@@ -124,7 +139,7 @@ def list_assets(
     List assets in the dataset, optionally filtered by asset class or geographic proximity.
     """
     client_bq = bigquery.Client()
-    project_id = client_bq.project
+    project_id, dataset_id = resolve_dataset(dataset_id, client_bq.project)
     
     where_clauses = []
     query_params = []
@@ -145,7 +160,7 @@ def list_assets(
         
     query = f"""
     SELECT asset_id, asset_type, location, detection_time
-    FROM `{project_id}.{dataset_id}.all_assets`
+    FROM `{project_id}.{dataset_id}.latest_assets`
     {where_str}
     LIMIT @limit
     """
@@ -171,11 +186,11 @@ def get_asset_observations(dataset_id: str, asset_id: str) -> str:
     Retrieve all historical observations for a specific asset ID.
     """
     client_bq = bigquery.Client()
-    project_id = client_bq.project
+    project_id, dataset_id = resolve_dataset(dataset_id, client_bq.project)
     
     query = f"""
     SELECT observation_id, gcs_uri, bbox, pano_id, capture_time, camera_pose, asset_type
-    FROM `{project_id}.{dataset_id}.all_observations`
+    FROM `{project_id}.{dataset_id}.latest_observations`
     WHERE asset_id = @asset_id
     ORDER BY capture_time DESC
     """
@@ -212,11 +227,11 @@ def analyze_cropped_asset(
     The raw image never leaves GCP.
     """
     client_bq = bigquery.Client()
-    project_id = client_bq.project
+    project_id, dataset_id = resolve_dataset(dataset_id, client_bq.project)
     
     query = f"""
     SELECT gcs_uri, bbox, asset_type
-    FROM `{project_id}.{dataset_id}.all_observations`
+    FROM `{project_id}.{dataset_id}.cropped_observations_all`
     WHERE observation_id = @observation_id
     LIMIT 1
     """
@@ -301,11 +316,11 @@ def analyze_full_frame_context(
     The raw image never leaves GCP.
     """
     client_bq = bigquery.Client()
-    project_id = client_bq.project
+    project_id, dataset_id = resolve_dataset(dataset_id, client_bq.project)
     
     query = f"""
     SELECT gcs_uri, bbox, asset_type
-    FROM `{project_id}.{dataset_id}.all_observations`
+    FROM `{project_id}.{dataset_id}.full_frame_observations_all`
     WHERE observation_id = @observation_id
     LIMIT 1
     """
@@ -404,7 +419,7 @@ def analyze_panorama_perspective(
     The raw image never leaves GCP.
     """
     client_bq = bigquery.Client()
-    project_id = client_bq.project
+    project_id, dataset_id = resolve_dataset(dataset_id, client_bq.project)
     
     query = f"""
     SELECT gcs_uri
@@ -455,9 +470,7 @@ def analyze_panorama_perspective(
     except Exception as e:
         return json.dumps({"error": f"Failed to run model analysis: {str(e)}"})
 
-# Mount SSE transport Starlette app
-app = mcp.sse_app()
-
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8080))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    transport = os.getenv("MCP_TRANSPORT", "sse")
+    mcp.run(transport=transport, host="0.0.0.0", port=port)
