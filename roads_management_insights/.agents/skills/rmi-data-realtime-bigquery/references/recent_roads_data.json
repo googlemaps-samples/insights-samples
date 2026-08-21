@@ -1,0 +1,64 @@
+[
+    {
+        "name": "selected_route_id",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "The unique identifier for the SelectedRoute resource. It corresponds to the final component of the resource name: 'projects/{project}/selectedRoutes/{selected_route_id}'. Constraints: Length must be between 4 and 63 characters. Pattern: '^[a-zA-Z0-9-]+$' (alphanumeric and hyphens only). Strict rejection of underscores or special symbols. Serving as the primary correlation key across RMI telemetry datasets. Acts as a logical primary key (must not be NULL, though physically NULLABLE in the schema). Use this ID to join with historical_travel_time and routes_status tables."
+    },
+    {
+        "name": "display_name",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "User-provided descriptive name for the route. Intended for human readability in reports and UIs. No uniqueness constraint. Max length 128 characters."
+    },
+    {
+        "name": "record_time",
+        "type": "TIMESTAMP",
+        "mode": "NULLABLE",
+        "description": "The UTC timestamp representing when the near real-time route data was computed. Unlike the hourly-truncated historical table, this table contains high-frequency updates (typically every 2 minutes) with a rolling 60-day retention period. Highly recommended to always filter on record_time in WHERE clauses to restrict scan costs and optimize performance."
+    },
+    {
+        "name": "duration_in_seconds",
+        "type": "FLOAT",
+        "mode": "NULLABLE",
+        "description": "The near real-time traffic-aware duration of the route in seconds, estimating travel time considering current real-time traffic conditions at 'record_time'. Bounded >= 0."
+    },
+    {
+        "name": "static_duration_in_seconds",
+        "type": "FLOAT",
+        "mode": "NULLABLE",
+        "description": "The traffic-unaware (static) duration of the route in seconds, representing estimated travel time under ideal or free-flow conditions, regardless of current traffic. Always >= 0."
+    },
+    {
+        "name": "route_geometry",
+        "type": "GEOGRAPHY",
+        "mode": "NULLABLE",
+        "description": "The traffic-aware polyline geometry of the route as a GEOGRAPHY object (EPSG:4326), representing the actual optimal path determined by the routing engine at 'record_time'."
+    },
+    {
+        "name": "road_segment_ids",
+        "type": "STRING",
+        "mode": "REPEATED",
+        "description": "Place IDs along the route in topological order indicating connected road segments."
+    },
+    {
+        "name": "speed_reading_intervals",
+        "type": "RECORD",
+        "mode": "REPEATED",
+        "description": "Repeated RECORD containing intervals representing traffic density segments across the route. This field breaks down the route into sub-segments based on traffic speed categories. To query these fields in SQL, use 'LEFT JOIN UNNEST(speed_reading_intervals)' to avoid discarding rows if the array is empty.",
+        "fields": [
+            {
+                "name": "interval_coordinates",
+                "type": "GEOGRAPHY",
+                "mode": "REPEATED",
+                "description": "The GEOGRAPHY representation of the specific road segment for this speed interval. Part of the repeated speed_reading_intervals record. EPSG:4326 projection."
+            },
+            {
+                "name": "speed",
+                "type": "STRING",
+                "mode": "NULLABLE",
+                "description": "The categorical classification of speed for this interval. Possible values: 'NORMAL' (Traffic is flowing smoothly, speed > 85% of free-flow speed), 'SLOW' (Slowdown detected, speed is between 50% and 85% of free-flow speed), 'TRAFFIC_JAM' (Significant traffic delays detected, speed < 50% of free-flow speed)."
+            }
+        ]
+    }
+]

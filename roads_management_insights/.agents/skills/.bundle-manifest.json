@@ -1,0 +1,193 @@
+{
+  "bundle_id": "rmi-core",
+  "version": "1.0.0",
+  "description": "Curated suite of agentic skills for Roads Management Insights (RMI) development, APIs, data analytics, and operational runbooks.",
+  "published_at": "2026-08-21T09:21:45.652626+00:00",
+  "upstream_commit": "untracked_local_build",
+  "total_skills_count": 12,
+  "skills": {
+    "api-analyticshub": {
+      "source_path": "dist/api-analyticshub",
+      "files_count": 6,
+      "hashes": {
+        "SKILL.md": "eeba61885a975c002e12ae6210434828106cdc9b4deda94d5179a3450c139419",
+        "references/discoveryDocs/analyticshub_v1_20260813.json": "f0c20b3cf744386fbf4ce12dc2f32c4ed3720270f2dfefb2299a81eed3a0294b",
+        "scripts/analyticshub_v1.sh": "472a04fd23f4eeafaf1a2fb71a8d2c4208dea408368bddca3b2e1235293cfef1",
+        "scripts/analyticshub_v1_helpers.sh": "d2de7c729ff3d62cc8a7286d3ae9f89fa37f0b5ea54f972708b351cb6b46d8c8",
+        "scripts/api-common.sh": "e395124f802defa34de850e2bda941d23a97061a24604c25dd0fd420a456384b",
+        "scripts/list_all_pages.sh": "153c5a641cb6110bdff7d31d2806cb956bc1bd2a9c28062ced0dc1b0097448b4"
+      }
+    },
+    "api-roadsselection": {
+      "source_path": "dist/api-roadsselection",
+      "files_count": 6,
+      "hashes": {
+        "SKILL.md": "ec0668ffbb541c79bec7a99df9776737da259e96ce564623f0041e3d71169db4",
+        "references/discoveryDocs/generated_road_selection_v1.json": "bc574646200cef9240423025e08c3ed25d6562699970e88e29d7ff8c864d4cde",
+        "scripts/api-common.sh": "512176337302d1e8cba62d7127264da4f6f0f485785c24e686ac6990c52b7391",
+        "scripts/roads_selection_v1.sh": "d78956db8aff9d572b59626e0beab4229a3745ea8f645304bf1ea2551c94698e",
+        "scripts/roads_selection_v1_helpers.sh": "9da889d287c44ca8661d3b3a5a004e28f3eda2fa771490be8d35359a2e82373d",
+        "scripts/roads_selection_v1_util.sh": "8e1a0c54f1da80f3756343ba60dd0790da9c9d21a09df48ebde7e3f7e4475689"
+      }
+    },
+    "api-discovery": {
+      "source_path": "dist/api-discovery",
+      "files_count": 5,
+      "hashes": {
+        "SKILL.md": "732fcaf1b03e30b158e4713ba2a75417641c4eec7f28ec2b0f01e30d5c553d43",
+        "references/discoveryDocs/discovery_v1_20200806.json": "57207dfbb4bedd40f77af541ecfded768a5d573e96a51ae03c8b6745920ce589",
+        "scripts/api-common.sh": "0c9ce4192f4eac61362ae39e4e9b483cb52ec01a8634b04faea281252a348b70",
+        "scripts/discovery_v1.sh": "94bb12653f8184955acb9a636cd02c64eb8e70d3f2c1b48f8988df2bd6462d84",
+        "scripts/discovery_v1_helpers.sh": "882b977168bbcb4596eaa63e68a46a039a051814eba5e782b6d6c0c980c1562a"
+      }
+    },
+    "bigquery-geospatial": {
+      "source_path": "dist/bigquery-geospatial",
+      "files_count": 1,
+      "hashes": {
+        "SKILL.md": "b18eb15b8364c74c0f77de1a9c80ff32e64e3f3000f47bdd3ca01b70b3d8484f"
+      }
+    },
+    "bigquery-practices": {
+      "source_path": "dist/bigquery-practices",
+      "files_count": 10,
+      "hashes": {
+        "SKILL.md": "6608d9eba0f52725e61a332a657aade8ac6a73313f5f9580375a64b31c79554e",
+        "references/bigquery_core.md": "58ef8105415f5b1a218218ac3d78d1430576335e332f9315defb40be961eb4e9",
+        "references/bigquery_ml.md": "ef5e5d655c0036f597c62503f79a468641f2efaf9d7a71518a7a0e8e2da275a0",
+        "references/table_schema/jobs.json": "721c863c1f2860f973204680e832d70e3edf4190173e6ebbfefd335a4f8139e2",
+        "references/table_schema/partitions.json": "83d1c6f490414a94c68d67d6a097b19e392af8aaac7ac00bbdba14530961d75d",
+        "references/table_schema/tables.json": "debba756400337fb3737d201256a537ac5d84091e2b0cac96e21278e596c0893",
+        "references/table_schema/views.json": "a793dff80f70700bbbb4f7d79746fd674563136e48843cddd54201c8815c7ad6",
+        "scripts/bigquery_practices_helpers.sh": "becd3fe05cd70cea90a73952f349b8d7d80f94673d2e12a98f8679895b1c2dd0",
+        "scripts/estimate_query_cost.sh": "ce5e93d8d0845535f5053340dbda9cecd285e6aa18a76ffbd0bf6f6b81f2adba",
+        "scripts/generate_job_id.sh": "48c9466b34a7e5a61c3e233f933d29899fb13e72e22ef16ba5a17f99d4a30ada"
+      }
+    },
+    "rmi-routesetting": {
+      "source_path": "dist/rmi-routesetting",
+      "files_count": 5,
+      "hashes": {
+        "SKILL.md": "e0ec9aacaf5f0e3fdd933141a451993d3a6687703c55a11ab7fda1efed831c9e",
+        "scripts/strategy_match_and_split_by_road.sh": "c817cd71fd359d7ce9ffc94f0aa82af207c6b00fbfb402b62de823960b4f0772",
+        "scripts/strategy_simple_origin_destination.sh": "7fedbc8cee17f1c6987aaef77333284fc18c1b5a6274fe5c5eaab958087976c4",
+        "scripts/strategy_single_route_uniform_intermediates.sh": "08595f65fbc098bed33a13a15480f555e1ec6ea12ed2f57480c9eb0d394b69b6",
+        "assets/strategy_map.mermaid": "72f4ec99d311376a04f9b5e1da6a579025bac24a712bda65ecfd57e634f7d58b"
+      }
+    },
+    "rmi-sql": {
+      "source_path": "dist/rmi-sql",
+      "files_count": 51,
+      "hashes": {
+        "SKILL.md": "e66cff1ae6f7a175e77aafafb4cde8926eb20873fcb5f45f9e8805e11e9a272a",
+        "references/standards/COLUMN_DESCRIPTIONS.md": "504508bd127c1654cccfd769b602b17a1abf58747bbcf0a949892582458c5539",
+        "references/standards/KNOWN_LIMITATIONS.md": "eb21f5223abfb25fc691c921cf4d77518f99a01a0d7531bc6ab97f3751f6d5ce",
+        "references/standards/METRICS.md": "1cd337d7600c8c548c2241274db54845cfa9bc5657699f451ef5cd53bb7111cb",
+        "references/standards/SAMPLE_DATASET_METRICS.md": "ebf4f2b9bce0ca7725284dae8321db7febe51fce96afa070a6872f727c3f8b0e",
+        "scripts/eval_report.py": "94805d768c9de9f099438508380756d03906634913ec5dd5deacab118ae22ed2",
+        "scripts/sync_notebooks.py": "5a4a0d38b67e6cf4f9f3b73cd9d06940eec02f2f02b1bf240d58ffde20023d65",
+        "assets/catalog/catalog.md": "ec8fbe2748c958a0eda4f9b8096b123e4d4e93c8d9ed7b14068d7e47720f137d",
+        "assets/queries/README.md": "7a638d7f2fdbbb3a2d3d9321671b15c3b0dae9ac2a712a8c621f69dc76864714",
+        "assets/queries/bigquery_admin/bqa0_metadata_inventory.sql": "9856e18e9360acc6e49f8a3fe01f675b6bea00738d3f0ea88eabd1638f068ae5",
+        "assets/queries/bigquery_admin/bqa1_scan_volume.sql": "eea526124d0a0679904ea8e81164ae043369abc90150534af0e63d73c1293e60",
+        "assets/queries/bigquery_admin/bqa2_cost_attribution.sql": "515cf0f123092c4822de61d557aff1e220d3f454d56c3c54feddb76efc4fab26",
+        "assets/queries/bigquery_admin/bqa3_derived_resources.sql": "227b143de801c905f6d1d0dd60c4422bd57b23a01fa475ff279b1890b3d21b5f",
+        "assets/queries/bigquery_admin/bqa4_query_patterns.sql": "9676833cf036bbe2e618479c5789577e739bbb1ea05edac08bac07c29ca80831",
+        "assets/queries/bigquery_admin/bqa5_partition_pruning.sql": "54fc2634e97100d5b910ad769cbb1c5f58c3c727a27c6780f76184fe225df44d",
+        "assets/queries/bigquery_admin/bqa6_data_complexity_audit.sql": "475aa5fa29a6251edf16dd9238499d668aac4081f3e4b1fcf63b695124b7f458",
+        "assets/queries/traffic_operations_manager/tom1_peak_hour_delay.sql": "602cd2d1725a76c9e247bd81dac7c6e39e84e6759abb3ccf1fc1a0284942cb77",
+        "assets/queries/traffic_operations_manager/tom2_persistent_bottlenecks.sql": "26c8eb959362ad87dae385fe82993dc8eb3a9da32887a1ea23ebcbd94083d166",
+        "assets/queries/traffic_operations_manager/tom3_operational_health.sql": "855be68e1d0920ba8026e6dd866036959b2aa1cae61babe88aff69c7e5ca523f",
+        "assets/queries/traffic_operations_manager/tom4_data_latency.sql": "198b8404b492ad45d7c7f49d6884f6c3f3f6f14430a56abe0f4150aa1b98dc06",
+        "assets/queries/traffic_operations_manager/tom5_significant_event_detection.sql": "4cb0b0f601d54806350d95160fb2a1ee4e6ea3926d0e7a93117f09e51662b020",
+        "assets/queries/traffic_operations_manager/tom6_dynamic_detour_detection.sql": "d9e09ad1442c8295caa87e773a99f694ef65513ca9ecac2d3a05fca98c26cb77",
+        "assets/queries/rmi_planner/rmip1_usage_projection.sql": "407f1b1f7333426e0a86810d162aa888685e88147ef9699b80eef1eef0c915d7",
+        "assets/queries/rmi_planner/rmip2_customer_roi.sql": "d2e2cfbf152406bfc12556d87934e95c437b6559092d794fbddf57ca49efcb8f",
+        "assets/queries/rmi_planner/rmip3_segment_estimation.sql": "7ac93b975519675297417c93846eab4ebfb11c6395b2eebd4990f7a131e293ab",
+        "assets/queries/rmi_planner/rmip4_area_boundary.sql": "03b5d66d350a3cb2fbcec93bbe06d2a45b3b76ed410ed65016c3bc9008c7216c",
+        "assets/queries/data_scientist/ds1_outlier_detection.sql": "81e668cd2d97bce61cbae278bd930bb1157ca746c372d97bede4144b1fc15936",
+        "assets/queries/data_scientist/ds2_similarity_clustering.sql": "d11fc9b0642f49757255f17b2309cbd05daa553aef7cfbe931f09dd2f6ef222e",
+        "assets/queries/data_scientist/ds3_feature_engineering.sql": "89db449b07c927d61eb60c3ad58cb5a5b8da6b3941c1cd793d6d2a221efdc2f4",
+        "assets/queries/data_scientist/ds4_route_integrity_audit.sql": "39eb1a3abcb876d5ae6d19b8a8b1ef9cf7d677c90ec7f0b76f06f33546845644",
+        "assets/queries/data_scientist/ds5_reliability_ranking.sql": "84b03c9345f00d58f20cdb1921de3130d54777fa6be64f49e3fa0f342d1dba73",
+        "assets/queries/data_scientist/ds6_travel_time_forecasting.sql": "1f2e451121af06b1e13899df04943fee9ced5b158b361c1041356f42c7fe6e0f",
+        "assets/queries/data_scientist/ds7_zero_shot_forecasting.sql": "2be012138de5c5d1df846afe297736dcf3c3b54ed75858bd3bb0cf34232a63df",
+        "assets/queries/urban_planner/up1_corridor_trend.sql": "5e31b6dd8197dbef9bc33a723258a3b9d88444ef9b77c337ba7f4c2ff152f45f",
+        "assets/queries/urban_planner/up2_impact_analysis.sql": "eb9c926bb62f50f8ac2953a69e2a5d3c6c46b4e0d6f10460634f8c1e707d8875",
+        "assets/queries/urban_planner/up3_monitoring_density.sql": "d17585631cf34236586f32f92e3c44c6c3b733c858c2cb0ba2bbea39f528e8cd",
+        "assets/queries/urban_planner/up4_weekend_vs_weekday.sql": "d4957dbd13796237858932fb7a88225f9bdf453b88d8d2422523bf32cb5598d2",
+        "assets/queries/urban_planner/up5_geofenced_congestion.sql": "d4f8bcc7716da0a289343232192fecbe952ec5361d59ab8ebadf252d7dcdd069",
+        "assets/queries/data_engineer/de1_materialized_view.sql": "a1f7b47a7b4e2a021dcebc1838bf4833485fca865c5d7f7f5b341d23dae6082f",
+        "assets/queries/data_engineer/de2_data_cleaning.sql": "7f82cae701d496aecd3acb29dbfa4dfb7a58c3cd3bd63bc4cb8bea8b96c3abd2",
+        "assets/queries/data_engineer/de3_sri_flattening.sql": "6cbd74fad8ba27039802ade0244b2f6d523292b79978a2971851225e3dc91dc5",
+        "assets/queries/data_engineer/de4_attribute_extraction.sql": "a6a59567b2fdfa2ee918da8f0ada219abb45a8fbdfc7adc521f95b64dba4dd1e",
+        "assets/queries/data_engineer/de5_freshness_audit.sql": "cdfe885ebef65986eb15e4fe522b8bf816e1cb36a05472da70e60d538efc3cc1",
+        "assets/queries/data_engineer/de6_hourly_preaggregation.sql": "2f77491100efddd15102cfdb96af4f15e1f569fdb2b303af170c88d898557747",
+        "assets/queries/data_engineer/de7_routes_status_snapshot.sql": "efa215cf24666843ce0c4a0640f5b9cf8b02a52a9a710883b81f8f987f8cb161",
+        "assets/notebooks/BigQuery_Admin_Samples.ipynb": "4b0aca68d1a1ea05eeb432ddb4ba18b61e502a5673270d0c75b81e9f1085b906",
+        "assets/notebooks/Data_Engineer_Samples.ipynb": "c8e2599169c401400443951d89eebe4af2c568eb775fdd74d97c48f9493884ab",
+        "assets/notebooks/Data_Scientist_Samples.ipynb": "3e367673123df7a0d02b06b2f81dce91d31b90eddf6978c75abe66c9afd13144",
+        "assets/notebooks/RMI_Planner_Samples.ipynb": "344fc328da1fbd5ed60d163e1583f7925b1a82461bf331ddc2d273911cda1842",
+        "assets/notebooks/Traffic_Operations_Manager_Samples.ipynb": "001ce863df724c6502810902ee890b5dc66db7bd6796f0941bc39c99c23effe9",
+        "assets/notebooks/Urban_Planner_Samples.ipynb": "d6bb8685841d2b43f6400405935fe45ceac9bdc8a3421200e398714ab722ae46"
+      }
+    },
+    "rmi-data-foundation-bigquery": {
+      "source_path": "dist/rmi-data-foundation-bigquery",
+      "files_count": 6,
+      "hashes": {
+        "SKILL.md": "6763169a2f62f690664af3b02aea3b8032277bb71d8dbc2d9e4c74369544394b",
+        "references/examples.md": "ad96cf06079a29e67e7e02e6236a3f7d4281cfe31587cf4a450f429665a1095f",
+        "references/tables/historical_travel_time.json": "80d2a9340fc049e69c7731d990a20c684fbc09dd92f5a26b38e85313cd703530",
+        "references/tables/routes_status.json": "b7db80e3f7f12f42e14d7c9077871413fd1222ddba7a0d5914c7f7bd8b14164c",
+        "references/table_descriptions/historical_travel_time.md": "28bd564cd1e2ef7dacda52ca95137baadfdd18bdaf7cc5f0e383ff9cabe9696a",
+        "references/table_descriptions/routes_status.md": "1762cd5a6238614416192ac9917af3fdafa1f27222ef2de133adc69a617df6cd"
+      }
+    },
+    "rmi-data-realtime-bigquery": {
+      "source_path": "dist/rmi-data-realtime-bigquery",
+      "files_count": 2,
+      "hashes": {
+        "SKILL.md": "c9e57588bf273e7f8ad8ffd09b01e0c3620700b9de9b132ee7d33eee9b46a784",
+        "references/recent_roads_data.json": "0cdd6fcd18c74af455971a69cdd23baab5ae4c408a19e025bd5d8700aafd5772"
+      }
+    },
+    "rmi-data-realtime-pubsub": {
+      "source_path": "dist/rmi-data-realtime-pubsub",
+      "files_count": 13,
+      "hashes": {
+        "SKILL.md": "8e26ba70469364a4e8b6dcc79c25faee08b819e2604a7c195609a5ebe482c5b1",
+        "references/tables/recent_roads_data_transformed.json": "c6b9785349cf5a550953ac2ebbcc80da863489fc98df426260fec3ad0d66ec0c",
+        "references/tables/roads_information_landing.json": "0201625383323837be4cf512bdc1f02d0df94cf15a6f511a289e65a708840b6e",
+        "references/queries/create_recent_roads_data.sql": "f390bf755dcb2acbeca6b0f9b778d06d8d8ed4ce5d7aab454af29a81931d9f35",
+        "references/queries/create_roads_information_landing.sql": "0d622ecdf4e523cfe6b730bd804ca0d11d834c3b24b811796b49db4f7784b376",
+        "references/queries/scheduled_merge_recent_roads.sql": "ff387c0f2c923b43a2d0d275ece9b7b0071f9d95a165f289bbc8e027142b48f2",
+        "references/queries/translate_landing_to_recent_roads.sql": "28ced39d32938cb59a24d3e1e47d570a5ef575f1e9dcddd86a50daccfd267664",
+        "references/schemas/roads_information.proto": "67fcf9b91a22e076f047399e861a7170ec4a9b86f973872411e6ae61658c6803",
+        "scripts/backfill_recent_roads.sh": "298043029d2e83c0d630bd930e11fde9f95bddf0098e432db16d98fc399d1138",
+        "scripts/consume_and_stream_to_bq.py": "874060d2f684c42a46d74dad1b3f1ba8871c4dfcd4a74fa75934b9810b9008d3",
+        "scripts/create_pubsub_bq_subscription.sh": "fa4f1e0d2cb599286c8ab5e02ab7d1f35b470fbf8fc8c1a55fad4b81f5ca5de7",
+        "scripts/schedule_merge_query.sh": "7df6adf5944a5c7a10bddb5561120b22a5cc2bea1eb3e06be39d679304e85559",
+        "scripts/simulate_stream.py": "c14589db5611379b2e23d6814d189aa84eb02d2a1e523b501cc7f0206fe1a6c8"
+      }
+    },
+    "rmi-sampledatasets": {
+      "source_path": "dist/rmi-sampledatasets",
+      "files_count": 5,
+      "hashes": {
+        "SKILL.md": "589c7ef4e7205fde263ca26dfcdab6b680fe044430958655542942bbc9658285",
+        "references/boston_2026.md": "8b8ff4652727cef880bfe1d4afc2bad6afeadd6037bb66c5699876f66e6fb1df",
+        "references/metrics.md": "50c6df038ce7e6e371be9a3c8c3de2e588a6177205354acd1d1e6b09d3907b86",
+        "references/sample_catalog_2026.md": "3da1e5a3b06cc9fbfc88d56cf4f8217e0da59c98bf63390297350407207d2e0a",
+        "scripts/list_sample_datasets.sh": "65fe3dc49419ccb834891b5a8367833a18314d48303760afb19952a12f567a1d"
+      }
+    },
+    "rmi-dataviz": {
+      "source_path": "dist/rmi-dataviz",
+      "files_count": 1,
+      "hashes": {
+        "SKILL.md": "bd7142b3efb06715c3ddf9eef89ab5c3d8044a83c5f1641b1f495945567af4e6"
+      }
+    }
+  }
+}

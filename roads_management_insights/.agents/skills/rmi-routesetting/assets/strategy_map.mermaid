@@ -1,0 +1,21 @@
+graph TD
+    %% Entry Points
+    EntryPL["Polyline Based<br/>(Internal GIS / Open Data)"] --> Snapping{"Snapping<br/>(Road Network API v2)"}
+    EntryOD["Origin/Destination Based<br/>(Geographical Intent)"] --> Pathfinding{"Pathfinding<br/>(Routes API)"}
+    EntryAR["Area/Polygon Based<br/>(Geographical Boundary)"] --> Listing{"Segment Listing<br/>(Road Network API v2)"}
+
+    %% Intermediate Processing
+    Snapping --> BYOPLY["BYO Polyline"]
+    Pathfinding --> BYOPLY
+    Listing --> Filtering{Priority Filtering}
+
+    %% Primary Registration Approaches (The "Outputs")
+    BYOPLY --> SplitDistance["SINGLE_ROUTE_UNIFORM_INTERMEDIATES<br/>(Distance Split)"]
+    BYOPLY --> IIS["Segment Mode<br/>(Intersection-to-Intersection)"]
+    Filtering --> IIS
+    Filtering --> AC["AREA_COVERAGE"]
+    EntryOD --> OD["SIMPLE_ORIGIN_DESTINATION<br/>(A-to-B Evolution)"]
+
+    %% Optimization Options
+    IIS --> ModeReduction["Segment Reduction Mode<br/>(Smart Junction Pinning)"]
+    IIS -.-> AC

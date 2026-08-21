@@ -1,0 +1,38 @@
+[
+    {
+        "name": "selected_route_id",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "The unique identifier for the SelectedRoute resource. It corresponds to the final component of the resource name: 'projects/{project}/selectedRoutes/{selected_route_id}'. Constraints: Length must be between 4 and 63 characters. Pattern: '^[a-zA-Z0-9-]+$' (alphanumeric and hyphens only). Strict rejection of underscores or special symbols. Serving as the primary correlation key across RMI telemetry datasets. Acts as a logical primary key (must not be NULL, though physically NULLABLE in the schema)."
+    },
+    {
+        "name": "display_name",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "User-provided descriptive name for the route. Intended for human readability in reports and UIs. No uniqueness constraint. Max length 128 characters."
+    },
+    {
+        "name": "status",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "The current operational lifecycle state of the route. Possible values: 'STATUS_SCHEDULING' (Created, being scheduled for monitoring slots), 'STATUS_RUNNING' (Active, successfully snapped, and routing telemetry data), 'STATUS_DELETING' (Marked for deletion, in teardown), 'STATUS_VALIDATING' (Undergoing validation checks), 'STATUS_INVALID' (Validation failed; requires checking validation_error and low_road_usage_start_time fields)."
+    },
+    {
+        "name": "validation_error",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Detailed error code explaining why a route is in 'STATUS_INVALID'. Must be NULL unless status is 'STATUS_INVALID'. Possible values: 'VALIDATION_ERROR_ROUTE_OUTSIDE_JURISDICTION' (The route path is outside the allowed/authorized project jurisdiction), 'VALIDATION_ERROR_LOW_ROAD_USAGE' (Insufficient road usage or traffic volume detected for reliable insight collection, meaning the route is marked invalid)."
+    },
+    {
+        "name": "low_road_usage_start_time",
+        "type": "TIMESTAMP",
+        "mode": "NULLABLE",
+        "description": "The UTC timestamp when the route first transitioned to 'STATUS_INVALID' due to 'VALIDATION_ERROR_LOW_ROAD_USAGE' during periodic re-validation. Must be NULL unless validation_error is 'VALIDATION_ERROR_LOW_ROAD_USAGE'."
+    },
+    {
+        "name": "route_attributes",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "JSON-formatted flat string of custom key-value metadata attributes (e.g., '{\"region\": \"north\", \"tier\": \"priority\"}'). Constraints: Flat structure (no nested JSON arrays or objects), maximum of 10 key-value pairs allowed. Both keys and values must be STRING types. Keys/values are restricted to a maximum of 100 characters each. Keys are case-insensitive and cannot start with the prefix 'goog' (reserved for system metadata). Used for filtering and grouping in downstream BI dashboards and analysis."
+    }
+]

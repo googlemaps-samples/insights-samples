@@ -1,0 +1,44 @@
+[
+    {
+        "name": "selected_route_id",
+        "type": "STRING",
+        "description": "The unique identifier for the SelectedRoute resource. It corresponds to the final component of the resource name: 'projects/{project}/selectedRoutes/{selected_route_id}'. Constraints: Length must be between 4 and 63 characters. Pattern: '^[a-zA-Z0-9-]+$' (alphanumeric and hyphens only). Strict rejection of underscores or special symbols. Serving as the primary correlation key across RMI telemetry datasets. Acts as a logical primary key (must not be NULL, though physically NULLABLE in the schema). Used to join with routes_status and recent_roads_data.",
+        "mode": "NULLABLE"
+    },
+    {
+        "name": "display_name",
+        "type": "STRING",
+        "description": "User-provided descriptive name for the route. Intended for human readability in reports and UIs. No uniqueness constraint. Max length 128 characters.",
+        "mode": "NULLABLE"
+    },
+    {
+        "name": "record_time",
+        "type": "TIMESTAMP",
+        "description": "The UTC timestamp representing when the route data was computed. In this historical table, the timestamp is truncated to the hour boundary (e.g., 'YYYY-MM-DD HH:00:00 UTC'). This column is the partitioning column (Time-unit partitioning by day) to prune scans in O(1) complexity. Highly recommended to always filter on record_time in WHERE clauses to restrict scan costs and optimize performance.",
+        "mode": "NULLABLE"
+    },
+    {
+        "name": "duration_in_seconds",
+        "type": "FLOAT",
+        "description": "The traffic-aware duration of the route in seconds. This value represents the estimated travel time considering current real-time traffic conditions at the 'record_time'. Bounded >= 0. Used to calculate Travel Time Index (TTI) or delay against static_duration_in_seconds.",
+        "mode": "NULLABLE"
+    },
+    {
+        "name": "static_duration_in_seconds",
+        "type": "FLOAT",
+        "description": "The traffic-unaware (static) duration of the route in seconds. This represents the estimated travel time under ideal or free-flow conditions, regardless of current traffic. Always >= 0. Serves as the baseline/denominator for congestion index calculations.",
+        "mode": "NULLABLE"
+    },
+    {
+        "name": "route_geometry",
+        "type": "GEOGRAPHY",
+        "description": "The traffic-aware optimal polyline geometry of the route as a GEOGRAPHY object (WKT, EPSG:4326). Represents the actual optimal path determined by the routing engine at 'record_time'. Can change over time if road closures or significant route shifts occur.",
+        "mode": "NULLABLE"
+    },
+    {
+        "name": "road_segment_ids",
+        "type": "STRING",
+        "mode": "REPEATED",
+        "description": "Place IDs along the route in topological order indicating connected road segments. Added recently; older historical records will contain empty or NULL arrays."
+    }
+]
