@@ -1,7 +1,7 @@
 # Roads Management Insights (RMI) Agentic Skills Suite
 
 > **Bundle ID**: `rmi-core` | **Version**: `1.0.0`
-> **Generated**: `2026-08-21 09:16:45Z`
+> **Generated**: `2026-08-21 09:21:45Z`
 
 ## Overview
 Curated suite of agentic skills for Roads Management Insights (RMI) development, APIs, data analytics, and operational runbooks.
