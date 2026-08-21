@@ -2,7 +2,7 @@
   "bundle_id": "rmi-core",
   "version": "1.0.0",
   "description": "Curated suite of agentic skills for Roads Management Insights (RMI) development, APIs, data analytics, and operational runbooks.",
-  "published_at": "2026-08-21T08:01:15.660679+00:00",
+  "published_at": "2026-08-21T09:16:45.412486+00:00",
   "upstream_commit": "untracked_local_build",
   "total_skills_count": 12,
   "skills": {
@@ -64,15 +64,6 @@
         "scripts/estimate_query_cost.sh": "ce5e93d8d0845535f5053340dbda9cecd285e6aa18a76ffbd0bf6f6b81f2adba"
       }
     },
-    "data-rmi-sampledatasets": {
-      "source_path": "dist/data-rmi-sampledatasets",
-      "files_count": 3,
-      "hashes": {
-        "SKILL.md": "548cc722744a83af38835e3819d4c5f2ab1d0e0deef37c7ff426fac071f387ac",
-        "references/boston_2025.md": "61673d8035221eb648f898595eb0a96a9e32cb1660f28e90bffaa7bb179c00c4",
-        "references/metrics.md": "d137150a11a22ca8882f3582a6dcc2a2617a470b36b211b99d03df6725aa4f99"
-      }
-    },
     "rmi-routesetting": {
       "source_path": "dist/rmi-routesetting",
       "files_count": 5,
@@ -88,7 +79,7 @@
       "source_path": "dist/rmi-sql",
       "files_count": 51,
       "hashes": {
-        "SKILL.md": "4d5ea5179ffaae76fe5b6a1a3844151cab9a49aec4df153c81471c07a5d29a8a",
+        "SKILL.md": "e66cff1ae6f7a175e77aafafb4cde8926eb20873fcb5f45f9e8805e11e9a272a",
         "references/standards/SAMPLE_DATASET_METRICS.md": "ebf4f2b9bce0ca7725284dae8321db7febe51fce96afa070a6872f727c3f8b0e",
         "references/standards/KNOWN_LIMITATIONS.md": "eb21f5223abfb25fc691c921cf4d77518f99a01a0d7531bc6ab97f3751f6d5ce",
         "references/standards/COLUMN_DESCRIPTIONS.md": "504508bd127c1654cccfd769b602b17a1abf58747bbcf0a949892582458c5539",
@@ -178,6 +169,17 @@
         "scripts/backfill_recent_roads.sh": "298043029d2e83c0d630bd930e11fde9f95bddf0098e432db16d98fc399d1138",
         "scripts/schedule_merge_query.sh": "7df6adf5944a5c7a10bddb5561120b22a5cc2bea1eb3e06be39d679304e85559",
         "scripts/create_pubsub_bq_subscription.sh": "fa4f1e0d2cb599286c8ab5e02ab7d1f35b470fbf8fc8c1a55fad4b81f5ca5de7"
+      }
+    },
+    "rmi-sampledatasets": {
+      "source_path": "dist/rmi-sampledatasets",
+      "files_count": 5,
+      "hashes": {
+        "SKILL.md": "589c7ef4e7205fde263ca26dfcdab6b680fe044430958655542942bbc9658285",
+        "references/sample_catalog_2026.md": "3da1e5a3b06cc9fbfc88d56cf4f8217e0da59c98bf63390297350407207d2e0a",
+        "references/metrics.md": "50c6df038ce7e6e371be9a3c8c3de2e588a6177205354acd1d1e6b09d3907b86",
+        "references/boston_2026.md": "8b8ff4652727cef880bfe1d4afc2bad6afeadd6037bb66c5699876f66e6fb1df",
+        "scripts/list_sample_datasets.sh": "65fe3dc49419ccb834891b5a8367833a18314d48303760afb19952a12f567a1d"
       }
     },
     "rmi-dataviz": {

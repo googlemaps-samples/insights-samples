@@ -184,7 +184,7 @@ When creating derived tables, views, or snapshots from upstream RMI datasets:
 
 ## Related Skills
 - **[`rmi-personas`](../rmi-personas/SKILL.md)**: Business workflows and personas (Urban Planner, Data Scientist, Operations).
-- **[`data-rmi-sampledatasets`](../data-rmi-sampledatasets/SKILL.md)**: Baseline Boston Oct 2025 snapshot schemas and validation data.
+- **[`rmi-sampledatasets`](../rmi-sampledatasets/SKILL.md)**: Global sample datasets catalog, Analytics Hub exchange discovery, and snapshot baseline schemas.
 - **[`bigquery-geospatial`](../bigquery-geospatial/SKILL.md)**: Advanced GIS handling, spatial outer joins, and CARTO extensions.
 - **[`bigquery-practices`](../bigquery-practices/SKILL.md)**: General BigQuery SQL best practices, storage billing, and partition pruning.
 - **[`rmi-data-foundation-bigquery`](../rmi-data-foundation-bigquery/SKILL.md)**: Foundation table schemas and batch pipelines.
