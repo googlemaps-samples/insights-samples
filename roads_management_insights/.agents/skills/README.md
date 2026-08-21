@@ -1,7 +1,7 @@
 # Roads Management Insights (RMI) Agentic Skills Suite
 
 > **Bundle ID**: `rmi-core` | **Version**: `1.0.0`
-> **Generated**: `2026-08-21 07:49:52Z`
+> **Generated**: `2026-08-21 08:01:15Z`
 
 ## Overview
 Curated suite of agentic skills for Roads Management Insights (RMI) development, APIs, data analytics, and operational runbooks.
@@ -13,20 +13,20 @@ Curated suite of agentic skills for Roads Management Insights (RMI) development,
 You can install and consume these skills using **`npx skills` (skills.sh)**, **Zero-Config Workspace Discovery**, or **Global Symlinking**:
 
 ### Method 1: Using the `skills` CLI (`npx skills` / `skills.sh`)
-The standard agent package manager ([skills.sh](https://skills.sh)) can discover and install skills directly from this GitHub repository:
+The standard agent package manager ([skills.sh](https://skills.sh)) can discover and install skills scoped directly to this product folder:
 
 ```bash
-# List available skills in this repository:
-npx skills add googlemaps-samples/insights-samples --list
+# List available RMI skills (scoped to this product folder):
+npx skills add https://github.com/googlemaps-samples/insights-samples/tree/main/roads_management_insights --list
 
 # Install all RMI skills into your active project:
-npx skills add googlemaps-samples/insights-samples --all
+npx skills add https://github.com/googlemaps-samples/insights-samples/tree/main/roads_management_insights --all
 
 # Install globally for all projects on your machine:
-npx skills add googlemaps-samples/insights-samples -g
+npx skills add https://github.com/googlemaps-samples/insights-samples/tree/main/roads_management_insights -g
 
 # Install specific skills for target agents (e.g. Cursor, Claude Code, Antigravity):
-npx skills add googlemaps-samples/insights-samples --skill rmi-sql rmi-routesetting --agent cursor claude-code
+npx skills add https://github.com/googlemaps-samples/insights-samples/tree/main/roads_management_insights --skill rmi-sql rmi-routesetting --agent cursor claude-code
 ```
 
 ### Method 2: Zero-Config Workspace Discovery (Monorepo Native)
@@ -89,5 +89,5 @@ Because this bundle is self-contained within this directory, removing or updatin
 
 ```bash
 # To clean uninstall all skills in this product folder:
-rm -rf <repo_root>/<product>/.agents/skills
+rm -rf roads_management_insights/.agents/skills
 ```

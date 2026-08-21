@@ -2,7 +2,7 @@
   "bundle_id": "rmi-core",
   "version": "1.0.0",
   "description": "Curated suite of agentic skills for Roads Management Insights (RMI) development, APIs, data analytics, and operational runbooks.",
-  "published_at": "2026-08-21T07:49:52.584385+00:00",
+  "published_at": "2026-08-21T08:01:15.660679+00:00",
   "upstream_commit": "untracked_local_build",
   "total_skills_count": 12,
   "skills": {
