@@ -1,10 +1,60 @@
 # Roads Management Insights (RMI) Agentic Skills Suite
 
 > **Bundle ID**: `rmi-core` | **Version**: `1.0.0`
-> **Generated**: `2026-08-21 07:38:48Z`
+> **Generated**: `2026-08-21 07:49:52Z`
 
 ## Overview
 Curated suite of agentic skills for Roads Management Insights (RMI) development, APIs, data analytics, and operational runbooks.
+
+---
+
+## 🚀 Installation & Setup
+
+You can install and consume these skills using **`npx skills` (skills.sh)**, **Zero-Config Workspace Discovery**, or **Global Symlinking**:
+
+### Method 1: Using the `skills` CLI (`npx skills` / `skills.sh`)
+The standard agent package manager ([skills.sh](https://skills.sh)) can discover and install skills directly from this GitHub repository:
+
+```bash
+# List available skills in this repository:
+npx skills add googlemaps-samples/insights-samples --list
+
+# Install all RMI skills into your active project:
+npx skills add googlemaps-samples/insights-samples --all
+
+# Install globally for all projects on your machine:
+npx skills add googlemaps-samples/insights-samples -g
+
+# Install specific skills for target agents (e.g. Cursor, Claude Code, Antigravity):
+npx skills add googlemaps-samples/insights-samples --skill rmi-sql rmi-routesetting --agent cursor claude-code
+```
+
+### Method 2: Zero-Config Workspace Discovery (Monorepo Native)
+AI coding assistants (Antigravity, Jetski, Gemini CLI, Cursor, Claude Code) natively support **hierarchical discovery**.
+When you open this repository or work within the `roads_management_insights/` directory, the agent automatically traverses upward and registers all skills under `.agents/skills/` with zero installation:
+
+```bash
+# Simply navigate to the product folder and launch your coding agent / IDE:
+cd roads_management_insights
+```
+
+### Method 3: Global Symlinking (Gemini / Jetski)
+To make this RMI skills suite permanently available to all workspaces via Gemini/Jetski configuration:
+
+```bash
+# 1. Ensure your global agent skills directory exists
+mkdir -p ~/.gemini/config/skills
+
+# 2. Symlink all skills from this folder to global configuration
+SKILLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+for skill in "${SKILLS_DIR}"/*; do
+  if [ -d "${skill}" ]; then
+    ln -sf "${skill}" "~/.gemini/config/skills/$(basename "${skill}")"
+  fi
+done
+```
+
+---
 
 ## 📦 Installed Skills Catalog
 
@@ -25,13 +75,11 @@ Curated suite of agentic skills for Roads Management Insights (RMI) development,
 
 ---
 
-## 🤖 Agent Discovery & Usage
+## 🤖 How to Activate Skills in Conversation
 
-Coding assistants (Jetski, Antigravity, Gemini CLI, Cursor, Claude Code) automatically discover these skills via hierarchical upward traversal.
-
-### How to Activate a Skill in Conversation
-- Mention or prompt the agent with the relevant domain task (e.g., *'Analyze Trip Durations in BigQuery'*, *'Configure Roads Selection API'*).
-- The agent's progressive disclosure mechanism will dynamically load the corresponding `SKILL.md` runbook and execute pre-validated scripts.
+Skills use **progressive disclosure** (their detailed runbooks and scripts are only loaded when triggered):
+- **Natural Language Trigger**: Mention your task in conversation (e.g., *'Help me design an RMI route with 25 waypoints'*, *'Query recent speed readings from BigQuery'*, or *'Check Analytics Hub linked dataset access'*).
+- **Explicit Invocation**: You can also ask the agent to specifically activate a skill by name (e.g., *'Use the rmi-routesetting skill to create routes'*).
 
 ---
 
@@ -41,5 +89,5 @@ Because this bundle is self-contained within this directory, removing or updatin
 
 ```bash
 # To clean uninstall all skills in this product folder:
-rm -rf /Users/moritani/agentic-skills-dev/_staging/insights-samples/roads_management_insights/.agents/skills
+rm -rf <repo_root>/<product>/.agents/skills
 ```

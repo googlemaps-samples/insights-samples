@@ -2,7 +2,7 @@
   "bundle_id": "rmi-core",
   "version": "1.0.0",
   "description": "Curated suite of agentic skills for Roads Management Insights (RMI) development, APIs, data analytics, and operational runbooks.",
-  "published_at": "2026-08-21T07:38:48.906312+00:00",
+  "published_at": "2026-08-21T07:49:52.584385+00:00",
   "upstream_commit": "untracked_local_build",
   "total_skills_count": 12,
   "skills": {
@@ -66,9 +66,8 @@
     },
     "data-rmi-sampledatasets": {
       "source_path": "dist/data-rmi-sampledatasets",
-      "files_count": 4,
+      "files_count": 3,
       "hashes": {
-        ".DS_Store": "e05ea547b4b5401353a9ba9b439ede8bd060f51a2a362142d4cfe31835b50d71",
         "SKILL.md": "548cc722744a83af38835e3819d4c5f2ab1d0e0deef37c7ff426fac071f387ac",
         "references/boston_2025.md": "61673d8035221eb648f898595eb0a96a9e32cb1660f28e90bffaa7bb179c00c4",
         "references/metrics.md": "d137150a11a22ca8882f3582a6dcc2a2617a470b36b211b99d03df6725aa4f99"
@@ -76,21 +75,19 @@
     },
     "rmi-routesetting": {
       "source_path": "dist/rmi-routesetting",
-      "files_count": 6,
+      "files_count": 5,
       "hashes": {
-        ".DS_Store": "8fa4eed1d06ff3c4397ed1900b206ff7f53d566018af3f57998fc4c94a7f8778",
         "SKILL.md": "e0ec9aacaf5f0e3fdd933141a451993d3a6687703c55a11ab7fda1efed831c9e",
-        "scripts/strategy_simple_origin_destination.sh": "49ae200475fa2ddbf9eae245c560920c6b0af862c9f35725239ffb623a12f433",
-        "scripts/strategy_match_and_split_by_road.sh": "c1080509df12ff537018af16b87755fae90d5653080751d23410190033cdbee8",
-        "scripts/strategy_single_route_uniform_intermediates.sh": "7fe19ada070c647264e54fd792ed77cf6ae55e46e3251a5ac8ec5a31b7199f32",
+        "scripts/strategy_simple_origin_destination.sh": "7fedbc8cee17f1c6987aaef77333284fc18c1b5a6274fe5c5eaab958087976c4",
+        "scripts/strategy_match_and_split_by_road.sh": "c817cd71fd359d7ce9ffc94f0aa82af207c6b00fbfb402b62de823960b4f0772",
+        "scripts/strategy_single_route_uniform_intermediates.sh": "08595f65fbc098bed33a13a15480f555e1ec6ea12ed2f57480c9eb0d394b69b6",
         "assets/strategy_map.mermaid": "72f4ec99d311376a04f9b5e1da6a579025bac24a712bda65ecfd57e634f7d58b"
       }
     },
     "rmi-sql": {
       "source_path": "dist/rmi-sql",
-      "files_count": 52,
+      "files_count": 51,
       "hashes": {
-        ".DS_Store": "497411b023193492b75c3bde703b15219b640d8f903b79fdaf3f6f271d5ed480",
         "SKILL.md": "4d5ea5179ffaae76fe5b6a1a3844151cab9a49aec4df153c81471c07a5d29a8a",
         "references/standards/SAMPLE_DATASET_METRICS.md": "ebf4f2b9bce0ca7725284dae8321db7febe51fce96afa070a6872f727c3f8b0e",
         "references/standards/KNOWN_LIMITATIONS.md": "eb21f5223abfb25fc691c921cf4d77518f99a01a0d7531bc6ab97f3751f6d5ce",
@@ -146,9 +143,8 @@
     },
     "rmi-data-foundation-bigquery": {
       "source_path": "dist/rmi-data-foundation-bigquery",
-      "files_count": 7,
+      "files_count": 6,
       "hashes": {
-        ".DS_Store": "4f6dcbbc5c19ccf291c4040f25d87483f8de61700a7dae3a3fd02499496c5157",
         "SKILL.md": "6763169a2f62f690664af3b02aea3b8032277bb71d8dbc2d9e4c74369544394b",
         "references/examples.md": "ad96cf06079a29e67e7e02e6236a3f7d4281cfe31587cf4a450f429665a1095f",
         "references/tables/historical_travel_time.json": "80d2a9340fc049e69c7731d990a20c684fbc09dd92f5a26b38e85313cd703530",
@@ -159,19 +155,17 @@
     },
     "rmi-data-realtime-bigquery": {
       "source_path": "dist/rmi-data-realtime-bigquery",
-      "files_count": 3,
+      "files_count": 2,
       "hashes": {
-        ".DS_Store": "4a9280f5d2d2d6a4211e640a47b6baa495c2b33c50eaf12cc6b37e96bec82011",
         "SKILL.md": "c9e57588bf273e7f8ad8ffd09b01e0c3620700b9de9b132ee7d33eee9b46a784",
         "references/recent_roads_data.json": "0cdd6fcd18c74af455971a69cdd23baab5ae4c408a19e025bd5d8700aafd5772"
       }
     },
     "rmi-data-realtime-pubsub": {
       "source_path": "dist/rmi-data-realtime-pubsub",
-      "files_count": 14,
+      "files_count": 13,
       "hashes": {
-        ".DS_Store": "221c33ba0267d2e9024a3b9a4910e6dea47e0eefea2cb7076623fe765a0bb81c",
-        "SKILL.md": "3f8bb52f3b6f374116282ee2c9ab1f1a2e37757fbf5a225b4a08596fdcc4c665",
+        "SKILL.md": "8e26ba70469364a4e8b6dcc79c25faee08b819e2604a7c195609a5ebe482c5b1",
         "references/tables/recent_roads_data_transformed.json": "c6b9785349cf5a550953ac2ebbcc80da863489fc98df426260fec3ad0d66ec0c",
         "references/tables/roads_information_landing.json": "0201625383323837be4cf512bdc1f02d0df94cf15a6f511a289e65a708840b6e",
         "references/queries/create_roads_information_landing.sql": "0d622ecdf4e523cfe6b730bd804ca0d11d834c3b24b811796b49db4f7784b376",
@@ -181,7 +175,7 @@
         "references/schemas/roads_information.proto": "67fcf9b91a22e076f047399e861a7170ec4a9b86f973872411e6ae61658c6803",
         "scripts/consume_and_stream_to_bq.py": "874060d2f684c42a46d74dad1b3f1ba8871c4dfcd4a74fa75934b9810b9008d3",
         "scripts/simulate_stream.py": "c14589db5611379b2e23d6814d189aa84eb02d2a1e523b501cc7f0206fe1a6c8",
-        "scripts/backfill_recent_roads.sh": "a60339d87d88e854c8b21431b3358383d155d4116e4525f104640a6d3e1a07fd",
+        "scripts/backfill_recent_roads.sh": "298043029d2e83c0d630bd930e11fde9f95bddf0098e432db16d98fc399d1138",
         "scripts/schedule_merge_query.sh": "7df6adf5944a5c7a10bddb5561120b22a5cc2bea1eb3e06be39d679304e85559",
         "scripts/create_pubsub_bq_subscription.sh": "fa4f1e0d2cb599286c8ab5e02ab7d1f35b470fbf8fc8c1a55fad4b81f5ca5de7"
       }

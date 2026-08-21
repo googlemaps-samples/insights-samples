@@ -7,7 +7,7 @@
 set -euo pipefail
 
 # Configuration
-PROJECT_ID="${GAC_PROJECT_ID:-moritani-roads}"
+PROJECT_ID="${GAC_PROJECT_ID:-your-project-id}"
 SKILLS_DIR="$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")"
 ROADS_SCRIPTS="${SKILLS_DIR}/api-roadnetwork-preview/scripts"
 ROUTES_SCRIPTS="${SKILLS_DIR}/api-routes/scripts"

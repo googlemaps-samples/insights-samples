@@ -306,7 +306,7 @@ The automation script [backfill_recent_roads.sh](scripts/backfill_recent_roads.s
 To backfill historical partitions day-by-day (e.g. from May 15 to June 12), run the script from the repository root:
 
 ```bash
-PROJECT_ID="moritani-roads" \
+PROJECT_ID="your-project-id" \
 DATASET_ID="rmi" \
 SOURCE_TABLE_ID="rmi_realtime_json" \
 TARGET_TABLE_ID="recent_roads_data" \

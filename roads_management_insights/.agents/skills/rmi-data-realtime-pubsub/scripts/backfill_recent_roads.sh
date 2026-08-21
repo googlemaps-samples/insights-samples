@@ -10,7 +10,7 @@
 #   per day, keeping costs predictable and performance extremely fast.
 #
 # Usage:
-#   PROJECT_ID="moritani-roads" \
+#   PROJECT_ID="your-project-id" \
 #   DATASET_ID="rmi" \
 #   SOURCE_TABLE_ID="rmi_realtime_json" \
 #   ./backfill_recent_roads.sh "2026-05-15" "2026-06-12"
@@ -31,7 +31,7 @@ SOURCE_TABLE_ID="${SOURCE_TABLE_ID:-roads_information_landing}"
 if [ "$#" -lt 2 ]; then
   echo "❌ Error: Missing required date arguments." >&2
   echo "Usage: $0 <START_DATE_YYYY_MM_DD> <END_DATE_YYYY_MM_DD>" >&2
-  echo "Example: PROJECT_ID=\"moritani-roads\" DATASET_ID=\"historical_roads_data_derived\" SOURCE_DATASET_ID=\"rmi\" SOURCE_TABLE_ID=\"rmi_realtime_json\" $0 \"2026-05-15\" \"2026-06-12\"" >&2
+  echo "Example: PROJECT_ID=\"your-project-id\" DATASET_ID=\"historical_roads_data_derived\" SOURCE_DATASET_ID=\"rmi\" SOURCE_TABLE_ID=\"rmi_realtime_json\" $0 \"2026-05-15\" \"2026-06-12\"" >&2
   exit 1
 fi
 
