@@ -1,0 +1,22 @@
+[
+  {
+    "name": "table_catalog",
+    "type": "STRING",
+    "description": "The project ID of the view."
+  },
+  {
+    "name": "table_schema",
+    "type": "STRING",
+    "description": "The dataset ID of the view."
+  },
+  {
+    "name": "table_name",
+    "type": "STRING",
+    "description": "The name of the view."
+  },
+  {
+    "name": "view_definition",
+    "type": "STRING",
+    "description": "The query that defines the view."
+  }
+]

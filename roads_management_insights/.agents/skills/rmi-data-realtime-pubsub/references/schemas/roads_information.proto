@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+// Contains the road information like travel duration and speed reading
+// intervals for a selected route.
+message RoadsInformation {
+  message TravelDuration {
+    // The duration of travel through the route based on current road
+    // conditions.
+    float duration_in_seconds = 1;
+    // The duration of travel through the route without taking road
+    // conditions into consideration.
+    float static_duration_in_seconds = 2;
+  }
+  message Timestamp {
+    // Represents seconds of UTC time since Unix epoch
+    // 1970-01-01T00:00:00Z. Must be from 0001-01-01T00:00:00Z to
+    // 9999-12-31T23:59:59Z inclusive.
+    int64 seconds = 1;
+
+    // Non-negative fractions of a second at nanosecond resolution. Negative
+    // second values with fractions must still have non-negative nanos values
+    // that count forward in time. Must be from 0 to 999,999,999
+    // inclusive.
+    int32 nanos = 2;
+  }
+  // Represents the latitude and longitude of a coordinate
+  // within speed reading interval.
+  message LatLng {
+    float latitude = 1;
+    float longitude = 2;
+  }
+  message SpeedReadingInterval {
+    // The coordinates on the polyline for the speed reading interval
+    repeated LatLng interval_coordinates = 1;
+
+    // Describes the categorized current speed of road conditions.
+    // Possible values are:
+    // - "NORMAL": Road is flowing smoothly, no slowdown is detected.
+    // - "SLOW": Slowdown detected, but no congestion formed.
+    // - "TRAFFIC_JAM": Congestion detected.
+    string speed = 2;
+  }
+  // Id for selected_route.
+  string selected_route_id = 1;
+  // User provided name for the route.
+  string display_name = 2;
+  // Intervals representing the road density across the route.
+  repeated SpeedReadingInterval speed_reading_intervals = 3;
+  // Travel time information.
+  TravelDuration travel_duration = 4;
+  // The time the road data was collected.
+  Timestamp retrieval_time = 5;
+  // Contains a geojson polyline representing the optimal route determined
+  // based on user's input waypoints.
+  string route_geometry = 6;
+  // Place IDs along the route in topological order indicating connected road segments.
+  repeated string road_segment_ids = 7;
+}
+

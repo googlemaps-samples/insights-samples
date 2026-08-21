@@ -1,0 +1,37 @@
+[
+  {
+    "name": "table_catalog",
+    "type": "STRING",
+    "description": "The project ID of the table."
+  },
+  {
+    "name": "table_schema",
+    "type": "STRING",
+    "description": "The dataset ID of the table."
+  },
+  {
+    "name": "table_name",
+    "type": "STRING",
+    "description": "The name of the table."
+  },
+  {
+    "name": "partition_id",
+    "type": "STRING",
+    "description": "The ID of the partition."
+  },
+  {
+    "name": "total_rows",
+    "type": "INT64",
+    "description": "The total number of rows in the partition."
+  },
+  {
+    "name": "total_logical_bytes",
+    "type": "INT64",
+    "description": "The total logical size of the partition in bytes."
+  },
+  {
+    "name": "last_modified_time",
+    "type": "TIMESTAMP",
+    "description": "The last modified time of the partition."
+  }
+]

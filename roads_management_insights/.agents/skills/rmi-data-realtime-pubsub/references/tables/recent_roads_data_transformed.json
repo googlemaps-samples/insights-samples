@@ -1,0 +1,64 @@
+[
+    {
+        "name": "selected_route_id",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "The unique identifier for the SelectedRoute resource. Logical primary key. Pattern: '^[a-zA-Z0-9-]+$'."
+    },
+    {
+        "name": "display_name",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "User-provided descriptive name for the route. Intended for human readability."
+    },
+    {
+        "name": "record_time",
+        "type": "TIMESTAMP",
+        "mode": "NULLABLE",
+        "description": "The UTC timestamp representing when the road data was collected, fully reconstructed from retrieval_time seconds and nanos with microsecond precision."
+    },
+    {
+        "name": "duration_in_seconds",
+        "type": "FLOAT",
+        "mode": "NULLABLE",
+        "description": "The near real-time traffic-aware duration of the route in seconds."
+    },
+    {
+        "name": "static_duration_in_seconds",
+        "type": "FLOAT",
+        "mode": "NULLABLE",
+        "description": "The traffic-unaware (static) duration of the route in seconds, representing estimated travel time under free-flow conditions."
+    },
+    {
+        "name": "route_geometry",
+        "type": "GEOGRAPHY",
+        "mode": "NULLABLE",
+        "description": "The actual optimal path determined by the routing engine as a native BigQuery GEOGRAPHY polyline object (EPSG:4326)."
+    },
+    {
+        "name": "road_segment_ids",
+        "type": "STRING",
+        "mode": "REPEATED",
+        "description": "Place IDs along the route in topological order indicating connected road segments."
+    },
+    {
+        "name": "speed_reading_intervals",
+        "type": "RECORD",
+        "mode": "REPEATED",
+        "description": "Repeated RECORD containing road sub-segments categorized by traffic speed boundaries.",
+        "fields": [
+            {
+                "name": "interval_coordinates",
+                "type": "GEOGRAPHY",
+                "mode": "REPEATED",
+                "description": "The native GEOGRAPHY representation of the specific road segment for this speed interval, constructed as a standard EPSG:4326 line string."
+            },
+            {
+                "name": "speed",
+                "type": "STRING",
+                "mode": "NULLABLE",
+                "description": "The categorical classification of speed for this interval. Possible values: 'NORMAL', 'SLOW', 'TRAFFIC_JAM'."
+            }
+        ]
+    }
+]

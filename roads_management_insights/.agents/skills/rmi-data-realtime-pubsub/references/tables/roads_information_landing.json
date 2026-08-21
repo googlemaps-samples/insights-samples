@@ -1,0 +1,124 @@
+[
+    {
+        "name": "selected_route_id",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Id for selected_route. Logical primary key. Format: ^[a-zA-Z0-9-]+$, length 4-63."
+    },
+    {
+        "name": "display_name",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "User provided name for the route. Non-unique; for human readability in reports."
+    },
+    {
+        "name": "speed_reading_intervals",
+        "type": "RECORD",
+        "mode": "REPEATED",
+        "description": "Intervals representing the road density across the route. Query using LEFT JOIN UNNEST to avoid row dropping.",
+        "fields": [
+            {
+                "name": "interval_coordinates",
+                "type": "RECORD",
+                "mode": "REPEATED",
+                "description": "The coordinates on the polyline for the speed reading interval.",
+                "fields": [
+                    {
+                        "name": "latitude",
+                        "type": "FLOAT",
+                        "mode": "NULLABLE",
+                        "description": "Latitude coordinate of a coordinate within speed reading interval."
+                    },
+                    {
+                        "name": "longitude",
+                        "type": "FLOAT",
+                        "mode": "NULLABLE",
+                        "description": "Longitude coordinate of a coordinate within speed reading interval."
+                    }
+                ]
+            },
+            {
+                "name": "speed",
+                "type": "STRING",
+                "mode": "NULLABLE",
+                "description": "Describes the categorized current speed of road conditions. Possible values: NORMAL, SLOW, TRAFFIC_JAM."
+            }
+        ]
+    },
+    {
+        "name": "travel_duration",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "description": "Travel time information message block.",
+        "fields": [
+            {
+                "name": "duration_in_seconds",
+                "type": "FLOAT",
+                "mode": "NULLABLE",
+                "description": "The duration of travel through the route based on current road conditions. Bounded >= 0.0."
+            },
+            {
+                "name": "static_duration_in_seconds",
+                "type": "FLOAT",
+                "mode": "NULLABLE",
+                "description": "The duration of travel through the route without taking road conditions into consideration. Bounded > 0.0."
+            }
+        ]
+    },
+    {
+        "name": "retrieval_time",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "description": "The time the road data was collected, represented as a custom Timestamp.",
+        "fields": [
+            {
+                "name": "seconds",
+                "type": "INTEGER",
+                "mode": "NULLABLE",
+                "description": "Represents seconds of UTC time since Unix epoch."
+            },
+            {
+                "name": "nanos",
+                "type": "INTEGER",
+                "mode": "NULLABLE",
+                "description": "Non-negative fractions of a second at nanosecond resolution."
+            }
+        ]
+    },
+    {
+        "name": "route_geometry",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Contains a geojson polyline representing the optimal route determined based on user's input waypoints."
+    },
+    {
+        "name": "road_segment_ids",
+        "type": "STRING",
+        "mode": "REPEATED",
+        "description": "Place IDs along the route in topological order indicating connected road segments."
+    },
+    {
+        "name": "subscription_name",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Pub/Sub subscription metadata: Name of the subscription that delivered the message."
+    },
+    {
+        "name": "message_id",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Pub/Sub subscription metadata: Unique identifier of the delivered message, useful for deduplication."
+    },
+    {
+        "name": "publish_time",
+        "type": "TIMESTAMP",
+        "mode": "NULLABLE",
+        "description": "Pub/Sub subscription metadata: UTC timestamp representing when the message was published to the topic. Highly recommended as a BigQuery partitioning column."
+    },
+    {
+        "name": "attributes",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Pub/Sub subscription metadata: JSON-formatted string of any user-defined message attributes."
+    }
+]
