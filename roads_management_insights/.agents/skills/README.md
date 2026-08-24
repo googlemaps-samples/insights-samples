@@ -1,7 +1,7 @@
 # Roads Management Insights (RMI) Agentic Skills Suite
 
 > **Bundle ID**: `rmi-core` | **Version**: `1.0.0`
-> **Generated**: `2026-08-24 04:49:33Z`
+> **Generated**: `2026-08-24 06:57:07Z`
 
 ## Overview
 Curated suite of agentic skills for Roads Management Insights (RMI) development, APIs, data analytics, and operational runbooks.
@@ -20,6 +20,7 @@ graph TD
   %% Bundle: Roads Management Insights (RMI) Agentic Skills Suite (rmi-core)
 
   subgraph tier_analytics ["4. Analytics & Visualization"]
+    RMI_DATAAGENT_HELPER["rmi-dataagent-helper<br/><i>Use this skill to configure, opt...</i>"]
     RMI_DATAVIZ["rmi-dataviz<br/><i>Kepler.gl, Looker Studio & CARTO Viz</i>"]
     RMI_SQL["rmi-sql<br/><i>36 Multi-Persona Queries & Notebooks</i>"]
   end
@@ -37,6 +38,7 @@ graph TD
 
   subgraph tier_foundation ["1. APIs & Core Foundations"]
     API_ANALYTICSHUB["api-analyticshub<br/><i>Analytics Hub Client</i>"]
+    API_GEMINIDATAANALYTICS["api-geminidataanalytics"]
     API_ROADS_V1["api-roads-v1<br/><i>Roads API (v1 Snap & Nearest)</i>"]
     API_ROADSSELECTION["api-roadsselection<br/><i>Roads Selection API</i>"]
     API_ROUTES["api-routes<br/><i>Routes API (v2 Compute Routes)</i>"]
@@ -46,6 +48,8 @@ graph TD
 
   %% EXPLICIT HARD DEPENDENCIES (Bold Red Arrows ==>)
   BIGQUERY_GEOSPATIAL ==>|HARD DEP: BigQuery Standards| BIGQUERY_PRACTICES
+  RMI_DATAAGENT_HELPER ==>|HARD DEP: Declared Prerequisite| API_GEMINIDATAANALYTICS
+  RMI_DATAAGENT_HELPER ==>|HARD DEP: SQL Analytics| RMI_SQL
   RMI_ROUTESETTING ==>|HARD DEP: Corridor Selection| API_ROADSSELECTION
   RMI_ROUTESETTING ==>|HARD DEP: Snap to Roads| API_ROADS_V1
   RMI_ROUTESETTING ==>|HARD DEP: Routes v2 Engine| API_ROUTES
@@ -76,14 +80,14 @@ graph TD
   classDef tier_analytics fill:#fef7e0,stroke:#b06000,stroke-width:2px,color:#8a3b00;
   classDef tier_apps fill:#fce8e6,stroke:#c5221f,stroke-width:2px,color:#a50e0e;
 
-  class RMI_SQL,RMI_DATAVIZ tier_analytics;
+  class RMI_SQL,RMI_DATAAGENT_HELPER,RMI_DATAVIZ tier_analytics;
   class RMI_ROUTESETTING,RMI_SAMPLEDATASETS tier_operations;
   class RMI_DATA_FOUNDATION_BIGQUERY,RMI_DATA_REALTIME_BIGQUERY,RMI_DATA_REALTIME_PUBSUB tier_specs;
-  class API_ANALYTICSHUB,API_ROADSSELECTION,API_ROADS_V1,API_ROUTES,BIGQUERY_GEOSPATIAL,BIGQUERY_PRACTICES tier_foundation;
+  class API_ANALYTICSHUB,API_GEMINIDATAANALYTICS,API_ROADSSELECTION,API_ROADS_V1,API_ROUTES,BIGQUERY_GEOSPATIAL,BIGQUERY_PRACTICES tier_foundation;
 
   %% Edge Prominence Styling
-  linkStyle 0,1,2,3,4,5,6,7,8,9,10 stroke:#b31412,stroke-width:3.5px;
-  linkStyle 11,12,13,14,15,16,17,18,19,20 stroke:#80868b,stroke-width:1.2px,stroke-dasharray: 4 4;
+  linkStyle 0,1,2,3,4,5,6,7,8,9,10,11,12 stroke:#b31412,stroke-width:3.5px;
+  linkStyle 13,14,15,16,17,18,19,20,21,22 stroke:#80868b,stroke-width:1.2px,stroke-dasharray: 4 4;
 ```
 
 ### Rendered Architecture Visualization
@@ -144,14 +148,16 @@ done
 | Skill Name | Scope & Trigger Overview |
 | :--- | :--- |
 | [`api-analyticshub`](./api-analyticshub/SKILL.md) | Expert guidance on BigQuery Analytics Hub. Use this skill when the user asks about shared datasets, linked datasets, data exchange, subscribing to listings, or querying tables with privacy policies like AGGREGATION_THRESHOLD. Also handles resource management (CRUD operations) for Exchanges, Listings, and Subscriptions. Make sure to use this skill whenever the user mentions Analytics Hub, data sharing exchanges, creating listings, or subscribing to linked datasets. |
+| [`api-geminidataanalytics`](./api-geminidataanalytics/SKILL.md) |  |
 | [`api-roads-v1`](./api-roads-v1/SKILL.md) | Use this skill for the legacy Google Maps Roads API (v1). It provides procedural knowledge for 'Snap to Roads' and 'Nearest Roads'—essential for cleaning GPS traces before RMI route submission. Make sure to use this skill whenever the user mentions legacy roads, snapping GPS points, or finding the nearest physical road segments to raw coordinates. |
 | [`api-roadsselection`](./api-roadsselection/SKILL.md) | Use this skill for creating, listing, retrieving, and managing SelectedRoutes (SelectedRoute) in RMI (Roads Management Insights). This includes defining routes with up to 25 intermediate waypoints, batch creation (up to 1000 routes), listing registered routes, syncing routes, and troubleshooting validation errors within authorized jurisdictions. Make sure to use this skill whenever the user mentions SelectedRoutes, SelectedRoute, registering monitored routes, roadsselection, routes of interest, routes_of_interest, sync_routes_of_interest, list routes, listing routes, or configuring RMI paths for segment telemetry. |
 | [`api-routes`](./api-routes/SKILL.md) | Use this skill for pathfinding, travel time estimation, and distance matrix calculations. Essential for understanding how RMI snaps waypoints to the road network using the Routes v2 engine. Make sure to use this skill whenever the user mentions Routes API v2, route calculation, travel duration, distance matrices, or directions pathfinding. |
 | [`bigquery-geospatial`](./bigquery-geospatial/SKILL.md) | Expert guidance on BigQuery Geospatial (GIS) capabilities. Use this skill when the user asks about GEOGRAPHY types, spatial functions (ST_*), proximity analysis, spatial joins, or spatial indexing (S2/H3/Quadbin) in BigQuery. |
-| [`bigquery-practices`](./bigquery-practices/SKILL.md) | Use this skill for general, product-agnostic BigQuery foundational knowledge, including SQL best practices, geospatial tips (ST_ functions), performance optimization (partition pruning, clustering), block-level table sampling, and temporal engineering. |
+| [`bigquery-practices`](./bigquery-practices/SKILL.md) | Foundational BigQuery best practices for SQL performance, geospatial functions, temporal engineering, BQML, vector search, storage optimization (physical vs. logical), execution diagnostics, and enterprise governance. |
 | [`rmi-data-foundation-bigquery`](./rmi-data-foundation-bigquery/SKILL.md) | Use this skill for querying and analyzing the foundational RMI (Roads Management Insights) BigQuery datasets, specifically route status (routes_status) and long-term/historical traffic duration metrics (historical_travel_time). Activate when querying RMI historical datasets, managing route registration definitions, or reviewing base schema designs. |
 | [`rmi-data-realtime-bigquery`](./rmi-data-realtime-bigquery/SKILL.md) | Use this skill for near real-time traffic analysis using the recent_roads_data table. This is a superset of the foundation data, enabling granular Speed Reading Interval (SRI) analysis and 60-day rolling performance audits. |
 | [`rmi-data-realtime-pubsub`](./rmi-data-realtime-pubsub/SKILL.md) | Use this skill for technical details about the RMI Real-Time Pub/Sub stream, including message schema (Protobuf), key fields (SRIs, travel_duration), and integration patterns for live traffic operations. |
+| [`rmi-dataagent-helper`](./rmi-dataagent-helper/SKILL.md) | Use this skill to configure, optimize, and ground BigQuery Conversational Data Agents for RMI. When invoked, helps users select a persona profile (TOM, Urban Planner, BQ Admin, Data Engineer, Data Scientist, or RMI Planner) to receive tailored grounding mantras, glossary definitions, and verified golden queries. |
 | [`rmi-dataviz`](./rmi-dataviz/SKILL.md) | Best practices and procedural guidelines for designing high-performance, reactive, and visually stunning map visualizations with Deck.gl and Google Maps. |
 | [`rmi-routesetting`](./rmi-routesetting/SKILL.md) | Use this skill when discussing, explaining, or implementing RMI route setting, route setting strategies, selected route setting strategies, route registration strategies, or route selection. It provides foundational strategies (SINGLE_ROUTE_UNIFORM_INTERMEDIATES, SIMPLE_ORIGIN_DESTINATION, MATCH_AND_SPLIT_BY_ROAD, BUS_ROUTE_MONITORING, BYO_POLYLINE) for transforming geographical intent into monitored SelectedRoute objects using GA-stage Routes API, Roads API (v1), and Roads Selection API. |
 | [`rmi-sampledatasets`](./rmi-sampledatasets/SKILL.md) | Specialized guidance for discovering, subscribing to, and working with Roads Management Insights (RMI) public sample datasets across global metropolitan areas (Boston, Paris, Tokyo, Detroit, Manhattan, Rome, Singapore, Sydney, Buenos Aires, São Paulo State). Use when Gemini CLI needs to list available datasets from Analytics Hub via api-analyticshub, validate queries against sample data, estimate production costs based on sample baselines, or ensure correct temporal filtering for static snapshots. |

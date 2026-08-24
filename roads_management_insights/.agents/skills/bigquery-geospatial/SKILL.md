@@ -7,197 +7,281 @@ dependencies:
 
 # BigQuery Geospatial (GIS)
 
-BigQuery supports `GEOGRAPHY` as a native data type and provides a suite of `ST_*` functions for geospatial analysis.
+BigQuery provides native spatial data processing capabilities built around the `GEOGRAPHY` data type and standard OpenGIS `ST_*` functions, internally powered by the **S2 Geometry Library** and extensible via the **CARTO Analytics Toolbox**.
 
-## Core Functions & Indexing
+---
 
-### 1. Native S2 Indexing
-BigQuery uses the **S2 Geometry Library** for internal spatial indexing. 
-- While native S2 function support is limited (e.g., `S2_CELLIDFROMPOINT`), the engine automatically leverages S2 cells to optimize spatial joins (`ST_INTERSECTS`) and proximity searches (`ST_DWITHIN`).
-- Clustering a table by a `GEOGRAPHY` column organizes data by S2 cell, which is critical for query performance.
+## 1. Native BigQuery GIS Primitives & Spatial Indexing
 
-### 2. Proximity & Distance
-- `ST_DWITHIN(geog1, geog2, distance_meters)`: Returns TRUE if the distance between two geographies is within the specified meters. **Highly recommended for spatial filtering.**
-- `ST_DISTANCE(geog1, geog2)`: Returns the shortest distance in meters between two geographies.
+### 1.1 Native S2 Indexing & Geography Clustering
+- **Native S2 Indexing**: BigQuery internally partitions and indexes spatial data on the **S2 Spherical Geometry** grid. Spatial join predicates (`ST_INTERSECTS`, `ST_CONTAINS`, `ST_COVERS`) and proximity searches (`ST_DWITHIN`) automatically leverage S2 cell containment to eliminate non-overlapping table partitions.
+- **Geography Clustering**: Always `CLUSTER BY <geography_column>` on physical tables to colocated records within the same S2 spatial hierarchy, drastically reducing byte scan volumes during bounding box or viewport queries.
 
-### 3. Geometry Creation & Predicates
-- `ST_GEOGPOINT(longitude, latitude)`, `ST_GEOGFROMTEXT(wkt)`, `ST_GEOGFROMGEOJSON(json)`.
-- `ST_CONTAINS`, `ST_INTERSECTS`, `ST_COVERS`, `ST_DISJOINT`.
+### 1.2 Coordinate Standards & Auto-Repair
+- **Coordinate Order Mandate**: BigQuery strictly enforces **Longitude-Latitude (x, y)** order (`ST_GEOGPOINT(longitude, latitude)` or `POINT(lon lat)` in WKT). Swapping coordinates leads to invalid points or out-of-range errors.
+- **Automatic Geometry Repair (`make_valid => TRUE`)**: Always include `make_valid => TRUE` when parsing external WKT or GeoJSON strings (`ST_GEOGFROMTEXT(wkt, make_valid => TRUE)`) to automatically heal self-intersecting polygon boundaries, coincident collinear vertices, and winding order anomalies at ingestion time.
 
-## Expert Tips & Performance Tuning
+### 1.3 Native Proximity & Measurement Predicates
+- **`ST_DWITHIN(geog1, geog2, distance_meters)`**: Returns `TRUE` if the geodesic distance between two geometries is within the specified distance in meters. **Always prefer `ST_DWITHIN` over `ST_DISTANCE(...) <= radius`** because `ST_DWITHIN` utilizes spatial index acceleration.
+- **`ST_DISTANCE(geog1, geog2)`**: Computes the shortest geodesic distance in meters on the WGS84 ellipsoid.
+- **`ST_AREA(geog)` & `ST_LENGTH(geog)`**: Native geodesic area (square meters) and length (meters) calculations.
 
-### 1. Optimize Spatial Outer Joins (The Two-Join Trick)
-BigQuery's optimizer is highly specialized for **INNER** spatial joins. Direct `LEFT OUTER JOIN` on spatial predicates can be slow.
-- **The Trick**: Perform a spatial **INNER JOIN** first, aggregate the results (e.g., `COUNT`), and then **LEFT JOIN** that result back to your original table using a standard ID. This forces the use of the spatial index.
+---
 
-### 2. Subdivide "Heavy" Geometries
-Extremely complex polygons (thousands of vertices) can slow down joins and hit memory limits.
-- **The Trick**: Break large polygons into smaller, simpler pieces (e.g., using an `ST_Subdivide` pattern) at ingestion time. BigQuery's S2-based index handles many simple polygons much faster than one massive one.
+## 2. High-Performance Spatial Query Patterns
 
-### 3. Efficient Nearest Neighbor (Iterative Search)
-Avoid full cross-joins for nearest neighbor searches.
-- **The Trick**: Use BigQuery Scripting with a `WHILE` loop. Start with a small `ST_DWITHIN` radius. If no results are found, increase the radius and repeat.
+### 2.1 Spatial Predicate Optimization & The Two-Join Trick
+- **Spatial Join Predicate Rules**: Always prioritize `ST_INTERSECTS` for high-performance joins. Avoid mixing standard equality joins (e.g. `a.id = b.id`) with spatial predicates inside the same `ON` clause to prevent the optimizer from bypassing the spatial index.
+- **The Two-Join Trick for Spatial Outer Joins**: BigQuery's spatial optimizer is strictly tuned for **INNER** spatial joins. Direct `LEFT OUTER JOIN` on spatial predicates can bypass index pruning and become slow.
+  - *The Pattern*: Perform an accelerated spatial **INNER JOIN** first, aggregate the result (e.g. `COUNT` or array aggregation), and then **LEFT JOIN** back to the primary base table on standard non-spatial primary keys:
+    ```sql
+    WITH matched_points AS (
+      SELECT 
+        b.boundary_id,
+        COUNT(p.point_id) AS incident_count
+      FROM `my_project.my_dataset.boundaries` b
+      INNER JOIN `my_project.my_dataset.points` p
+        ON ST_INTERSECTS(b.geometry, p.geog_point)
+      GROUP BY 1
+    )
+    SELECT 
+      b.boundary_id,
+      b.boundary_name,
+      COALESCE(m.incident_count, 0) AS total_incidents
+    FROM `my_project.my_dataset.boundaries` b
+    LEFT JOIN matched_points m
+      ON b.boundary_id = m.boundary_id;
+    ```
 
-### 4. Grouping by Geography
-BigQuery does not allow `GROUP BY` on a `GEOGRAPHY` column.
-- **The Trick**: Group by a unique identifier (ID or S2/H3 cell) and use **`ANY_VALUE(geog_column)`** to retrieve the geography.
+### 2.2 Avoid `ST_UNION_AGG` on Large Datasets (Scalar Bounding Box Aggregation)
+- **The Problem**: On high-volume spatial tables (>100,000 rows), executing `ST_UNION_AGG(geometry)` to compute a global bounding box leads to slot memory exhaustion and query timeouts.
+- **The Solution**: Extract bounding box coordinate components using `ST_BOUNDINGBOX(geometry)` and compute fast scalar `MIN`/`MAX` aggregations across the component coordinate floats:
+  ```sql
+  WITH bbox_parts AS (
+    SELECT ST_BOUNDINGBOX(geometry) AS bbox
+    FROM `my_project.my_dataset.large_spatial_table`
+  )
+  SELECT 
+    MIN(bbox.xmin) AS min_lon,
+    MIN(bbox.ymin) AS min_lat,
+    MAX(bbox.xmax) AS max_lon,
+    MAX(bbox.ymax) AS max_lat
+  FROM bbox_parts;
+  ```
 
-### 5. Localized Regional Buffer Clipping (Excluding Fragmented Islands / Sub-regions)
-Administrative boundaries for a region can sometimes contain distant fragments (e.g., islands or outer exclaves) that are irrelevant to the target urban center. Using pure administrative boundaries in these cases results in overly large bounding boxes and wastes API query limits / processing resource.
-- **The Solution**: Intersect (`ST_INTERSECTION`) the administrative geometry aggregates with a localized `ST_BUFFER` around the primary urban centroid.
-- **Interactive Multi-Version Visual Comparison Design**:
-  When a highly fragmented region is detected (i.e., bounding box is $>5\times$ larger than the actual land area), generate and display a comparative markdown carousel presenting the raw option along with multiple suggested simplifications testing different thresholds to adapt to different target geographies:
-  1. **Original Boundary**: The complete raw administrative region (no fragments omitted).
-  2. **Suggested Simplified (Version A - Conservative Filtering)**: Tests a tight size threshold (e.g., discarding parts $< 0.1\%$ of dominant landmass area) and a loose distance buffer. Excellent for archipelago-dense urban environments (e.g., Osaka, Seattle).
-  3. **Suggested Simplified (Version B - Moderate Filtering)**: Tests a moderate size threshold (e.g., discarding parts $< 1\%$ of dominant landmass area) and a scale-aware distance buffer.
-  4. **Suggested Simplified (Version C - Aggressive Filtering / Centroid Buffer)**: Tests an aggressive threshold (e.g., discarding parts $< 5\%$) or applies a fixed radial mainland buffer (e.g., 25km circular clip from center point). Ideal for mainland-isolated cities (e.g., Jakarta, Melbourne).
-  
-  The user is presented with a visual preview of each version side-by-side (rendered via static maps) to choose the best configuration interactively.
-- **Example (Clipped Jakarta Mainland Ingestion via Centroid Buffer)**:
+### 2.3 Grouping by Geography (`ANY_VALUE` Workaround)
+- **The Constraint**: BigQuery disallows direct `GROUP BY` operations on columns of type `GEOGRAPHY`.
+- **The Workarounds**:
+  - *Pattern A*: Group by a unique non-spatial primary key (or S2/H3 index token) and wrap the geography in **`ANY_VALUE(geog_column)`**.
+  - *Pattern B*: Convert the geometry to WKT string (`ST_ASTEXT(geog)`) for grouping, then restore via `ST_GEOGFROMTEXT` in the outer query.
+
+### 2.4 Subdividing Heavy Geometries (`ST_SUBDIVIDE`)
+- **The Pattern**: Massive multi-thousand-vertex polygons degrade join performance. Break complex regional boundaries into simpler sub-polygons at ingestion time. BigQuery's S2 index processes many simple sub-polygons significantly faster than a single monolithic boundary.
+
+### 2.5 Efficient Nearest Neighbor (Iterative Search Loop)
+- **The Pattern**: Avoid costly cross-joins when searching for the single nearest neighbor to a point. Use BigQuery procedural SQL with a `WHILE` loop: start with a small `ST_DWITHIN` radius (e.g. 500m), check row count, and incrementally double the search radius until a match is found.
+
+---
+
+## 3. Boundary, Corridor & Polyline Engineering
+
+### 3.1 Localized Centroid Buffer Clipping (Excluding Distant Islands / Exclaves)
+Administrative boundaries frequently include distant islands, reefs, or outer exclaves irrelevant to urban corridor analysis, producing bloated bounding boxes ($>5\times$ actual landmass).
+- **The Pattern**: Intersect (`ST_INTERSECTION`) the administrative geometry with a localized `ST_BUFFER` centered at the urban centroid:
   ```sql
   WITH raw_data AS (
     SELECT geometry FROM `my_project.my_dataset.regional_boundaries` WHERE region_code = "ID-JK"
-  ),
-  unified AS (
-    SELECT 
-      ST_INTERSECTION(
-        ST_UNION_AGG(geometry),
-        ST_BUFFER(ST_GEOGPOINT(106.83423619852961, -6.206387954448808), 25000) -- 25km mainland buffer
-      ) as boundary_geom 
-    FROM raw_data
   )
+  SELECT 
+    ST_INTERSECTION(
+      ST_UNION_AGG(geometry),
+      ST_BUFFER(ST_GEOGPOINT(106.8342, -6.2063), 25000) -- 25km circular urban buffer
+    ) AS boundary_geom 
+  FROM raw_data;
   ```
+- **Comparative Multi-Version Carousel Guidelines**: When evaluating fragmented regions, generate markdown preview carousels contrasting:
+  1. *Original Boundary*: Raw administrative polygon without filtering.
+  2. *Version A (Conservative)*: Size filter discarding fragments $< 0.1\%$ of landmass (ideal for archipelago cities like Seattle, Osaka).
+  3. *Version B (Moderate)*: Size filter discarding fragments $< 1\%$ with scale-aware distance buffers.
+  4. *Version C (Aggressive / Centroid Buffer)*: Fixed radial buffer (e.g., 25km circular clip for mainland-focused metros).
 
-### 6. Equal-Length Line Slicing via JavaScript UDF
-When corridor route segments exceed a maximum length threshold (e.g. 0.5 miles / 804.672m), BigQuery SQL can slice a `GEOGRAPHY` LineString into $N$ equal parts while interpolating intermediate points and keeping original internal vertices.
-- **JavaScript UDF Pattern**:
-  ```sql
-  CREATE OR REPLACE FUNCTION `my_project.my_dataset.slice_line_geojson`(geojson STRING, N INT64)
-  RETURNS ARRAY<STRING>
-  LANGUAGE js AS """
-  if (!geojson || N <= 0) return [];
-  const geom = JSON.parse(geojson);
-  if (geom.type !== "LineString" || !geom.coordinates || geom.coordinates.length < 2) return [geojson];
-  const coords = geom.coordinates;
+### 3.2 Equal-Length Line Slicing via JavaScript UDF
+When corridor route segments exceed target lengths (e.g., 0.5 miles / 804.672m), slice a `GEOGRAPHY` LineString into $N$ equal parts while interpolating intermediate points and preserving authentic internal vertices:
+```sql
+CREATE OR REPLACE FUNCTION `my_project.my_dataset.slice_line_geojson`(geojson STRING, N INT64)
+RETURNS ARRAY<STRING>
+LANGUAGE js AS """
+if (!geojson || N <= 0) return [];
+const geom = JSON.parse(geojson);
+if (geom.type !== "LineString" || !geom.coordinates || geom.coordinates.length < 2) return [geojson];
+const coords = geom.coordinates;
 
-  function haversine(p1, p2) {
-    const R = 6371008.8; // meters
-    const dLat = (p2[1] - p1[1]) * Math.PI / 180;
-    const dLon = (p2[0] - p1[0]) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(p1[1] * Math.PI / 180) * Math.cos(p2[1] * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  }
+function haversine(p1, p2) {
+  const R = 6371008.8; // meters
+  const dLat = (p2[1] - p1[1]) * Math.PI / 180;
+  const dLon = (p2[0] - p1[0]) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(p1[1] * Math.PI / 180) * Math.cos(p2[1] * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
 
-  let totalLen = 0;
-  const dists = [0];
-  for (let i = 0; i < coords.length - 1; i++) {
-    const d = haversine(coords[i], coords[i+1]);
-    totalLen += d;
-    dists.push(totalLen);
-  }
+let totalLen = 0;
+const dists = [0];
+for (let i = 0; i < coords.length - 1; i++) {
+  const d = haversine(coords[i], coords[i+1]);
+  totalLen += d;
+  dists.push(totalLen);
+}
 
-  if (N === 1 || totalLen === 0) return [geojson];
+if (N === 1 || totalLen === 0) return [geojson];
 
-  function getPointAtDist(targetD) {
-    if (targetD <= 0) return coords[0];
-    if (targetD >= totalLen) return coords[coords.length - 1];
-    for (let i = 0; i < dists.length - 1; i++) {
-      if (targetD >= dists[i] && targetD <= dists[i+1]) {
-        const segLen = dists[i+1] - dists[i];
-        if (segLen === 0) return coords[i];
-        const t = (targetD - dists[i]) / segLen;
-        return [coords[i][0] + t * (coords[i+1][0] - coords[i][0]), coords[i][1] + t * (coords[i+1][1] - coords[i][1])];
-      }
+function getPointAtDist(targetD) {
+  if (targetD <= 0) return coords[0];
+  if (targetD >= totalLen) return coords[coords.length - 1];
+  for (let i = 0; i < dists.length - 1; i++) {
+    if (targetD >= dists[i] && targetD <= dists[i+1]) {
+      const segLen = dists[i+1] - dists[i];
+      if (segLen === 0) return coords[i];
+      const t = (targetD - dists[i]) / segLen;
+      return [coords[i][0] + t * (coords[i+1][0] - coords[i][0]), coords[i][1] + t * (coords[i+1][1] - coords[i][1])];
     }
-    return coords[coords.length - 1];
   }
+  return coords[coords.length - 1];
+}
 
-  const results = [];
-  const stepLen = totalLen / N;
-  for (let k = 0; k < N; k++) {
-    const startD = k * stepLen;
-    const endD = (k === N - 1) ? totalLen : (k + 1) * stepLen;
-    const subCoords = [getPointAtDist(startD)];
-    for (let i = 1; i < coords.length - 1; i++) {
-      if (dists[i] > startD + 1e-7 && dists[i] < endD - 1e-7) subCoords.push(coords[i]);
-    }
-    subCoords.push(getPointAtDist(endD));
-    results.push(JSON.stringify({ type: "LineString", coordinates: subCoords }));
+const results = [];
+const stepLen = totalLen / N;
+for (let k = 0; k < N; k++) {
+  const startD = k * stepLen;
+  const endD = (k === N - 1) ? totalLen : (k + 1) * stepLen;
+  const subCoords = [getPointAtDist(startD)];
+  for (let i = 1; i < coords.length - 1; i++) {
+    if (dists[i] > startD + 1e-7 && dists[i] < endD - 1e-7) subCoords.push(coords[i]);
   }
-  return results;
-  """;
-  ```
-- **Display Name Formatting Rule**: When appending an index suffix (e.g. ` (1/3)`) to sub-segments, ONLY append the suffix if `display_name != ""` so that blank/unnamed segments remain clean empty strings.
+  subCoords.push(getPointAtDist(endD));
+  results.push(JSON.stringify({ type: "LineString", coordinates: subCoords }));
+}
+return results;
+""";
+```
+- **Display Name Formatting Rule**: When appending index suffixes (e.g. ` (1/3)`), ONLY append if `display_name != ""` so blank names remain clean empty strings.
 
-## CARTO Analytics Toolbox for BigQuery
-Since BigQuery's native advanced function support is focused on core primitives, the **CARTO Analytics Toolbox** is the primary source for rich geospatial extensions.
+### 3.3 Tile Extraction Edge-Redundancy & Coordinate Deduplication
+When extracting regional road networks using multi-tile grid strategies (e.g., Zoom 12/13 tile grids), border-crossing segments are retrieved redundantly across adjacent queries with slight centimeter-level coordinate offsets. Left unchecked, downstream graph fusion engines treat these offsets as distinct physical lanes, bloating network length by 1% to 4%.
+- **The Solution**: Implement a POSIX-compliant compound hash filter (e.g., compound hash of `name` and exact `coordinates`) at Step 1 of baseline ingestion to purge tile-edge coordinate offsets before running topological healing.
 
-### 1. Advanced Spatial Indexing (H3 & Quadbin)
-BigQuery does **not** have native H3 support. Use CARTO for hexagonal and square-based indexing.
-- `carto.h3.ST_ASH3(geog, res)`: Convert geography to H3 cells.
-- `carto.h3.POLYFILL(geog, res)`: Fill a polygon with H3 cells.
-- `carto.h3.KRING(h3, r)`: Find neighbors within radius `r`.
+---
 
-### 2. Location Data Services (LDS)
-- **Geocoding**: `carto.lds.GEOCODE_REVERSE(point)`
-- **Isolines**: Generate travel-time or travel-distance buffers (e.g., `carto.lds.CREATE_ISOLINE`).
+## 4. CARTO Analytics Toolbox for BigQuery
 
-### 3. Spatial Statistics & Tiler
-- **Advanced Stats**: `carto.statistics.GETIS_ORD`, `carto.statistics.MORANS_I`.
-- **Large-Scale Visualization**: `carto.tiler.CREATE_TILESET` generates vector tiles directly in BigQuery.
+While BigQuery provides basic native S2 primitives (`S2_CELLIDFROMPOINT`, `S2_COVERINGCELLIDS`), native BigQuery **lacks the ability to convert S2 cell IDs back into polygon boundaries or navigate S2 cell hierarchies**. The **CARTO Analytics Toolbox** provides comprehensive S2, H3, and Quadbin spatial indexing functions directly inside BigQuery SQL.
 
-## Native vs. CARTO: When to use what?
+### 4.1 CARTO S2 Hierarchical Spatial Indexing
+- **`carto.s2.ST_BOUNDARY(s2_id)`**: **Computes the exact polygon boundary `GEOGRAPHY` of an S2 cell ID/token**. Crucial for visualizing S2 spatial partitions, rendering grid cells, or joining S2 cells to municipal polygons.
+- **`carto.s2.FROMGEOGPOINT(geog_point, resolution)`**: Converts a `GEOGRAPHY` point to an S2 cell ID at a specified level (0 to 30).
+- **`carto.s2.POLYFILL(polygon_geog, resolution)`**: Generates an array of S2 cell IDs covering a given polygon boundary.
+- **`carto.s2.TOPARENT(s2_id, parent_resolution)`**: Traverses up the S2 spatial hierarchy to aggregate data into coarser parent cells.
+- **`carto.s2.TOCHILDREN(s2_id, child_resolution)`**: Expands a parent S2 cell into its sub-grid children cells.
+- **`carto.s2.KRING(s2_id, ring_distance)`**: Returns neighboring S2 cells within distance $K$.
 
-| Task | Recommendation |
-| :--- | :--- |
-| **Standard Joins & Distance** | Use **Native BigQuery** (`ST_INTERSECTS`, `ST_DWITHIN`). |
-| **Geodesic Geometry Math** | Use **Native BigQuery** (`ST_AREA`, `ST_LENGTH`). |
-| **S2 Indexing / Logic** | Use **Native BigQuery** (`S2_CELLIDFROMPOINT`). |
-| **H3 / Quadbin Analysis** | Use **CARTO** (`carto.h3.*`, `carto.quadbin.*`). |
-| **Travel Time / Isolines** | Use **CARTO LDS** (`carto.lds.*`). |
-| **Hotspot/Clustering Stats** | Use **CARTO Statistics** (`carto.statistics.*`). |
-| **Large-Scale Tiling** | Use **CARTO Tiler** (`carto.tiler.CREATE_TILESET`). |
+### 4.2 CARTO Hexagonal H3 & Quadbin Indexing
+BigQuery does not support native H3 hexagonal indexing. Use CARTO for hexagonal and square spatial binning:
+- **`carto.h3.ST_ASH3(geog_point, resolution)`**: Converts a `GEOGRAPHY` point to an H3 index string.
+- **`carto.h3.ST_BOUNDARY(h3_id)`**: Computes the hexagon boundary `GEOGRAPHY` of an H3 cell.
+- **`carto.h3.POLYFILL(polygon_geog, resolution)`**: Fills a polygon with covering H3 cell identifiers.
+- **`carto.h3.KRING(h3_id, ring_distance)`**: Returns neighbor H3 cells within radius $K$.
+- **`carto.quadbin.QUADBIN_FROMGEOGPOINT(geog_point, resolution)`** & **`carto.quadbin.QUADBIN_BOUNDARY(quadbin_id)`**: Quadkey/quadbin hierarchical indexing.
 
-## Best Practices
-- **Use `GEOGRAPHY` Over Lat/Lng**: Always prefer `GEOGRAPHY` columns and spatial functions. BigQuery uses an internal S2 spatial index for these.
-- **Spatial Clustering**: Cluster your tables on a `GEOGRAPHY` column to colocate data by S2 cell.
-- **Simplify Geometries**: Use `ST_SIMPLIFY` for complex polygons to improve query performance.
+---
+
+## 5. Native vs. CARTO Decision Matrix
+
+| Task | Recommendation | Primary Function |
+| :--- | :--- | :--- |
+| **Standard Spatial Joins & Point in Polygon** | Use **Native BigQuery** | `ST_INTERSECTS`, `ST_CONTAINS` |
+| **Proximity & Distance Filtering** | Use **Native BigQuery** | `ST_DWITHIN(geog1, geog2, meters)` |
+| **Ellipsoidal Geodesic Math** | Use **Native BigQuery** | `ST_AREA`, `ST_LENGTH`, `ST_DISTANCE` |
+| **Point to S2 Cell ID** | Use **Native BigQuery** or **CARTO** | `S2_CELLIDFROMPOINT(geog)` / `carto.s2.FROMGEOGPOINT(geog, level)` |
+| **S2 Cell Boundary Polygon Generation** | Use **CARTO S2** | `carto.s2.ST_BOUNDARY(s2_id)` *(Native BigQuery lacks this)* |
+| **S2 Polygon Polyfill & Hierarchy Traversal** | Use **CARTO S2** | `carto.s2.POLYFILL`, `carto.s2.TOPARENT` |
+| **Hexagonal H3 / Quadbin Indexing & Boundaries** | Use **CARTO H3/Quadbin** | `carto.h3.ST_ASH3`, `carto.h3.ST_BOUNDARY`, `carto.h3.POLYFILL` |
+
+---
+
+## References
+
+### Official Google Cloud Documentation
+* [BigQuery Geospatial Analytics Overview](https://cloud.google.com/bigquery/docs/geospatial-data)
+* [BigQuery Geography Functions Reference (`ST_*`)](https://cloud.google.com/bigquery/docs/reference/standard-sql/geography_functions)
+* [Working with BigQuery Spatial Data](https://cloud.google.com/bigquery/docs/geospatial-analysis)
+* [Clustering Tables by Geography](https://cloud.google.com/bigquery/docs/clustered-tables#geography_clustering)
+
+### Official CARTO Analytics Toolbox Documentation
+* [CARTO Analytics Toolbox for BigQuery Overview](https://docs.carto.com/analytics-toolbox-bigquery)
+* [CARTO S2 Spatial Index Reference](https://docs.carto.com/analytics-toolbox-bigquery/overview/spatial-indexes#s2)
+* [CARTO H3 & Quadbin Spatial Indexes](https://docs.carto.com/analytics-toolbox-bigquery/overview/spatial-indexes)
+
+## Related Skills
+
+- **[`bigquery-practices`](../bigquery-practices/SKILL.md)**: Foundational BigQuery best practices, partition pruning, storage billing models, and execution diagnostics.
+- **[`bigquery-overturemaps`](../bigquery-overturemaps/SKILL.md)**: Querying Overture Maps Foundation global divisions, transportation, and building datasets in BigQuery.
+- **[`bigquery-geospatial-catalog`](../bigquery-geospatial-catalog/SKILL.md)**: Discovering and querying public geographic census boundaries and regional datasets.
+
+---
 
 ## Examples
 
-### 1. Spatial Join: Point in Polygon
-Join a table of coordinates with a boundary polygon dataset:
+### Example 1: Accelerated Spatial Point-in-Polygon Join
 ```sql
 SELECT 
   p.point_id, 
-  b.boundary_name
+  b.boundary_name,
+  b.boundary_id
 FROM 
   `my_project.my_dataset.points` p
 INNER JOIN 
   `my_project.my_dataset.boundaries` b
 ON 
-  ST_CONTAINS(b.geom, p.geog_point)
+  ST_CONTAINS(b.geometry, p.geog_point)
 WHERE 
   p.partition_date = "2026-06-12";
 ```
 
-### 2. Spatial Proximity: ST_DWithin
-Filter elements within a 500-meter radius of a spatial point:
+### Example 2: Geodesic Proximity Filtering with ST_DWithin
 ```sql
 SELECT 
   incident_id, 
-  incident_type
+  incident_type,
+  ST_DISTANCE(geog_point, ST_GEOGPOINT(-122.4194, 37.7749)) AS distance_meters
 FROM 
-  `my_project.my_dataset.incidents`
+  `my_project.my_dataset.traffic_incidents`
 WHERE 
-  ST_DWITHIN(geog_point, ST_GEOGPOINT(-122.4194, 37.7749), 500.0)
+  ST_DWITHIN(geog_point, ST_GEOGPOINT(-122.4194, 37.7749), 1000.0)
   AND partition_date >= "2026-06-01";
 ```
 
-## Related Skills
+### Example 3: S2 Spatial Binning & Boundary Generation via CARTO
+Aggregate telemetry observations into S2 Level 14 cells and compute polygon boundaries for map visualization:
+```sql
+WITH cell_metrics AS (
+  SELECT 
+    carto.s2.FROMGEOGPOINT(geog_point, 14) AS s2_cell_id,
+    AVG(speed_mph) AS avg_speed,
+    COUNT(1) AS observation_count
+  FROM 
+    `my_project.my_dataset.telemetry_points`
+  WHERE 
+    partition_date = "2026-06-12"
+  GROUP BY 1
+)
+SELECT 
+  s2_cell_id,
+  -- Generate the physical polygon boundary of the S2 cell for visual rendering
+  carto.s2.ST_BOUNDARY(s2_cell_id) AS cell_boundary,
+  avg_speed,
+  observation_count
+FROM 
+  cell_metrics;
+```
 
-- **[`bigquery-overturemaps`](../bigquery-overturemaps/SKILL.md)**: Querying Overture Maps Foundation datasets (divisions, transportation, places, buildings) in BigQuery, including `division_area` land filtering (`is_land = true`) and schema unwrapping.
-- **[`bigquery-geospatial-catalog`](../bigquery-geospatial-catalog/SKILL.md)**: Public geographic datasets, census boundaries, and regional catalog joins.
-- **[`bigquery-practices`](../bigquery-practices/SKILL.md)**: Query optimization, job tagging, cost management, and partitioned MERGE patterns.

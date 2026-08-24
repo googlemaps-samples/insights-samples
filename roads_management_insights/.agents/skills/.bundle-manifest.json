@@ -2,9 +2,9 @@
   "bundle_id": "rmi-core",
   "version": "1.0.0",
   "description": "Curated suite of agentic skills for Roads Management Insights (RMI) development, APIs, data analytics, and operational runbooks.",
-  "published_at": "2026-08-24T04:49:33.150758+00:00",
+  "published_at": "2026-08-24T06:57:07.794892+00:00",
   "upstream_commit": "untracked_local_build",
-  "total_skills_count": 13,
+  "total_skills_count": 15,
   "skills": {
     "api-analyticshub": {
       "source_path": "dist/api-analyticshub",
@@ -16,6 +16,22 @@
         "scripts/analyticshub_v1_helpers.sh": "d2de7c729ff3d62cc8a7286d3ae9f89fa37f0b5ea54f972708b351cb6b46d8c8",
         "scripts/api-common.sh": "e395124f802defa34de850e2bda941d23a97061a24604c25dd0fd420a456384b",
         "scripts/list_all_pages.sh": "153c5a641cb6110bdff7d31d2806cb956bc1bd2a9c28062ced0dc1b0097448b4"
+      }
+    },
+    "api-geminidataanalytics": {
+      "source_path": "dist/api-geminidataanalytics",
+      "files_count": 10,
+      "hashes": {
+        "SKILL.md": "8f939ce54424562737e90cda328257ce190edb82004212296c1e2667240721a4",
+        "references/discoveryDocs/geminidataanalytics_v1_20260815.json": "706d99ba756247b81312866f92660ea0aa6a158232adcde12e6b352453dd853c",
+        "references/discoveryDocs/geminidataanalytics_v1alpha_20260815.json": "7fcf56f88ad8f1589ee2aa38fa0f06a40d976b82d04a1e28fa6a817dc37d9b2d",
+        "references/discoveryDocs/geminidataanalytics_v1beta_20260815.json": "a185dd50779893d27176b2eb04cd35ecb6a1f8ae706d1254fd7e122150adf3ae",
+        "scripts/api-common.sh": "ac7aa56300aa3e205e66eaba22f6b6f718e9a33b6fb650680f9e4192c8fdc180",
+        "scripts/geminidataanalytics_helpers.sh": "acacd290cc5502e846126e47183cf5a248113433bc76e05e462a46d681d6c8b4",
+        "scripts/geminidataanalytics_v1.sh": "bcdb8af7632e791f068f67287b2929dfe02830e157f023179f95d91bdbb71462",
+        "scripts/geminidataanalytics_v1alpha.sh": "338f88082be0e3243c82ce11e3eb58d2e9f0713d102fdd4e84995defa7255c44",
+        "scripts/geminidataanalytics_v1beta.sh": "f58cbc1d3d42441f515613f3d8d5d3c970b688f42d1d5b15ddebfc1ba947d98b",
+        "scripts/geminidataanalytics_v1beta_helpers.sh": "238c2aecda0f7ff2f5168fe6ee284bc433bdbc40e5d230a4804070c2beb65756"
       }
     },
     "api-roadsselection": {
@@ -55,16 +71,14 @@
       "source_path": "dist/bigquery-geospatial",
       "files_count": 1,
       "hashes": {
-        "SKILL.md": "564d1d88d9d828d943acbd078fb9b645bde8d1bfaa03e08dc82ab07aaf88584c"
+        "SKILL.md": "4f141802530353836ca5a3d0ebf5322d249dbe5afa404bbe7d15f1a2a8b32ecf"
       }
     },
     "bigquery-practices": {
       "source_path": "dist/bigquery-practices",
-      "files_count": 10,
+      "files_count": 8,
       "hashes": {
-        "SKILL.md": "6608d9eba0f52725e61a332a657aade8ac6a73313f5f9580375a64b31c79554e",
-        "references/bigquery_core.md": "58ef8105415f5b1a218218ac3d78d1430576335e332f9315defb40be961eb4e9",
-        "references/bigquery_ml.md": "ef5e5d655c0036f597c62503f79a468641f2efaf9d7a71518a7a0e8e2da275a0",
+        "SKILL.md": "800ee73eb9d683feb29190f91d4bc26a7bef1d841283883cf2afcf6309918055",
         "references/table_schema/jobs.json": "721c863c1f2860f973204680e832d70e3edf4190173e6ebbfefd335a4f8139e2",
         "references/table_schema/partitions.json": "83d1c6f490414a94c68d67d6a097b19e392af8aaac7ac00bbdba14530961d75d",
         "references/table_schema/tables.json": "debba756400337fb3737d201256a537ac5d84091e2b0cac96e21278e596c0893",
@@ -142,6 +156,24 @@
         "assets/notebooks/Urban_Planner_Samples.ipynb": "d6bb8685841d2b43f6400405935fe45ceac9bdc8a3421200e398714ab722ae46"
       }
     },
+    "rmi-dataagent-helper": {
+      "source_path": "dist/rmi-dataagent-helper",
+      "files_count": 12,
+      "hashes": {
+        "SKILL.md": "6e45300b23f0f8b683bb00e29bfc57310a5bd8a277338e6dfe0ffe1f44eb341e",
+        "references/data_agent_best_practices.md": "ee0fff8e668549a3238a46975eb7eef4377c61189571b4082ae87daa360c7cb7",
+        "references/instructions.md": "1a20d021e7388a3d1256487681872707f86eba0e98e5a09e01aefe35121889b2",
+        "references/persona_setup_guides.md": "996ab5af25efc0c6302c8574e52a86e4369abfd8baa4a32297d4966bdd1d269d",
+        "scripts/populate_all_queries.py": "4a210795a6491f0e59b9c6d82c85b5a4c4fa3b0952ca2d96ee090054eb0e4339",
+        "scripts/provision_data_agent.sh": "45297e9bfea255cb598299398d9690c12dba7a396d0577df037542733560bf12",
+        "assets/bigquery_admin_agent_expert.json": "43c04f2ea1793a9a25e5794429d7ba63d5e0dcb3aad7e9af4d7ed2e1a50d5b2e",
+        "assets/data_engineer_agent_expert.json": "becbe2178806cfbe246900597e01cba1ea45152d586e0462181bb46ac4b467f2",
+        "assets/data_scientist_agent_expert.json": "b488a69a538024d212c6d146fee20d947e44d6b58590520bd334f21fbe063ed2",
+        "assets/rmi_planner_agent_expert.json": "bf828d3af0e7cbf59c56975de1c03108dfdd6bad020f2c2249fc746e62654bb1",
+        "assets/traffic_ops_agent_expert.json": "95624a6102644e76425d8ac0349a2439235fe1572101ab56165a6a12290562a2",
+        "assets/urban_planner_agent_expert.json": "b8b127cbac7af44cb57aef92bb0039bfc530a3507e24c6cf0a83b1762c5e1cf1"
+      }
+    },
     "rmi-data-foundation-bigquery": {
       "source_path": "dist/rmi-data-foundation-bigquery",
       "files_count": 6,
@@ -183,12 +215,11 @@
     },
     "rmi-sampledatasets": {
       "source_path": "dist/rmi-sampledatasets",
-      "files_count": 5,
+      "files_count": 4,
       "hashes": {
-        "SKILL.md": "426a547fbaec47c605435a8761d0e926105b63325420440a83ec8e65b6794a48",
+        "SKILL.md": "59b50d31eb234d4cca0686f88997bc2c0343b5a33b9c8dcbcd687f91ea44d104",
         "references/boston_2026.md": "8b8ff4652727cef880bfe1d4afc2bad6afeadd6037bb66c5699876f66e6fb1df",
         "references/metrics.md": "50c6df038ce7e6e371be9a3c8c3de2e588a6177205354acd1d1e6b09d3907b86",
-        "references/sample_catalog_2026.md": "3da1e5a3b06cc9fbfc88d56cf4f8217e0da59c98bf63390297350407207d2e0a",
         "scripts/list_sample_datasets.sh": "65fe3dc49419ccb834891b5a8367833a18314d48303760afb19952a12f567a1d"
       }
     },
