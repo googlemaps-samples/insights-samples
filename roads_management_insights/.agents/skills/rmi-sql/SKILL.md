@@ -1,6 +1,12 @@
 ---
 name: rmi-sql
 description: Use this skill for RMI-specific SQL design, including SRI analysis, route metadata parsing, bottleneck detection, and complex traffic metrics. This is the expert guide for writing high-quality queries against RMI BigQuery datasets.
+dependencies:
+  - rmi-data-foundation-bigquery
+  - rmi-data-realtime-bigquery
+  - bigquery-practices
+  - bigquery-geospatial
+  - rmi-sampledatasets
 ---
 
 # RMI SQL Reference & Query Logic

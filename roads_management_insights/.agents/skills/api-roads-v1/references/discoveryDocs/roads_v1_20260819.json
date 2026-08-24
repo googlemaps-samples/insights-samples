@@ -1,0 +1,839 @@
+{
+  "basePath": "",
+  "baseUrl": "https://roads.googleapis.com/",
+  "batchPath": "batch",
+  "description": "Fetch Google roads using a viewport, road ID, or latitude/longitude coordinates.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://developers.google.com/maps/documentation/roads/",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "roads:v1",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://roads.mtls.googleapis.com/",
+  "name": "roads",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "nearestRoads": {
+      "methods": {
+        "list": {
+          "description": "This method takes a list of latitude,longitude points and snaps them each to their nearest road. Also returns a place ID for each snapped point.",
+          "flatPath": "v1/nearestRoads",
+          "httpMethod": "GET",
+          "id": "roads.nearestRoads.list",
+          "parameterOrder": [],
+          "parameters": {
+            "points": {
+              "description": "The points to be snapped as a series of lat, lng points. Specified as a string of the format: lat,lng|lat,lng|...",
+              "location": "query",
+              "type": "string"
+            },
+            "travelMode": {
+              "description": "The type of travel being tracked. This will constrain the roads we snap to.",
+              "enum": [
+                "TRAVEL_MODE_UNSPECIFIED",
+                "DRIVING",
+                "CYCLING",
+                "WALKING"
+              ],
+              "enumDescriptions": [
+                "",
+                "",
+                "",
+                ""
+              ],
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "v1/nearestRoads",
+          "response": {
+            "$ref": "ListNearestRoadsResponse"
+          }
+        }
+      }
+    },
+    "speedLimits": {
+      "methods": {
+        "list": {
+          "description": "This method takes a sequence of place IDs and returns the speed limit for each road segment. If no speed limit is known for a given place ID, nothing is returned.",
+          "flatPath": "v1/speedLimits",
+          "httpMethod": "GET",
+          "id": "roads.speedLimits.list",
+          "parameterOrder": [],
+          "parameters": {
+            "path": {
+              "description": "The path to first snap and retrieve speed limits for.",
+              "location": "query",
+              "type": "string"
+            },
+            "placeId": {
+              "description": "The list of place IDs to return speed limits for.",
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            },
+            "units": {
+              "description": "The units that speed limits should be returned in. Default is KPH.",
+              "enum": [
+                "SPEED_UNITS_UNSPECIFIED",
+                "KPH",
+                "MPH"
+              ],
+              "enumDescriptions": [
+                "Proto3 expects the zero value to be \"unspecified\", and ESF doesn't render zero values in JSON responses. See b/19267160 for context.",
+                "Kilometers per hour.",
+                "Miles per hour."
+              ],
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "v1/speedLimits",
+          "response": {
+            "$ref": "ListSpeedLimitsResponse"
+          }
+        }
+      }
+    },
+    "trafficSpeeds": {
+      "methods": {
+        "list": {
+          "description": "This method takes a sequence of place IDs and a list of types of speeds and returns those speeds for each road segment. If a speed is not known for a given place ID, that speed is not returned. If no speeds are known for a road segment, nothing is returned for that road segment.",
+          "flatPath": "v1/trafficSpeeds",
+          "httpMethod": "GET",
+          "id": "roads.trafficSpeeds.list",
+          "parameterOrder": [],
+          "parameters": {
+            "locationEncoding": {
+              "description": "Encoding method to use for the response.",
+              "enum": [
+                "UNSPECIFIED",
+                "PLACE_ID",
+                "OPENLR"
+              ],
+              "enumDescriptions": [
+                "Unspecified",
+                "Place ID, as used across Google Maps APIs. See https://developers.google.com/places/place-id#id-overview",
+                "OpenLR location string. OpenLR is an open standard which encodes road segments in a format that allows the road to be located unambiguously in any map. See http://openlr.org/data/docs/OpenLR-Whitepaper_v1.5.pdf"
+              ],
+              "location": "query",
+              "type": "string"
+            },
+            "path": {
+              "description": "The path to first snap and retrieve speed limits for.",
+              "location": "query",
+              "type": "string"
+            },
+            "placeId": {
+              "description": "The list of place IDs to return speeds for.",
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            },
+            "type": {
+              "description": "The types of speeds to return.",
+              "enum": [
+                "UNSPECIFIED",
+                "CURRENT",
+                "FREEFLOW"
+              ],
+              "enumDescriptions": [
+                "Unspecified",
+                "Requests the current speed of traffic to be returned for the requested road segments.",
+                "Requests the speed one expects vehicles to travel at on those road segments when unhindered by traffic."
+              ],
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            },
+            "units": {
+              "description": "The units that speeds should be returned in. Default is KPH.",
+              "enum": [
+                "SPEED_UNITS_UNSPECIFIED",
+                "KPH",
+                "MPH"
+              ],
+              "enumDescriptions": [
+                "Proto3 expects the zero value to be \"unspecified\", and ESF doesn't render zero values in JSON responses. See b/19267160 for context.",
+                "Kilometers per hour.",
+                "Miles per hour."
+              ],
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "v1/trafficSpeeds",
+          "response": {
+            "$ref": "ListTrafficSpeedsResponse"
+          }
+        },
+        "tile": {
+          "description": "",
+          "flatPath": "v1/trafficSpeeds/tile",
+          "httpMethod": "POST",
+          "id": "roads.trafficSpeeds.tile",
+          "parameterOrder": [],
+          "parameters": {
+            "locationEncoding": {
+              "description": "Encoding method to use for the response.",
+              "enum": [
+                "UNSPECIFIED",
+                "PLACE_ID",
+                "OPENLR"
+              ],
+              "enumDescriptions": [
+                "Unspecified",
+                "Place ID, as used across Google Maps APIs. See https://developers.google.com/places/place-id#id-overview",
+                "OpenLR location string. OpenLR is an open standard which encodes road segments in a format that allows the road to be located unambiguously in any map. See http://openlr.org/data/docs/OpenLR-Whitepaper_v1.5.pdf"
+              ],
+              "location": "query",
+              "type": "string"
+            },
+            "type": {
+              "description": "The types of speeds to return.",
+              "enum": [
+                "UNSPECIFIED",
+                "CURRENT",
+                "FREEFLOW"
+              ],
+              "enumDescriptions": [
+                "Unspecified",
+                "Requests the current speed of traffic to be returned for the requested road segments.",
+                "Requests the speed one expects vehicles to travel at on those road segments when unhindered by traffic."
+              ],
+              "location": "query",
+              "type": "string"
+            },
+            "units": {
+              "description": "The units that speeds should be returned in. Default is KPH.",
+              "enum": [
+                "SPEED_UNITS_UNSPECIFIED",
+                "KPH",
+                "MPH"
+              ],
+              "enumDescriptions": [
+                "Proto3 expects the zero value to be \"unspecified\", and ESF doesn't render zero values in JSON responses. See b/19267160 for context.",
+                "Kilometers per hour.",
+                "Miles per hour."
+              ],
+              "location": "query",
+              "type": "string"
+            },
+            "x": {
+              "description": "x-value of the tile coordinate. Ranges from 0 to 2^zoom",
+              "format": "int32",
+              "location": "query",
+              "type": "integer"
+            },
+            "y": {
+              "description": "y-value of the tile coordinate. Ranges from 0 to 2^zoom",
+              "format": "int32",
+              "location": "query",
+              "type": "integer"
+            },
+            "zoom": {
+              "description": "Zoom level of the tile coordinate. The coordinate system is n*n tiles in size, where n = 2^zoom. Currently, only zoom level 8 is supported in this service.",
+              "format": "int32",
+              "location": "query",
+              "type": "integer"
+            }
+          },
+          "path": "v1/trafficSpeeds/tile",
+          "response": {
+            "$ref": "ListTrafficSpeedsForTileResponse"
+          }
+        }
+      },
+      "resources": {
+        "tile": {
+          "methods": {
+            "list": {
+              "description": "",
+              "flatPath": "v1/trafficSpeeds/tile",
+              "httpMethod": "GET",
+              "id": "roads.trafficSpeeds.tile.list",
+              "parameterOrder": [],
+              "parameters": {
+                "locationEncoding": {
+                  "description": "Encoding method to use for the response.",
+                  "enum": [
+                    "UNSPECIFIED",
+                    "PLACE_ID",
+                    "OPENLR"
+                  ],
+                  "enumDescriptions": [
+                    "Unspecified",
+                    "Place ID, as used across Google Maps APIs. See https://developers.google.com/places/place-id#id-overview",
+                    "OpenLR location string. OpenLR is an open standard which encodes road segments in a format that allows the road to be located unambiguously in any map. See http://openlr.org/data/docs/OpenLR-Whitepaper_v1.5.pdf"
+                  ],
+                  "location": "query",
+                  "type": "string"
+                },
+                "type": {
+                  "description": "The types of speeds to return.",
+                  "enum": [
+                    "UNSPECIFIED",
+                    "CURRENT",
+                    "FREEFLOW"
+                  ],
+                  "enumDescriptions": [
+                    "Unspecified",
+                    "Requests the current speed of traffic to be returned for the requested road segments.",
+                    "Requests the speed one expects vehicles to travel at on those road segments when unhindered by traffic."
+                  ],
+                  "location": "query",
+                  "type": "string"
+                },
+                "units": {
+                  "description": "The units that speeds should be returned in. Default is KPH.",
+                  "enum": [
+                    "SPEED_UNITS_UNSPECIFIED",
+                    "KPH",
+                    "MPH"
+                  ],
+                  "enumDescriptions": [
+                    "Proto3 expects the zero value to be \"unspecified\", and ESF doesn't render zero values in JSON responses. See b/19267160 for context.",
+                    "Kilometers per hour.",
+                    "Miles per hour."
+                  ],
+                  "location": "query",
+                  "type": "string"
+                },
+                "x": {
+                  "description": "x-value of the tile coordinate. Ranges from 0 to 2^zoom",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "y": {
+                  "description": "y-value of the tile coordinate. Ranges from 0 to 2^zoom",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "zoom": {
+                  "description": "Zoom level of the tile coordinate. The coordinate system is n*n tiles in size, where n = 2^zoom. Currently, only zoom level 8 is supported in this service.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                }
+              },
+              "path": "v1/trafficSpeeds/tile",
+              "response": {
+                "$ref": "ListTrafficSpeedsForTileResponse"
+              }
+            }
+          }
+        }
+      }
+    },
+    "v1": {
+      "methods": {
+        "nearestRoads": {
+          "description": "This method takes a list of latitude,longitude points and snaps them each to their nearest road. Also returns a place ID for each snapped point.",
+          "flatPath": "v1/nearestRoads",
+          "httpMethod": "POST",
+          "id": "roads.nearestRoads",
+          "parameterOrder": [],
+          "parameters": {
+            "points": {
+              "description": "The points to be snapped as a series of lat, lng points. Specified as a string of the format: lat,lng|lat,lng|...",
+              "location": "query",
+              "type": "string"
+            },
+            "travelMode": {
+              "description": "The type of travel being tracked. This will constrain the roads we snap to.",
+              "enum": [
+                "TRAVEL_MODE_UNSPECIFIED",
+                "DRIVING",
+                "CYCLING",
+                "WALKING"
+              ],
+              "enumDescriptions": [
+                "",
+                "",
+                "",
+                ""
+              ],
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "v1/nearestRoads",
+          "response": {
+            "$ref": "ListNearestRoadsResponse"
+          }
+        },
+        "snapToRoads": {
+          "description": "This method takes a sequence of latitude,longitude points and snaps them to the most likely road segments. Optionally returns additional points giving the full road geometry. Also returns a place ID for each snapped point.",
+          "flatPath": "v1/snapToRoads",
+          "httpMethod": "GET",
+          "id": "roads.snapToRoads",
+          "parameterOrder": [],
+          "parameters": {
+            "assetId": {
+              "description": "The asset ID of the asset to which this path relates. This is used for abuse detection purposes for clients with asset-based SKUs.",
+              "location": "query",
+              "type": "string"
+            },
+            "interpolate": {
+              "description": "Whether to interpolate the points to return full road geometry.",
+              "location": "query",
+              "type": "boolean"
+            },
+            "path": {
+              "description": "The path to be snapped as a series of lat, lng points. Specified as a string of the format: lat,lng|lat,lng|...",
+              "location": "query",
+              "type": "string"
+            },
+            "travelMode": {
+              "description": "The type of travel being tracked. This will constrain the paths we snap to.",
+              "enum": [
+                "TRAVEL_MODE_UNSPECIFIED",
+                "DRIVING",
+                "CYCLING",
+                "WALKING"
+              ],
+              "enumDescriptions": [
+                "",
+                "",
+                "",
+                ""
+              ],
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "v1/snapToRoads",
+          "response": {
+            "$ref": "SnapToRoadsResponse"
+          }
+        },
+        "speedLimits": {
+          "description": "This method takes a sequence of place IDs and returns the speed limit for each road segment. If no speed limit is known for a given place ID, nothing is returned.",
+          "flatPath": "v1/speedLimits",
+          "httpMethod": "POST",
+          "id": "roads.speedLimits",
+          "parameterOrder": [],
+          "parameters": {
+            "path": {
+              "description": "The path to first snap and retrieve speed limits for.",
+              "location": "query",
+              "type": "string"
+            },
+            "placeId": {
+              "description": "The list of place IDs to return speed limits for.",
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            },
+            "units": {
+              "description": "The units that speed limits should be returned in. Default is KPH.",
+              "enum": [
+                "SPEED_UNITS_UNSPECIFIED",
+                "KPH",
+                "MPH"
+              ],
+              "enumDescriptions": [
+                "Proto3 expects the zero value to be \"unspecified\", and ESF doesn't render zero values in JSON responses. See b/19267160 for context.",
+                "Kilometers per hour.",
+                "Miles per hour."
+              ],
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "v1/speedLimits",
+          "response": {
+            "$ref": "ListSpeedLimitsResponse"
+          }
+        },
+        "trafficSpeeds": {
+          "description": "This method takes a sequence of place IDs and a list of types of speeds and returns those speeds for each road segment. If a speed is not known for a given place ID, that speed is not returned. If no speeds are known for a road segment, nothing is returned for that road segment.",
+          "flatPath": "v1/trafficSpeeds",
+          "httpMethod": "POST",
+          "id": "roads.trafficSpeeds",
+          "parameterOrder": [],
+          "parameters": {
+            "locationEncoding": {
+              "description": "Encoding method to use for the response.",
+              "enum": [
+                "UNSPECIFIED",
+                "PLACE_ID",
+                "OPENLR"
+              ],
+              "enumDescriptions": [
+                "Unspecified",
+                "Place ID, as used across Google Maps APIs. See https://developers.google.com/places/place-id#id-overview",
+                "OpenLR location string. OpenLR is an open standard which encodes road segments in a format that allows the road to be located unambiguously in any map. See http://openlr.org/data/docs/OpenLR-Whitepaper_v1.5.pdf"
+              ],
+              "location": "query",
+              "type": "string"
+            },
+            "path": {
+              "description": "The path to first snap and retrieve speed limits for.",
+              "location": "query",
+              "type": "string"
+            },
+            "placeId": {
+              "description": "The list of place IDs to return speeds for.",
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            },
+            "type": {
+              "description": "The types of speeds to return.",
+              "enum": [
+                "UNSPECIFIED",
+                "CURRENT",
+                "FREEFLOW"
+              ],
+              "enumDescriptions": [
+                "Unspecified",
+                "Requests the current speed of traffic to be returned for the requested road segments.",
+                "Requests the speed one expects vehicles to travel at on those road segments when unhindered by traffic."
+              ],
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            },
+            "units": {
+              "description": "The units that speeds should be returned in. Default is KPH.",
+              "enum": [
+                "SPEED_UNITS_UNSPECIFIED",
+                "KPH",
+                "MPH"
+              ],
+              "enumDescriptions": [
+                "Proto3 expects the zero value to be \"unspecified\", and ESF doesn't render zero values in JSON responses. See b/19267160 for context.",
+                "Kilometers per hour.",
+                "Miles per hour."
+              ],
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "v1/trafficSpeeds",
+          "response": {
+            "$ref": "ListTrafficSpeedsResponse"
+          }
+        }
+      }
+    }
+  },
+  "revision": "20260819",
+  "rootUrl": "https://roads.googleapis.com/",
+  "schemas": {
+    "LatLng": {
+      "description": "An object that represents a latitude/longitude pair. This is expressed as a pair of doubles to represent degrees latitude and degrees longitude. Unless specified otherwise, this object must conform to the WGS84 standard. Values must be within normalized ranges.",
+      "id": "LatLng",
+      "properties": {
+        "latitude": {
+          "description": "The latitude in degrees. It must be in the range [-90.0, +90.0].",
+          "format": "double",
+          "type": "number"
+        },
+        "longitude": {
+          "description": "The longitude in degrees. It must be in the range [-180.0, +180.0].",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "ListNearestRoadsResponse": {
+      "description": "The response from the ListNearestRoads method, returning a list of snapped points.",
+      "id": "ListNearestRoadsResponse",
+      "properties": {
+        "snappedPoints": {
+          "description": "A list of snapped points.",
+          "items": {
+            "$ref": "SnappedPoint"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListSpeedLimitsResponse": {
+      "description": "The response from the ListSpeedLimits method, returning a list of speed limits.",
+      "id": "ListSpeedLimitsResponse",
+      "properties": {
+        "snappedPoints": {
+          "description": "A list of snapped points (if a path was snapped as part of the process).",
+          "items": {
+            "$ref": "SnappedPoint"
+          },
+          "type": "array"
+        },
+        "speedLimits": {
+          "description": "A list of speed limits for each point.",
+          "items": {
+            "$ref": "SpeedLimit"
+          },
+          "type": "array"
+        },
+        "warningMessage": {
+          "description": "User-visible warning message, if any, which can be shown alongside a valid result.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListTrafficSpeedsForTileResponse": {
+      "description": "The response from the ListTrafficSpeedsForTile method, returning a list of traffic speeds for segments contained in the requested tile. The results are returned as a set of repeated fields, where the indices into each field line up. Only one of place_id and openlr can contain values. Only one of current_speed and freeflow_speed can contain values.",
+      "id": "ListTrafficSpeedsForTileResponse",
+      "properties": {
+        "currentSpeeds": {
+          "description": "The current speed of each road segment.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "freeflowSpeeds": {
+          "description": "The speed without traffic of each road segment.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "openlrIds": {
+          "description": "The OpenLR location string for each road segment. Refer to LocationEncoding.OPENLR for details.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "placeIds": {
+          "description": "The place ID of each road segment.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListTrafficSpeedsResponse": {
+      "description": "The response from the ListTrafficSpeeds method, returning a list of traffic speeds.",
+      "id": "ListTrafficSpeedsResponse",
+      "properties": {
+        "snappedPoints": {
+          "description": "A list of snapped points (if a path was snapped as part of the process).",
+          "items": {
+            "$ref": "SnappedPoint"
+          },
+          "type": "array"
+        },
+        "trafficSpeeds": {
+          "description": "A list of traffic speeds for each point.",
+          "items": {
+            "$ref": "TrafficSpeeds"
+          },
+          "type": "array"
+        },
+        "warningMessage": {
+          "description": "User-visible warning message, if any, which can be shown alongside a valid result.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "SnapToRoadsResponse": {
+      "description": "The response from the SnapToRoads method, returning a sequence of snapped points.",
+      "id": "SnapToRoadsResponse",
+      "properties": {
+        "snappedPoints": {
+          "description": "A list of snapped points.",
+          "items": {
+            "$ref": "SnappedPoint"
+          },
+          "type": "array"
+        },
+        "warningMessage": {
+          "description": "User-visible warning message, if any, which can be shown alongside a valid result.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "SnappedPoint": {
+      "description": "A snapped point object, representing the result of snapping.",
+      "id": "SnappedPoint",
+      "properties": {
+        "location": {
+          "$ref": "LatLng",
+          "description": "The lat,lng of the snapped location."
+        },
+        "originalIndex": {
+          "description": "The index into the original path of the equivalent pre-snapped point. This allows for identification of points which have been interpolated if this index is missing.",
+          "format": "uint32",
+          "type": "integer"
+        },
+        "placeId": {
+          "description": "The place ID for this snapped location (road segment). These are the same as are currently used by the Places API.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "SpeedLimit": {
+      "description": "A single speed limit.",
+      "id": "SpeedLimit",
+      "properties": {
+        "placeId": {
+          "description": "The place ID of this road segment.",
+          "type": "string"
+        },
+        "speedLimit": {
+          "description": "The speed limit of this road segment.",
+          "format": "float",
+          "type": "number"
+        },
+        "units": {
+          "description": "The units of the speed limit.",
+          "enum": [
+            "SPEED_UNITS_UNSPECIFIED",
+            "KPH",
+            "MPH"
+          ],
+          "enumDescriptions": [
+            "Proto3 expects the zero value to be \"unspecified\", and ESF doesn't render zero values in JSON responses. See b/19267160 for context.",
+            "Kilometers per hour.",
+            "Miles per hour."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "TrafficSpeeds": {
+      "description": "A set of speeds for a given road.",
+      "id": "TrafficSpeeds",
+      "properties": {
+        "currentSpeed": {
+          "description": "The current speed of this road segment.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "freeflowSpeed": {
+          "description": "The speed without traffic of this road segment.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "openlrId": {
+          "description": "The OpenLR location string for the road segment. Refer to LocationEncoding.OPENLR for details.",
+          "type": "string"
+        },
+        "placeId": {
+          "description": "The place ID of this road segment.",
+          "type": "string"
+        },
+        "units": {
+          "description": "The units of the speeds returned.",
+          "enum": [
+            "SPEED_UNITS_UNSPECIFIED",
+            "KPH",
+            "MPH"
+          ],
+          "enumDescriptions": [
+            "Proto3 expects the zero value to be \"unspecified\", and ESF doesn't render zero values in JSON responses. See b/19267160 for context.",
+            "Kilometers per hour.",
+            "Miles per hour."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Roads API",
+  "version": "v1",
+  "version_module": true
+}
