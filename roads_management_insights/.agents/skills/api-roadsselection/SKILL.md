@@ -336,3 +336,32 @@ When listing or synchronizing SelectedRoutes for projects with massive route def
   ```
 - **Avoid Massive Inline Buffering**: Processing more than 10,000 routes with high-precision coordinate profiles can lead to container memory limit crashes in serverless runtimes. Always write and flush each page directly to Google Cloud Storage (GCS) as a Newline-Delimited JSON (NDJSON) `.jsonl` file on-the-fly rather than waiting for the entire loop to finish.
 
+---
+
+## 9. Execution Strategy & Determinism Protocol
+
+### Tier 1: Deterministic Client Scripts (Primary / Recommended)
+Whenever POSIX shell execution is available, agents **MUST** prioritize using the pre-tested helper and client scripts located in `scripts/`:
+- Sourcing client: `source scripts/roads_selection_v1.sh`
+- Sourcing utilities: `source scripts/roads_selection_v1_util.sh`
+- Sourcing helpers: `source scripts/roads_selection_v1_helpers.sh`
+
+*Why:* Eliminates code hallucination risks, guarantees exact SelectedRoute waypoint formatting, enforces underscore prohibition (`selectedRouteId`), handles batch bisection on validation errors, and manages OAuth2 tokens and `X-Goog-User-Project` headers automatically.
+
+### Tier 2: Direct REST / Discovery Contract (Polyglot Fallback)
+If executing in environments without shell access (e.g., pure Python/Node.js runtimes, notebooks, or backend microservices):
+- Refer directly to the canonical Discovery Document in `references/discoveryDocs/generated_road_selection_v1.json` for parameter schemas, data types, and HTTP methods.
+- Issue requests directly via your runtime's native HTTP client without inventing ungrounded parameters.
+
+---
+
+## References
+
+- [Roads Management Insights Overview](https://developers.google.com/maps/documentation/roads-management-insights/overview)
+- [Roads Management Insights REST API Reference](https://developers.google.com/maps/documentation/roads-management-insights/reference/rest)
+- [Configure Roles](https://developers.google.com/maps/documentation/roads-management-insights/configure-roles)
+- [Discovery Documents](references/discoveryDocs/)
+
+
+
+

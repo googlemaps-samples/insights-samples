@@ -2,7 +2,7 @@
   "bundle_id": "rmi-core",
   "version": "1.0.0",
   "description": "Curated suite of agentic skills for Roads Management Insights (RMI) development, APIs, data analytics, and operational runbooks.",
-  "published_at": "2026-08-24T06:57:07.794892+00:00",
+  "published_at": "2026-08-24T15:48:31.538442+00:00",
   "upstream_commit": "untracked_local_build",
   "total_skills_count": 15,
   "skills": {
@@ -10,7 +10,7 @@
       "source_path": "dist/api-analyticshub",
       "files_count": 6,
       "hashes": {
-        "SKILL.md": "eeba61885a975c002e12ae6210434828106cdc9b4deda94d5179a3450c139419",
+        "SKILL.md": "403ab1f166da4f6e12e2ee292595c5b501d140eed570ee497831b3f0b456862a",
         "references/discoveryDocs/analyticshub_v1_20260813.json": "f0c20b3cf744386fbf4ce12dc2f32c4ed3720270f2dfefb2299a81eed3a0294b",
         "scripts/analyticshub_v1.sh": "472a04fd23f4eeafaf1a2fb71a8d2c4208dea408368bddca3b2e1235293cfef1",
         "scripts/analyticshub_v1_helpers.sh": "d2de7c729ff3d62cc8a7286d3ae9f89fa37f0b5ea54f972708b351cb6b46d8c8",
@@ -22,7 +22,7 @@
       "source_path": "dist/api-geminidataanalytics",
       "files_count": 10,
       "hashes": {
-        "SKILL.md": "8f939ce54424562737e90cda328257ce190edb82004212296c1e2667240721a4",
+        "SKILL.md": "0da314c8372a5eef89b25971d03053de24144f9767c293c4d17748235d69b148",
         "references/discoveryDocs/geminidataanalytics_v1_20260815.json": "706d99ba756247b81312866f92660ea0aa6a158232adcde12e6b352453dd853c",
         "references/discoveryDocs/geminidataanalytics_v1alpha_20260815.json": "7fcf56f88ad8f1589ee2aa38fa0f06a40d976b82d04a1e28fa6a817dc37d9b2d",
         "references/discoveryDocs/geminidataanalytics_v1beta_20260815.json": "a185dd50779893d27176b2eb04cd35ecb6a1f8ae706d1254fd7e122150adf3ae",
@@ -38,7 +38,7 @@
       "source_path": "dist/api-roadsselection",
       "files_count": 6,
       "hashes": {
-        "SKILL.md": "ec0668ffbb541c79bec7a99df9776737da259e96ce564623f0041e3d71169db4",
+        "SKILL.md": "ee6c3b9a54db9c2071909e467c2e42dce95f85731e2bc19df4716056675a789a",
         "references/discoveryDocs/generated_road_selection_v1.json": "bc574646200cef9240423025e08c3ed25d6562699970e88e29d7ff8c864d4cde",
         "scripts/api-common.sh": "512176337302d1e8cba62d7127264da4f6f0f485785c24e686ac6990c52b7391",
         "scripts/roads_selection_v1.sh": "d78956db8aff9d572b59626e0beab4229a3745ea8f645304bf1ea2551c94698e",
@@ -50,7 +50,7 @@
       "source_path": "dist/api-roads-v1",
       "files_count": 4,
       "hashes": {
-        "SKILL.md": "8567839727235a73bf59aefcfde2acac8ae76eaa3c54a003fdf4ea815ff7ac43",
+        "SKILL.md": "733ca196f930fa4ac59c8f8ba223a718caf342ad723c567bad0c9bc38c530d1b",
         "references/discoveryDocs/roads_v1_20260819.json": "7c13e0d352fe1359ed0145470e9b8c7b27700ca1ed627ee015415dc6d1659d0f",
         "scripts/api-common.sh": "0c9ce4192f4eac61362ae39e4e9b483cb52ec01a8634b04faea281252a348b70",
         "scripts/roads_v1.sh": "179b7232b185bbeb28f2ccea17856b49ad78dbedf9f4c95cf6f5ebcf2b39405b"
@@ -60,7 +60,7 @@
       "source_path": "dist/api-routes",
       "files_count": 5,
       "hashes": {
-        "SKILL.md": "d7965becb892e08a280429004ba8bab80494412235d11ab45acef72fe6b90abe",
+        "SKILL.md": "19f1e935f8b78ece78c93fb64cafca69ccd4b7664582c6d2b8d265f992ec133a",
         "references/discoveryDocs/routes_v2_20260819.json": "8cb8ce6245d679accdded49da3f7b20be504b210d30ce36a2e2fec21b8f05608",
         "scripts/api-common.sh": "e395124f802defa34de850e2bda941d23a97061a24604c25dd0fd420a456384b",
         "scripts/routes_v2.sh": "7c0cdb98b5b5467b86fb0867b2a256bd9ff1b628edda18f9798a500eae697ea3",
@@ -160,8 +160,8 @@
       "source_path": "dist/rmi-dataagent-helper",
       "files_count": 12,
       "hashes": {
-        "SKILL.md": "6e45300b23f0f8b683bb00e29bfc57310a5bd8a277338e6dfe0ffe1f44eb341e",
-        "references/data_agent_best_practices.md": "ee0fff8e668549a3238a46975eb7eef4377c61189571b4082ae87daa360c7cb7",
+        "SKILL.md": "344a2f47709b64b8e272d0459c7d51437ba25cb265d49b630d5f999a039767fc",
+        "references/data_agent_best_practices.md": "a90d1e95ca47c96b9b0ed9348d06a3c3370b9f0152db597fd3a7d3b500676986",
         "references/instructions.md": "1a20d021e7388a3d1256487681872707f86eba0e98e5a09e01aefe35121889b2",
         "references/persona_setup_guides.md": "996ab5af25efc0c6302c8574e52a86e4369abfd8baa4a32297d4966bdd1d269d",
         "scripts/populate_all_queries.py": "4a210795a6491f0e59b9c6d82c85b5a4c4fa3b0952ca2d96ee090054eb0e4339",
@@ -215,12 +215,11 @@
     },
     "rmi-sampledatasets": {
       "source_path": "dist/rmi-sampledatasets",
-      "files_count": 4,
+      "files_count": 3,
       "hashes": {
-        "SKILL.md": "59b50d31eb234d4cca0686f88997bc2c0343b5a33b9c8dcbcd687f91ea44d104",
-        "references/boston_2026.md": "8b8ff4652727cef880bfe1d4afc2bad6afeadd6037bb66c5699876f66e6fb1df",
+        "SKILL.md": "1ed7d1f955435a6bb30026199ceec4e43fa5b2c5e133c825c4c80d479c8f8fea",
         "references/metrics.md": "50c6df038ce7e6e371be9a3c8c3de2e588a6177205354acd1d1e6b09d3907b86",
-        "scripts/list_sample_datasets.sh": "65fe3dc49419ccb834891b5a8367833a18314d48303760afb19952a12f567a1d"
+        "scripts/list_sample_datasets.sh": "f53a3b3d6d5b4dd7b83561f581a6fe3c475ddde5d21b555acff1b44674092565"
       }
     },
     "rmi-dataviz": {

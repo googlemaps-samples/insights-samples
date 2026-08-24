@@ -96,7 +96,28 @@ curl -s -X GET \
 
 ---
 
+---
+
+## Execution Strategy & Determinism Protocol
+
+### Tier 1: Deterministic Client Scripts (Primary / Recommended)
+Whenever POSIX shell execution is available, agents **MUST** prioritize using the pre-tested helper and client scripts located in `scripts/`:
+- Sourcing client: `source scripts/roads_v1.sh`
+
+*Why:* Eliminates code hallucination risks, guarantees pipe-separated coordinate query formatting (`lat,lng|lat,lng`), handles API key / token injection, and routes correctly to `https://roads.googleapis.com/v1`.
+
+### Tier 2: Direct REST / Discovery Contract (Polyglot Fallback)
+If executing in environments without shell access (e.g., pure Python/Node.js runtimes, notebooks, or backend microservices):
+- Refer directly to the canonical Discovery Document in `references/discoveryDocs/roads_v1_20260819.json` for parameter schemas, data types, and HTTP methods (`snapToRoads`, `nearestRoads`).
+- Issue requests directly via your runtime's native HTTP client without inventing ungrounded parameters.
+
+---
+
 ## References
 
-- **Official Discovery Document**: [Roads API (v1) Discovery Document](references/discoveryDocs/roads_v1_20260728.json)
+- [Google Maps Platform Roads API v1 Overview](https://developers.google.com/maps/documentation/roads/overview)
+- [Discovery Documents](references/discoveryDocs/)
+- [Public API Discovery Document (v1)](https://roads.googleapis.com/$discovery/rest?version=v1)
+
+
 
