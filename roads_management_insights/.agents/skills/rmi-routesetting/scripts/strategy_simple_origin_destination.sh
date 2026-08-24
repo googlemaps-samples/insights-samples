@@ -28,11 +28,11 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 CREATOR=$(gcloud config get-value account 2>/dev/null || echo "unknown")
 
 # 1. Compute Baseline Route (Routes API v2)
-echo "1/2 Computing Baseline Route via Routes API v2..." >&2
+echo "1/2 Computing Baseline Route via Routes API v2 (TRAFFIC_UNAWARE)..." >&2
 source "${ROUTES_SCRIPTS}/routes_v2.sh"
 source "${ROUTES_SCRIPTS}/routes_v2_helpers.sh"
 olat="${ORIGIN%%,*}"; olng="${ORIGIN#*,}"; dlat="${DEST%%,*}"; dlng="${DEST#*,}"
-payload=$(jq -n --argjson olat "$olat" --argjson olng "$olng" --arg dlat "$dlat" --arg dlng "$dlng" '{origin:{location:{latLng:{latitude:($olat|tonumber),longitude:($olng|tonumber)}}},destination:{location:{latLng:{latitude:($dlat|tonumber),longitude:($dlng|tonumber)}}},travelMode:"DRIVE",routingPreference:"TRAFFIC_AWARE_OPTIMAL"}')
+payload=$(jq -n --argjson olat "$olat" --argjson olng "$olng" --arg dlat "$dlat" --arg dlng "$dlng" '{origin:{location:{latLng:{latitude:($olat|tonumber),longitude:($olng|tonumber)}}},destination:{location:{latLng:{latitude:($dlat|tonumber),longitude:($dlng|tonumber)}}},travelMode:"DRIVE",routingPreference:"TRAFFIC_UNAWARE"}')
 route_json=$(routes_computeRoutes "$payload" "routes.duration,routes.distanceMeters" "$PROJECT_ID")
 dist=$(echo "$route_json" | jq -r '.routes[0].distanceMeters')
 dur=$(echo "$route_json" | jq -r '.routes[0].duration')
@@ -54,15 +54,12 @@ jq -n \
     },
     routeAttributes: {
       strategy: "SIMPLE_ORIGIN_DESTINATION",
-      useragent: "rmi-routesetting-skill",
       creator: $creator,
-      creationTimestamp: $ts,
-      sourceOrigin: ($olat + "," + $olng),
-      sourceDestination: ($dlat + "," + $dlng),
-      baseDistanceMeters: $dist,
-      baseDuration: $dur,
-      monitoringType: "DYNAMIC_PATH",
-      purpose: "Traffic variation analysis"
+      create_time: $ts,
+      origin: ($olat + "," + $olng),
+      destination: ($dlat + "," + $dlng),
+      route_length_meters: $dist,
+      base_duration: $dur
     }
   }' > "${PREFIX}_selected_route.json"
 

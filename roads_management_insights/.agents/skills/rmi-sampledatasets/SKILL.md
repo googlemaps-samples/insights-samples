@@ -1,6 +1,6 @@
 ---
 name: rmi-sampledatasets
-description: Specialized guidance for discovering, subscribing to, and working with Roads Management Insights (RMI) public sample datasets across 11 global metropolitan areas (Boston, Paris, Tokyo, Detroit, Manhattan, Rome, Singapore, Sydney, Buenos Aires, São Paulo State, West Yorkshire). Use when Gemini CLI needs to list available datasets from Analytics Hub via api-analyticshub, validate queries against sample data, estimate production costs based on sample baselines, or ensure correct temporal filtering for static snapshots.
+description: Specialized guidance for discovering, subscribing to, and working with Roads Management Insights (RMI) public sample datasets across global metropolitan areas (Boston, Paris, Tokyo, Detroit, Manhattan, Rome, Singapore, Sydney, Buenos Aires, São Paulo State). Use when Gemini CLI needs to list available datasets from Analytics Hub via api-analyticshub, validate queries against sample data, estimate production costs based on sample baselines, or ensure correct temporal filtering for static snapshots.
 dependencies:
   - api-analyticshub
   - bigquery-practices
@@ -35,7 +35,7 @@ RMI maintains 11 localized, pre-subscribed sample datasets on Google Cloud Analy
 | 8 | **`singapore_ga`** | **Singapore** | `src_singapore_ga` | Major expressway and arterial network across Singapore | Spring/Summer 2026 | [sample_catalog_2026.md](references/sample_catalog_2026.md) |
 | 9 | **`sydney_ga`** | **Sydney (Australia)** | `src_sydney_ga` | Metropolitan highways (`CONTROLLED_ACCESS`, `LIMITED_ACCESS`) | Spring/Summer 2026 | [sample_catalog_2026.md](references/sample_catalog_2026.md) |
 | 10 | **`tokyo_ga`** | **Tokyo (Japan)** | `src_tokyo_ga` | Major priority roads across Tokyo 23 Wards | Spring/Summer 2026 | [sample_catalog_2026.md](references/sample_catalog_2026.md) |
-| 11 | **`westyorkshire_ga`** | **West Yorkshire (UK)** | `src_westyorkshire_ga` | Regional corridor monitoring for West Yorkshire | Spring/Summer 2026 | [sample_catalog_2026.md](references/sample_catalog_2026.md) |
+
 
 ---
 
@@ -91,7 +91,42 @@ WHERE record_time >= '2026-06-19'
   AND ARRAY_LENGTH(road_segment_ids) > 0
 ```
 
-### 3. Multi-Tiered Cost and Fleet Scaling Projections
+### 3. Route Attributes Metadata & Mandatory Type Casting
+Routes in `routes_status` include a JSON string column `route_attributes` containing automatically populated contextual metadata. 
+
+> [!IMPORTANT]
+> **Strict String Key-Value Representation**: RMI route attributes are defined as a strict `map<string, string>`. Consequently, **all values are stored as string literals**, even inherently numeric properties (e.g., `route_length_meters` is stored as `"128.088"` rather than a float, and `num_of_roads` is stored as `"3"` rather than an integer). You **must explicitly typecast** these values using `SAFE_CAST()` in BigQuery SQL when performing arithmetic, aggregations, or numeric range filtering (e.g., `SAFE_CAST(JSON_VALUE(route_attributes, '$.route_length_meters') AS FLOAT64) >= 500.0`) to avoid lexicographical string comparison errors.
+
+| Attribute Key | Storage Type | Logical Type | Description | Example String Value |
+| :--- | :--- | :--- | :--- | :--- |
+| **`sampledataset`** | `STRING` | String | Metropolitan region or partition identifier. | `"boston"`, `"paris"`, `"sydney"` |
+| **`priority`** | `STRING` | Enum String | Road hierarchy class (`ROAD_PRIORITY_CONTROLLED_ACCESS`, `ROAD_PRIORITY_PRIMARY_HIGHWAY`, `ROAD_PRIORITY_SECONDARY_ROAD`, `ROAD_PRIORITY_LIMITED_ACCESS`, `ROAD_PRIORITY_MAJOR_ARTERIAL`, `ROAD_PRIORITY_MINOR_ARTERIAL`). | `"ROAD_PRIORITY_CONTROLLED_ACCESS"` |
+| **`route_length_meters`** | `STRING` | Float | Modeled physical length of the route corridor in meters (requires `SAFE_CAST(... AS FLOAT64)`). | `"128.088"` |
+| **`num_of_roads`** | `STRING` | Integer | Number of underlying road segments composing the corridor (requires `SAFE_CAST(... AS INT64)`). | `"1"`, `"3"` |
+| **`road_first_placeid`** | `STRING` | Place ID | Google Maps Place ID for the first/entry segment of the corridor. | `"ChIJBaTdJ76uEmsRouRmspMwbFQ"` |
+| **`road_last_placeid`** | `STRING` | Place ID | Google Maps Place ID for the last/exit segment of the corridor. | `"ChIJLY-VzAmVEmsR_L_4WFvlXxo"` |
+| **`node_origin_id`** / **`node_destination_id`** | `STRING` | String | Topological node identifiers for corridor endpoints. | `"Lk-M8QaThtw"`, `"CmseLaD6kKs"` |
+| **`roads_snapshot`** | `STRING` | Date String | Date identifier of the underlying road network geometry snapshot. | `"20260518"` |
+| **`create_time`** / **`origin`** / **`destination`** | `STRING` | Timestamp / Coordinates | Registration timestamp and coordinate strings for fixed OD pairs (e.g. Manhattan, Rome). | `"2025-10-15T01:10:45.490Z"` |
+
+#### BigQuery Extraction & Casting Pattern
+```sql
+SELECT 
+  selected_route_id,
+  display_name,
+  JSON_VALUE(route_attributes, '$.priority') AS road_priority,
+  -- Explicit SAFE_CAST for numeric attributes stored as strings
+  SAFE_CAST(JSON_VALUE(route_attributes, '$.route_length_meters') AS FLOAT64) AS length_meters,
+  SAFE_CAST(JSON_VALUE(route_attributes, '$.num_of_roads') AS INT64) AS segment_count
+FROM 
+  `LINKED_DATASET_NAME.routes_status`
+WHERE 
+  -- Numeric range filter using SAFE_CAST
+  SAFE_CAST(JSON_VALUE(route_attributes, '$.route_length_meters') AS FLOAT64) >= 500.0
+  AND JSON_VALUE(route_attributes, '$.priority') = 'ROAD_PRIORITY_CONTROLLED_ACCESS';
+```
+
+### 4. Multi-Tiered Cost and Fleet Scaling Projections
 The sample datasets are lightweight and highly partitioned, making interactive validation queries inexpensive (< $0.01 per scan). Use the scaling multipliers below to project production costs:
 
 | Fleet Tier | Monitored Routes | Multiplier vs. Sample Base | Monthly Bytes (Approx.) | Scan Cost Category |
@@ -101,7 +136,7 @@ The sample datasets are lightweight and highly partitioned, making interactive v
 | **State / Regional Fleet** | ~50,000 Routes | ~27x | ~43 GB / month | Moderate (~$0.22) |
 | **Mega Fleet (Nationwide)** | ~500,000 Routes | ~270x | ~430 GB / month | Strategic (~$2.15) |
 
-### 4. Complexity Classes
+### 5. Complexity Classes
 - **O(T) - Time-Dependent (Linear Growth)**: Multi-month longitudinal trend queries. Storage scan sizes grow linearly with time.
 - **O(1) - Time-Invariant (Flat Cost)**: Operational queries with bounded partition pruning (`record_time BETWEEN ...`).
 - **O(R) - Route-Dependent (Metadata Growth)**: Administrative queries filtering on `routes_status`.

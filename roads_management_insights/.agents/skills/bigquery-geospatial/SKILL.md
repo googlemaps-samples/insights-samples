@@ -1,6 +1,8 @@
 ---
 name: bigquery-geospatial
 description: Expert guidance on BigQuery Geospatial (GIS) capabilities. Use this skill when the user asks about GEOGRAPHY types, spatial functions (ST_*), proximity analysis, spatial joins, or spatial indexing (S2/H3/Quadbin) in BigQuery.
+dependencies:
+  - bigquery-practices
 ---
 
 # BigQuery Geospatial (GIS)

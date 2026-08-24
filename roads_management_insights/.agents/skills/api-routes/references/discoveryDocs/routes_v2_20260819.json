@@ -1,0 +1,2196 @@
+{
+  "auth": {
+    "oauth2": {
+      "scopes": {
+        "https://www.googleapis.com/auth/cloud-platform": {
+          "description": "See, edit, configure, and delete your Google Cloud data and see the email address for your Google Account."
+        },
+        "https://www.googleapis.com/auth/geo-platform.routes": {
+          "description": "Private Service: https://www.googleapis.com/auth/geo-platform.routes"
+        }
+      }
+    }
+  },
+  "basePath": "",
+  "baseUrl": "https://routes.googleapis.com/",
+  "batchPath": "batch",
+  "canonicalName": "Routes",
+  "description": "routes.googleapis.com API.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://www.google.com",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "routes:v2",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://routes.mtls.googleapis.com/",
+  "name": "routes",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "v2": {
+      "methods": {
+        "computeRouteMatrix": {
+          "description": "Takes in a list of origins and destinations and returns a stream containing route information for each combination of origin and destination. **NOTE:** This method requires that you specify a response field mask in the input. You can provide the response field mask by using the URL parameter `$fields` or `fields`, or by using the HTTP/gRPC header `X-Goog-FieldMask` (see the [available URL parameters and headers](https://cloud.google.com/apis/docs/system-parameters)). The value is a comma separated list of field paths. See this detailed documentation about [how to construct the field paths](https://github.com/protocolbuffers/protobuf/blob/master/src/google/protobuf/field_mask.proto). For example, in this method: * Field mask of all available fields (for manual inspection): `X-Goog-FieldMask: *` * Field mask of route durations, distances, element status, condition, and element indices (an example production setup): `X-Goog-FieldMask: originIndex,destinationIndex,status,condition,distanceMeters,duration` It is critical that you include `status` in your field mask as otherwise all messages will appear to be OK. Google discourages the use of the wildcard (`*`) response field mask, because: * Selecting only the fields that you need helps our server save computation cycles, allowing us to return the result to you with a lower latency. * Selecting only the fields that you need in your production job ensures stable latency performance. We might add more response fields in the future, and those new fields might require extra computation time. If you select all fields, or if you select all fields at the top level, then you might experience performance degradation because any new field we add will be automatically included in the response. * Selecting only the fields that you need results in a smaller response size, and thus higher network throughput.",
+          "flatPath": "distanceMatrix/v2:computeRouteMatrix",
+          "httpMethod": "POST",
+          "id": "routes.computeRouteMatrix",
+          "parameterOrder": [],
+          "parameters": {},
+          "path": "distanceMatrix/v2:computeRouteMatrix",
+          "request": {
+            "$ref": "ComputeRouteMatrixRequest"
+          },
+          "response": {
+            "$ref": "RouteMatrixElement"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/geo-platform.routes"
+          ]
+        },
+        "computeRoutes": {
+          "description": "Returns the primary route along with optional alternate routes, given a set of terminal and intermediate waypoints. **NOTE:** This method requires that you specify a response field mask in the input. You can provide the response field mask by using URL parameter `$fields` or `fields`, or by using an HTTP/gRPC header `X-Goog-FieldMask` (see the [available URL parameters and headers](https://cloud.google.com/apis/docs/system-parameters)). The value is a comma separated list of field paths. See detailed documentation about [how to construct the field paths](https://github.com/protocolbuffers/protobuf/blob/master/src/google/protobuf/field_mask.proto). For example, in this method: * Field mask of all available fields (for manual inspection): `X-Goog-FieldMask: *` * Field mask of Route-level duration, distance, and polyline (an example production setup): `X-Goog-FieldMask: routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline` Google discourage the use of the wildcard (`*`) response field mask, or specifying the field mask at the top level (`routes`), because: * Selecting only the fields that you need helps our server save computation cycles, allowing us to return the result to you with a lower latency. * Selecting only the fields that you need in your production job ensures stable latency performance. We might add more response fields in the future, and those new fields might require extra computation time. If you select all fields, or if you select all fields at the top level, then you might experience performance degradation because any new field we add will be automatically included in the response. * Selecting only the fields that you need results in a smaller response size, and thus higher network throughput.",
+          "flatPath": "directions/v2:computeRoutes",
+          "httpMethod": "POST",
+          "id": "routes.computeRoutes",
+          "parameterOrder": [],
+          "parameters": {},
+          "path": "directions/v2:computeRoutes",
+          "request": {
+            "$ref": "ComputeRoutesRequest"
+          },
+          "response": {
+            "$ref": "ComputeRoutesResponse"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/geo-platform.routes"
+          ]
+        }
+      }
+    }
+  },
+  "revision": "20260819",
+  "rootUrl": "https://routes.googleapis.com/",
+  "schemas": {
+    "BridgeInfo": {
+      "description": "Encapsulates information about bridges along the polyline.",
+      "id": "BridgeInfo",
+      "properties": {
+        "bridgePresence": {
+          "description": "Denotes whether a bridge exists for a given stretch of the polyline.",
+          "enum": [
+            "ROAD_FEATURE_STATE_UNSPECIFIED",
+            "EXISTS",
+            "DOES_NOT_EXIST"
+          ],
+          "enumDescriptions": [
+            "The road feature's state was not computed (default value).",
+            "The road feature exists.",
+            "The road feature does not exist."
+          ],
+          "type": "string"
+        },
+        "polylinePointIndex": {
+          "$ref": "PolylinePointIndex",
+          "description": "The location of bridge related information along the polyline."
+        }
+      },
+      "type": "object"
+    },
+    "ComputeRouteMatrixRequest": {
+      "description": "ComputeRouteMatrix request message",
+      "id": "ComputeRouteMatrixRequest",
+      "properties": {
+        "arrivalTime": {
+          "description": "Optional. The arrival time. NOTE: Can only be set when `RouteTravelMode` is set to `TRANSIT`. You can specify either `departure_time` or `arrival_time`, but not both.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "departureTime": {
+          "description": "Optional. The departure time. If you don't set this value, then this value defaults to the time that you made the request. NOTE: You can only specify a `departure_time` in the past when `RouteTravelMode` is set to `TRANSIT`.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "destinations": {
+          "description": "Required. Array of destinations, which determines the columns of the response matrix.",
+          "items": {
+            "$ref": "RouteMatrixDestination"
+          },
+          "type": "array"
+        },
+        "extraComputations": {
+          "description": "Optional. A list of extra computations which may be used to complete the request. Note: These extra computations may return extra fields on the response. These extra fields must also be specified in the field mask to be returned in the response.",
+          "items": {
+            "enum": [
+              "EXTRA_COMPUTATION_UNSPECIFIED",
+              "TOLLS"
+            ],
+            "enumDescriptions": [
+              "Not used. Requests containing this value will fail.",
+              "Toll information for the matrix element(s)."
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "languageCode": {
+          "description": "Optional. The BCP-47 language code, such as \"en-US\" or \"sr-Latn\". For more information, see [Unicode Locale Identifier](http://www.unicode.org/reports/tr35/#Unicode_locale_identifier). See [Language Support](https://developers.google.com/maps/faq#languagesupport) for the list of supported languages. When you don't provide this value, the display language is inferred from the location of the first origin.",
+          "type": "string"
+        },
+        "origins": {
+          "description": "Required. Array of origins, which determines the rows of the response matrix. Several size restrictions apply to the cardinality of origins and destinations: * The sum of the number of origins + the number of destinations specified as either `place_id` or `address` must be no greater than 50. * The product of number of origins × number of destinations must be no greater than 625 in any case. * The product of the number of origins × number of destinations must be no greater than 100 if routing_preference is set to `TRAFFIC_AWARE_OPTIMAL`. * The product of the number of origins × number of destinations must be no greater than 100 if travel_mode is set to `TRANSIT`.",
+          "items": {
+            "$ref": "RouteMatrixOrigin"
+          },
+          "type": "array"
+        },
+        "regionCode": {
+          "description": "Optional. The region code, specified as a ccTLD (\"top-level domain\") two-character value. For more information see [Country code top-level domains](https://en.wikipedia.org/wiki/List_of_Internet_top-level_domains#Country_code_top-level_domains).",
+          "type": "string"
+        },
+        "routingPreference": {
+          "description": "Optional. Specifies how to compute the route. The server attempts to use the selected routing preference to compute the route. If the routing preference results in an error or an extra long latency, an error is returned. You can specify this option only when the `travel_mode` is `DRIVE` or `TWO_WHEELER`, otherwise the request fails.",
+          "enum": [
+            "ROUTING_PREFERENCE_UNSPECIFIED",
+            "TRAFFIC_UNAWARE",
+            "TRAFFIC_AWARE",
+            "TRAFFIC_AWARE_OPTIMAL"
+          ],
+          "enumDescriptions": [
+            "No routing preference specified. Default to `TRAFFIC_UNAWARE`.",
+            "Computes routes without taking live traffic conditions into consideration. Suitable when traffic conditions don't matter or are not applicable. Using this value produces the lowest latency. Note: For `RouteTravelMode` `DRIVE` and `TWO_WHEELER`, the route and duration chosen are based on road network and average time-independent traffic conditions, not current road conditions. Consequently, routes may include roads that are temporarily closed. Results for a given request may vary over time due to changes in the road network, updated average traffic conditions, and the distributed nature of the service. Results may also vary between nearly-equivalent routes at any time or frequency.",
+            "Calculates routes taking live traffic conditions into consideration. In contrast to `TRAFFIC_AWARE_OPTIMAL`, some optimizations are applied to significantly reduce latency.",
+            "Calculates the routes taking live traffic conditions into consideration, without applying most performance optimizations. Using this value produces the highest latency."
+          ],
+          "type": "string"
+        },
+        "trafficModel": {
+          "description": "Optional. Specifies the assumptions to use when calculating time in traffic. This setting affects the value returned in the duration field in the RouteMatrixElement which contains the predicted time in traffic based on historical averages. `TrafficModel` is only available for requests that have set RoutingPreference to `TRAFFIC_AWARE_OPTIMAL` and RouteTravelMode to `DRIVE`. Defaults to `BEST_GUESS` if traffic is requested and `TrafficModel` is not specified.",
+          "enum": [
+            "TRAFFIC_MODEL_UNSPECIFIED",
+            "BEST_GUESS",
+            "PESSIMISTIC",
+            "OPTIMISTIC"
+          ],
+          "enumDescriptions": [
+            "Unused. If specified, will default to `BEST_GUESS`.",
+            "Indicates that the returned `duration` should be the best estimate of travel time given what is known about both historical traffic conditions and live traffic. Live traffic becomes more important the closer the `departure_time` is to now.",
+            "Indicates that the returned duration should be longer than the actual travel time on most days, though occasional days with particularly bad traffic conditions may exceed this value.",
+            "Indicates that the returned duration should be shorter than the actual travel time on most days, though occasional days with particularly good traffic conditions may be faster than this value."
+          ],
+          "type": "string"
+        },
+        "transitPreferences": {
+          "$ref": "TransitPreferences",
+          "description": "Optional. Specifies preferences that influence the route returned for `TRANSIT` routes. NOTE: You can only specify a `transit_preferences` when RouteTravelMode is set to `TRANSIT`."
+        },
+        "travelMode": {
+          "description": "Optional. Specifies the mode of transportation.",
+          "enum": [
+            "TRAVEL_MODE_UNSPECIFIED",
+            "DRIVE",
+            "BICYCLE",
+            "WALK",
+            "TWO_WHEELER",
+            "TRANSIT"
+          ],
+          "enumDescriptions": [
+            "No travel mode specified. Defaults to `DRIVE`.",
+            "Travel by passenger car.",
+            "Travel by bicycle.",
+            "Travel by walking.",
+            "Two-wheeled, motorized vehicle. For example, motorcycle. Note that this differs from the `BICYCLE` travel mode which covers human-powered mode.",
+            "Travel by public transit routes, where available."
+          ],
+          "type": "string"
+        },
+        "units": {
+          "description": "Optional. Specifies the units of measure for the display fields.",
+          "enum": [
+            "UNITS_UNSPECIFIED",
+            "METRIC",
+            "IMPERIAL"
+          ],
+          "enumDescriptions": [
+            "Units of measure not specified. Defaults to the unit of measure inferred from the request.",
+            "Metric units of measure.",
+            "Imperial (English) units of measure."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ComputeRoutesRequest": {
+      "description": "ComputeRoutes request message.",
+      "id": "ComputeRoutesRequest",
+      "properties": {
+        "arrivalTime": {
+          "description": "Optional. The arrival time. NOTE: This field is ignored when requests specify a RouteTravelMode other than `TRANSIT`. You can specify either `departure_time` or `arrival_time`, but not both. Transit trips are available for up to 7 days in the past or 100 days in the future.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "computeAlternativeRoutes": {
+          "description": "Optional. Specifies whether to calculate alternate routes in addition to the route. No alternative routes are returned for requests that have intermediate waypoints.",
+          "type": "boolean"
+        },
+        "departureTime": {
+          "description": "Optional. The departure time. If you don't set this value, then this value defaults to the time that you made the request. NOTE: You can only specify a `departure_time` in the past when `RouteTravelMode` is set to `TRANSIT`. Transit trips are available for up to 7 days in the past or 100 days in the future.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "destination": {
+          "$ref": "Waypoint",
+          "description": "Required. Destination waypoint."
+        },
+        "extraComputations": {
+          "description": "Optional. A list of extra computations which may be used to complete the request. Note: These extra computations may return extra fields on the response. These extra fields must also be specified in the field mask to be returned in the response.",
+          "items": {
+            "enum": [
+              "EXTRA_COMPUTATION_UNSPECIFIED",
+              "TOLLS",
+              "FUEL_CONSUMPTION",
+              "TRAFFIC_ON_POLYLINE",
+              "HTML_FORMATTED_NAVIGATION_INSTRUCTIONS",
+              "FLYOVER_INFO_ON_POLYLINE",
+              "NARROW_ROAD_INFO_ON_POLYLINE",
+              "TUNNEL_INFO_ON_POLYLINE",
+              "BRIDGE_INFO_ON_POLYLINE",
+              "SKYWAY_INFO_ON_POLYLINE"
+            ],
+            "enumDescriptions": [
+              "Not used. Requests containing this value will fail.",
+              "Toll information for the route(s).",
+              "Estimated fuel consumption for the route(s).",
+              "Traffic aware polylines for the route(s).",
+              "`NavigationInstruction` presented as a formatted HTML text string. This content is meant to be read as-is. This content is for display only. Do not programmatically parse it.",
+              "Flyover information for the route(s). The `routes.polyline_details.flyover_info` fieldmask must be specified to return this information. This data will currently only be populated for certain metros in India. This feature is experimental, and the SKU/charge is subject to change.",
+              "Narrow road information for the route(s). The `routes.polyline_details.narrow_road_info` fieldmask must be specified to return this information. This data will currently only be populated for certain metros in India. This feature is experimental, and the SKU/charge is subject to change.",
+              "Tunnel information for the route(s). The `routes.polyline_details.tunnel_info` fieldmask must be specified to return this information.",
+              "Bridge information for the route(s). The `routes.polyline_details.bridge_info` fieldmask must be specified to return this information.",
+              "Skyway information for the route(s). The `routes.polyline_details.skyway_info` fieldmask must be specified to return this information."
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "intermediates": {
+          "description": "Optional. A set of waypoints along the route (excluding terminal points), for either stopping at or passing by. Up to 25 intermediate waypoints are supported.",
+          "items": {
+            "$ref": "Waypoint"
+          },
+          "type": "array"
+        },
+        "languageCode": {
+          "description": "Optional. The BCP-47 language code, such as \"en-US\" or \"sr-Latn\". For more information, see [Unicode Locale Identifier](http://www.unicode.org/reports/tr35/#Unicode_locale_identifier). See [Language Support](https://developers.google.com/maps/faq#languagesupport) for the list of supported languages. When you don't provide this value, the display language is inferred from the location of the route request.",
+          "type": "string"
+        },
+        "optimizeWaypointOrder": {
+          "description": "Optional. If set to true, the service attempts to minimize the overall cost of the route by re-ordering the specified intermediate waypoints. The request fails if any of the intermediate waypoints is a `via` waypoint. Use `ComputeRoutesResponse.routes.optimized_intermediate_waypoint_index` to find the new ordering. If `ComputeRoutesResponse.routes.optimized_intermediate_waypoint_index` is not requested in the `X-Goog-FieldMask` header, the request fails. If `optimize_waypoint_order` is set to false, `ComputeRoutesResponse.optimized_intermediate_waypoint_index` will be empty.",
+          "type": "boolean"
+        },
+        "origin": {
+          "$ref": "Waypoint",
+          "description": "Required. Origin waypoint."
+        },
+        "polylineEncoding": {
+          "description": "Optional. Specifies the preferred encoding for the polyline.",
+          "enum": [
+            "POLYLINE_ENCODING_UNSPECIFIED",
+            "ENCODED_POLYLINE",
+            "GEO_JSON_LINESTRING"
+          ],
+          "enumDescriptions": [
+            "No polyline type preference specified. Defaults to `ENCODED_POLYLINE`.",
+            "Specifies a polyline encoded using the [polyline encoding algorithm](/maps/documentation/utilities/polylinealgorithm).",
+            "Specifies a polyline using the [GeoJSON LineString format](https://tools.ietf.org/html/rfc7946#section-3.1.4)"
+          ],
+          "type": "string"
+        },
+        "polylineQuality": {
+          "description": "Optional. Specifies your preference for the quality of the polyline.",
+          "enum": [
+            "POLYLINE_QUALITY_UNSPECIFIED",
+            "HIGH_QUALITY",
+            "OVERVIEW"
+          ],
+          "enumDescriptions": [
+            "No polyline quality preference specified. Defaults to `OVERVIEW`.",
+            "Specifies a high-quality polyline - which is composed using more points than `OVERVIEW`, at the cost of increased response size. Use this value when you need more precision.",
+            "Specifies an overview polyline - which is composed using a small number of points. Use this value when displaying an overview of the route. Using this option has a lower request latency compared to using the `HIGH_QUALITY` option."
+          ],
+          "type": "string"
+        },
+        "regionCode": {
+          "description": "Optional. The region code, specified as a ccTLD (\"top-level domain\") two-character value. For more information see [Country code top-level domains](https://en.wikipedia.org/wiki/List_of_Internet_top-level_domains#Country_code_top-level_domains).",
+          "type": "string"
+        },
+        "requestedReferenceRoutes": {
+          "description": "Optional. Specifies what reference routes to calculate as part of the request in addition to the default route. A reference route is a route with a different route calculation objective than the default route. For example a `FUEL_EFFICIENT` reference route calculation takes into account various parameters that would generate an optimal fuel efficient route. When using this feature, look for `route_labels` on the resulting routes.",
+          "items": {
+            "enum": [
+              "REFERENCE_ROUTE_UNSPECIFIED",
+              "FUEL_EFFICIENT",
+              "SHORTER_DISTANCE"
+            ],
+            "enumDescriptions": [
+              "Not used. Requests containing this value fail.",
+              "Fuel efficient route.",
+              "Route with shorter travel distance. This is an experimental feature. For `DRIVE` requests, this feature prioritizes shorter distance over driving comfort. For example, it may prefer local roads instead of highways, take dirt roads, cut through parking lots, etc. This feature does not return any maneuvers that Google Maps knows to be illegal. For `BICYCLE` and `TWO_WHEELER` requests, this feature returns routes similar to those returned when you don't specify `requested_reference_routes`. This feature is not compatible with any other travel modes, via intermediate waypoints, or `optimize_waypoint_order`; such requests will fail. However, you can use it with any `routing_preference`."
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "routeModifiers": {
+          "$ref": "RouteModifiers",
+          "description": "Optional. A set of conditions to satisfy that affect the way routes are calculated."
+        },
+        "routingPreference": {
+          "description": "Optional. Specifies how to compute the route. The server attempts to use the selected routing preference to compute the route. If the routing preference results in an error or an extra long latency, then an error is returned. You can specify this option only when the `travel_mode` is `DRIVE` or `TWO_WHEELER`, otherwise the request fails.",
+          "enum": [
+            "ROUTING_PREFERENCE_UNSPECIFIED",
+            "TRAFFIC_UNAWARE",
+            "TRAFFIC_AWARE",
+            "TRAFFIC_AWARE_OPTIMAL"
+          ],
+          "enumDescriptions": [
+            "No routing preference specified. Default to `TRAFFIC_UNAWARE`.",
+            "Computes routes without taking live traffic conditions into consideration. Suitable when traffic conditions don't matter or are not applicable. Using this value produces the lowest latency. Note: For `RouteTravelMode` `DRIVE` and `TWO_WHEELER`, the route and duration chosen are based on road network and average time-independent traffic conditions, not current road conditions. Consequently, routes may include roads that are temporarily closed. Results for a given request may vary over time due to changes in the road network, updated average traffic conditions, and the distributed nature of the service. Results may also vary between nearly-equivalent routes at any time or frequency.",
+            "Calculates routes taking live traffic conditions into consideration. In contrast to `TRAFFIC_AWARE_OPTIMAL`, some optimizations are applied to significantly reduce latency.",
+            "Calculates the routes taking live traffic conditions into consideration, without applying most performance optimizations. Using this value produces the highest latency."
+          ],
+          "type": "string"
+        },
+        "trafficModel": {
+          "description": "Optional. Specifies the assumptions to use when calculating time in traffic. This setting affects the value returned in the duration field in the `Route` and `RouteLeg` which contains the predicted time in traffic based on historical averages. `TrafficModel` is only available for requests that have set `RoutingPreference` to `TRAFFIC_AWARE_OPTIMAL` and `RouteTravelMode` to `DRIVE`. Defaults to `BEST_GUESS` if traffic is requested and `TrafficModel` is not specified.",
+          "enum": [
+            "TRAFFIC_MODEL_UNSPECIFIED",
+            "BEST_GUESS",
+            "PESSIMISTIC",
+            "OPTIMISTIC"
+          ],
+          "enumDescriptions": [
+            "Unused. If specified, will default to `BEST_GUESS`.",
+            "Indicates that the returned `duration` should be the best estimate of travel time given what is known about both historical traffic conditions and live traffic. Live traffic becomes more important the closer the `departure_time` is to now.",
+            "Indicates that the returned duration should be longer than the actual travel time on most days, though occasional days with particularly bad traffic conditions may exceed this value.",
+            "Indicates that the returned duration should be shorter than the actual travel time on most days, though occasional days with particularly good traffic conditions may be faster than this value."
+          ],
+          "type": "string"
+        },
+        "transitPreferences": {
+          "$ref": "TransitPreferences",
+          "description": "Optional. Specifies preferences that influence the route returned for `TRANSIT` routes. NOTE: You can only specify a `transit_preferences` when `RouteTravelMode` is set to `TRANSIT`."
+        },
+        "travelMode": {
+          "description": "Optional. Specifies the mode of transportation.",
+          "enum": [
+            "TRAVEL_MODE_UNSPECIFIED",
+            "DRIVE",
+            "BICYCLE",
+            "WALK",
+            "TWO_WHEELER",
+            "TRANSIT"
+          ],
+          "enumDescriptions": [
+            "No travel mode specified. Defaults to `DRIVE`.",
+            "Travel by passenger car.",
+            "Travel by bicycle.",
+            "Travel by walking.",
+            "Two-wheeled, motorized vehicle. For example, motorcycle. Note that this differs from the `BICYCLE` travel mode which covers human-powered mode.",
+            "Travel by public transit routes, where available."
+          ],
+          "type": "string"
+        },
+        "units": {
+          "description": "Optional. Specifies the units of measure for the display fields. These fields include the `instruction` field in `NavigationInstruction`. The units of measure used for the route, leg, step distance, and duration are not affected by this value. If you don't provide this value, then the display units are inferred from the location of the first origin.",
+          "enum": [
+            "UNITS_UNSPECIFIED",
+            "METRIC",
+            "IMPERIAL"
+          ],
+          "enumDescriptions": [
+            "Units of measure not specified. Defaults to the unit of measure inferred from the request.",
+            "Metric units of measure.",
+            "Imperial (English) units of measure."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ComputeRoutesResponse": {
+      "description": "ComputeRoutes the response message.",
+      "id": "ComputeRoutesResponse",
+      "properties": {
+        "fallbackInfo": {
+          "$ref": "FallbackInfo",
+          "description": "In some cases when the server is not able to compute the route results with all of the input preferences, it may fallback to using a different way of computation. When fallback mode is used, this field contains detailed info about the fallback response. Otherwise this field is unset."
+        },
+        "geocodingResults": {
+          "$ref": "GeocodingResults",
+          "description": "Contains geocoding response info for waypoints specified as addresses."
+        },
+        "routes": {
+          "description": "Contains an array of computed routes (up to three) when you specify `compute_alternatives_routes`, and contains just one route when you don't. When this array contains multiple entries, the first one is the most recommended route. If the array is empty, then it means no route could be found.",
+          "items": {
+            "$ref": "Route"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "FallbackInfo": {
+      "description": "Information related to how and why a fallback result was used. If this field is set, then it means the server used a different routing mode from your preferred mode as fallback.",
+      "id": "FallbackInfo",
+      "properties": {
+        "reason": {
+          "description": "The reason why fallback response was used instead of the original response. This field is only populated when the fallback mode is triggered and the fallback response is returned.",
+          "enum": [
+            "FALLBACK_REASON_UNSPECIFIED",
+            "SERVER_ERROR",
+            "LATENCY_EXCEEDED"
+          ],
+          "enumDescriptions": [
+            "No fallback reason specified.",
+            "A server error happened while calculating routes with your preferred routing mode, but we were able to return a result calculated by an alternative mode.",
+            "We were not able to finish the calculation with your preferred routing mode on time, but we were able to return a result calculated by an alternative mode."
+          ],
+          "type": "string"
+        },
+        "routingMode": {
+          "description": "Routing mode used for the response. If fallback was triggered, the mode may be different from routing preference set in the original client request.",
+          "enum": [
+            "FALLBACK_ROUTING_MODE_UNSPECIFIED",
+            "FALLBACK_TRAFFIC_UNAWARE",
+            "FALLBACK_TRAFFIC_AWARE"
+          ],
+          "enumDescriptions": [
+            "Not used.",
+            "Indicates the `TRAFFIC_UNAWARE` `RoutingPreference` was used to compute the response.",
+            "Indicates the `TRAFFIC_AWARE` `RoutingPreference` was used to compute the response."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "FlyoverInfo": {
+      "description": "Encapsulates information about flyovers along the polyline.",
+      "id": "FlyoverInfo",
+      "properties": {
+        "flyoverPresence": {
+          "description": "Output only. Denotes whether a flyover exists for a given stretch of the polyline.",
+          "enum": [
+            "ROAD_FEATURE_STATE_UNSPECIFIED",
+            "EXISTS",
+            "DOES_NOT_EXIST"
+          ],
+          "enumDescriptions": [
+            "The road feature's state was not computed (default value).",
+            "The road feature exists.",
+            "The road feature does not exist."
+          ],
+          "readOnly": true,
+          "type": "string"
+        },
+        "polylinePointIndex": {
+          "$ref": "PolylinePointIndex",
+          "description": "The location of flyover related information along the polyline."
+        }
+      },
+      "type": "object"
+    },
+    "GeocodedWaypoint": {
+      "description": "Details about the locations used as waypoints. Only populated for address waypoints. Includes details about the geocoding results for the purposes of determining what the address was geocoded to.",
+      "id": "GeocodedWaypoint",
+      "properties": {
+        "geocoderStatus": {
+          "$ref": "Status",
+          "description": "Indicates the status code resulting from the geocoding operation."
+        },
+        "intermediateWaypointRequestIndex": {
+          "description": "The index of the corresponding intermediate waypoint in the request. Only populated if the corresponding waypoint is an intermediate waypoint.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "partialMatch": {
+          "description": "Indicates that the geocoder did not return an exact match for the original request, though it was able to match part of the requested address. You may wish to examine the original request for misspellings and/or an incomplete address.",
+          "type": "boolean"
+        },
+        "placeId": {
+          "description": "The place ID for this result.",
+          "type": "string"
+        },
+        "type": {
+          "description": "The type(s) of the result, in the form of zero or more type tags. Supported types: [Address types and address component types](https://developers.google.com/maps/documentation/geocoding/requests-geocoding#Types).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GeocodingResults": {
+      "description": "Contains `GeocodedWaypoints` for origin, destination and intermediate waypoints. Only populated for address waypoints.",
+      "id": "GeocodingResults",
+      "properties": {
+        "destination": {
+          "$ref": "GeocodedWaypoint",
+          "description": "Destination geocoded waypoint."
+        },
+        "intermediates": {
+          "description": "A list of intermediate geocoded waypoints each containing an index field that corresponds to the zero-based position of the waypoint in the order they were specified in the request.",
+          "items": {
+            "$ref": "GeocodedWaypoint"
+          },
+          "type": "array"
+        },
+        "origin": {
+          "$ref": "GeocodedWaypoint",
+          "description": "Origin geocoded waypoint."
+        }
+      },
+      "type": "object"
+    },
+    "LatLng": {
+      "description": "An object that represents a latitude/longitude pair. This is expressed as a pair of doubles to represent degrees latitude and degrees longitude. Unless specified otherwise, this object must conform to the WGS84 standard. Values must be within normalized ranges.",
+      "id": "LatLng",
+      "properties": {
+        "latitude": {
+          "description": "The latitude in degrees. It must be in the range [-90.0, +90.0].",
+          "format": "double",
+          "type": "number"
+        },
+        "longitude": {
+          "description": "The longitude in degrees. It must be in the range [-180.0, +180.0].",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "LocalizedText": {
+      "description": "Localized variant of a text in a particular language.",
+      "id": "LocalizedText",
+      "properties": {
+        "languageCode": {
+          "description": "The text's BCP-47 language code, such as \"en-US\" or \"sr-Latn\". For more information, see http://www.unicode.org/reports/tr35/#Unicode_locale_identifier.",
+          "type": "string"
+        },
+        "text": {
+          "description": "Localized string in the language corresponding to language_code below.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "LocalizedTime": {
+      "description": "Localized description of time.",
+      "id": "LocalizedTime",
+      "properties": {
+        "time": {
+          "$ref": "LocalizedText",
+          "description": "The time specified as a string in a given time zone."
+        },
+        "timeZone": {
+          "description": "Contains the time zone. The value is the name of the time zone as defined in the [IANA Time Zone Database](http://www.iana.org/time-zones), e.g. \"America/New_York\".",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "LocalizedValues": {
+      "description": "Text representations of certain properties.",
+      "id": "LocalizedValues",
+      "properties": {
+        "distance": {
+          "$ref": "LocalizedText",
+          "description": "Travel distance represented in text form."
+        },
+        "duration": {
+          "$ref": "LocalizedText",
+          "description": "Duration represented in text form taking traffic conditions into consideration. Note: If traffic information was not requested, this value is the same value as static_duration."
+        },
+        "staticDuration": {
+          "$ref": "LocalizedText",
+          "description": "Duration represented in text form without taking traffic conditions into consideration."
+        },
+        "transitFare": {
+          "$ref": "LocalizedText",
+          "description": "Transit fare represented in text form."
+        }
+      },
+      "type": "object"
+    },
+    "Location": {
+      "description": "Encapsulates a location (a geographic point, and an optional heading).",
+      "id": "Location",
+      "properties": {
+        "heading": {
+          "description": "The compass heading associated with the direction of the flow of traffic. This value specifies the side of the road for pickup and drop-off. Heading values can be from 0 to 360, where 0 specifies a heading of due North, 90 specifies a heading of due East, and so on. You can use this field only for `DRIVE` and `TWO_WHEELER` `RouteTravelMode`.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "latLng": {
+          "$ref": "LatLng",
+          "description": "The waypoint's geographic coordinates."
+        }
+      },
+      "type": "object"
+    },
+    "Money": {
+      "description": "Represents an amount of money with its currency type.",
+      "id": "Money",
+      "properties": {
+        "currencyCode": {
+          "description": "The three-letter currency code defined in ISO 4217.",
+          "type": "string"
+        },
+        "nanos": {
+          "description": "Number of nano (10^-9) units of the amount. The value must be between -999,999,999 and +999,999,999 inclusive. If `units` is positive, `nanos` must be positive or zero. If `units` is zero, `nanos` can be positive, zero, or negative. If `units` is negative, `nanos` must be negative or zero. For example $-1.75 is represented as `units`=-1 and `nanos`=-750,000,000.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "units": {
+          "description": "The whole units of the amount. For example if `currencyCode` is `\"USD\"`, then 1 unit is one US dollar.",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "MultiModalSegment": {
+      "description": "Provides summarized information about different multi-modal segments of the `RouteLeg.steps`. A multi-modal segment is defined as one or more contiguous `RouteLegStep` that have the same `RouteTravelMode`. This field is not populated if the `RouteLeg` does not contain any multi-modal segments in the steps.",
+      "id": "MultiModalSegment",
+      "properties": {
+        "navigationInstruction": {
+          "$ref": "NavigationInstruction",
+          "description": "NavigationInstruction for the multi-modal segment."
+        },
+        "stepEndIndex": {
+          "description": "The corresponding `RouteLegStep` index that is the end of a multi-modal segment.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "stepStartIndex": {
+          "description": "The corresponding `RouteLegStep` index that is the start of a multi-modal segment.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "travelMode": {
+          "description": "The travel mode of the multi-modal segment.",
+          "enum": [
+            "TRAVEL_MODE_UNSPECIFIED",
+            "DRIVE",
+            "BICYCLE",
+            "WALK",
+            "TWO_WHEELER",
+            "TRANSIT"
+          ],
+          "enumDescriptions": [
+            "No travel mode specified. Defaults to `DRIVE`.",
+            "Travel by passenger car.",
+            "Travel by bicycle.",
+            "Travel by walking.",
+            "Two-wheeled, motorized vehicle. For example, motorcycle. Note that this differs from the `BICYCLE` travel mode which covers human-powered mode.",
+            "Travel by public transit routes, where available."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "NarrowRoadInfo": {
+      "description": "Encapsulates information about narrow roads along the polyline.",
+      "id": "NarrowRoadInfo",
+      "properties": {
+        "narrowRoadPresence": {
+          "description": "Output only. Denotes whether a narrow road exists for a given stretch of the polyline.",
+          "enum": [
+            "ROAD_FEATURE_STATE_UNSPECIFIED",
+            "EXISTS",
+            "DOES_NOT_EXIST"
+          ],
+          "enumDescriptions": [
+            "The road feature's state was not computed (default value).",
+            "The road feature exists.",
+            "The road feature does not exist."
+          ],
+          "readOnly": true,
+          "type": "string"
+        },
+        "polylinePointIndex": {
+          "$ref": "PolylinePointIndex",
+          "description": "The location of narrow road related information along the polyline."
+        }
+      },
+      "type": "object"
+    },
+    "NavigationInstruction": {
+      "description": "Encapsulates navigation instructions for a `RouteLegStep`.",
+      "id": "NavigationInstruction",
+      "properties": {
+        "instructions": {
+          "description": "Instructions for navigating this step.",
+          "type": "string"
+        },
+        "maneuver": {
+          "description": "Encapsulates the navigation instructions for the current step (for example, turn left, merge, or straight). This field determines which icon to display.",
+          "enum": [
+            "MANEUVER_UNSPECIFIED",
+            "TURN_SLIGHT_LEFT",
+            "TURN_SHARP_LEFT",
+            "UTURN_LEFT",
+            "TURN_LEFT",
+            "TURN_SLIGHT_RIGHT",
+            "TURN_SHARP_RIGHT",
+            "UTURN_RIGHT",
+            "TURN_RIGHT",
+            "STRAIGHT",
+            "RAMP_LEFT",
+            "RAMP_RIGHT",
+            "MERGE",
+            "FORK_LEFT",
+            "FORK_RIGHT",
+            "FERRY",
+            "FERRY_TRAIN",
+            "ROUNDABOUT_LEFT",
+            "ROUNDABOUT_RIGHT",
+            "DEPART",
+            "NAME_CHANGE"
+          ],
+          "enumDescriptions": [
+            "Not used.",
+            "Turn slightly to the left.",
+            "Turn sharply to the left.",
+            "Make a left u-turn.",
+            "Turn left.",
+            "Turn slightly to the right.",
+            "Turn sharply to the right.",
+            "Make a right u-turn.",
+            "Turn right.",
+            "Go straight.",
+            "Take the left ramp.",
+            "Take the right ramp.",
+            "Merge into traffic.",
+            "Take the left fork.",
+            "Take the right fork.",
+            "Take the ferry.",
+            "Take the train leading onto the ferry.",
+            "Turn left at the roundabout.",
+            "Turn right at the roundabout.",
+            "Initial maneuver.",
+            "Used to indicate a street name change."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Polyline": {
+      "description": "Encapsulates an encoded polyline.",
+      "id": "Polyline",
+      "properties": {
+        "encodedPolyline": {
+          "description": "The string encoding of the polyline using the [polyline encoding algorithm](https://developers.google.com/maps/documentation/utilities/polylinealgorithm)",
+          "type": "string"
+        },
+        "geoJsonLinestring": {
+          "additionalProperties": {
+            "description": "Properties of the object.",
+            "type": "any"
+          },
+          "description": "Specifies a polyline using the [GeoJSON LineString format](https://tools.ietf.org/html/rfc7946#section-3.1.4).",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "PolylineDetails": {
+      "description": "Details corresponding to a given index or contiguous segment of a polyline. Given a polyline with points P_0, P_1, ... , P_N (zero-based index), the `PolylineDetails` defines an interval and associated metadata.",
+      "id": "PolylineDetails",
+      "properties": {
+        "bridgeInfo": {
+          "description": "Bridge details along the polyline.",
+          "items": {
+            "$ref": "BridgeInfo"
+          },
+          "type": "array"
+        },
+        "flyoverInfo": {
+          "description": "Flyover details along the polyline.",
+          "items": {
+            "$ref": "FlyoverInfo"
+          },
+          "type": "array"
+        },
+        "narrowRoadInfo": {
+          "description": "Narrow road details along the polyline.",
+          "items": {
+            "$ref": "NarrowRoadInfo"
+          },
+          "type": "array"
+        },
+        "skywayInfo": {
+          "description": "Skyway details along the polyline.",
+          "items": {
+            "$ref": "SkywayInfo"
+          },
+          "type": "array"
+        },
+        "tunnelInfo": {
+          "description": "Tunnel details along the polyline. This field is populated if the request specifies the `avoid_tunnels` route modifier and the resultant route fails to avoid them, OR if `TUNNEL_INFO_ON_POLYLINE` is specified in `extra_computations` and the route contains tunnels.",
+          "items": {
+            "$ref": "TunnelInfo"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "PolylinePointIndex": {
+      "description": "Encapsulates the start and end indexes for a polyline detail. For instances where the data corresponds to a single point, `start_index` and `end_index` will be equal.",
+      "id": "PolylinePointIndex",
+      "properties": {
+        "endIndex": {
+          "description": "The end index of this detail in the polyline.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "startIndex": {
+          "description": "The start index of this detail in the polyline.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "Route": {
+      "description": "Contains a route, which consists of a series of connected road segments that join beginning, ending, and intermediate waypoints.",
+      "id": "Route",
+      "properties": {
+        "description": {
+          "description": "A description of the route.",
+          "type": "string"
+        },
+        "distanceMeters": {
+          "description": "The travel distance of the route, in meters.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "duration": {
+          "description": "The length of time needed to navigate the route. If you set the `routing_preference` to `TRAFFIC_UNAWARE`, then this value is the same as `static_duration`. If you set the `routing_preference` to either `TRAFFIC_AWARE` or `TRAFFIC_AWARE_OPTIMAL`, then this value is calculated taking traffic conditions into account.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "legs": {
+          "description": "A collection of legs (path segments between waypoints) that make up the route. Each leg corresponds to the trip between two non-`via` `Waypoints`. For example, a route with no intermediate waypoints has only one leg. A route that includes one non-`via` intermediate waypoint has two legs. A route that includes one `via` intermediate waypoint has one leg. The order of the legs matches the order of waypoints from `origin` to `intermediates` to `destination`.",
+          "items": {
+            "$ref": "RouteLeg"
+          },
+          "type": "array"
+        },
+        "localizedValues": {
+          "$ref": "RouteLocalizedValues",
+          "description": "Text representations of properties of the `Route`."
+        },
+        "optimizedIntermediateWaypointIndex": {
+          "description": "If you set `optimize_waypoint_order` to true, this field contains the optimized ordering of intermediate waypoints. Otherwise, this field is empty. For example, if you give an input of Origin: LA; Intermediate waypoints: Dallas, Bangor, Phoenix; Destination: New York; and the optimized intermediate waypoint order is Phoenix, Dallas, Bangor, then this field contains the values [2, 0, 1]. The index starts with 0 for the first intermediate waypoint provided in the input.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "polyline": {
+          "$ref": "Polyline",
+          "description": "The overall route polyline. This polyline is the combined polyline of all `legs`."
+        },
+        "polylineDetails": {
+          "$ref": "PolylineDetails",
+          "description": "Contains information about details along the polyline."
+        },
+        "routeLabels": {
+          "description": "Labels for the `Route` that are useful to identify specific properties of the route to compare against others.",
+          "items": {
+            "enum": [
+              "ROUTE_LABEL_UNSPECIFIED",
+              "DEFAULT_ROUTE",
+              "DEFAULT_ROUTE_ALTERNATE",
+              "FUEL_EFFICIENT",
+              "SHORTER_DISTANCE"
+            ],
+            "enumDescriptions": [
+              "Default - not used.",
+              "The default \"best\" route returned for the route computation.",
+              "An alternative to the default \"best\" route. Routes like this will be returned when `compute_alternative_routes` is specified.",
+              "Fuel efficient route. Routes labeled with this value are determined to be optimized for Eco parameters such as fuel consumption.",
+              "Shorter travel distance route. This is an experimental feature."
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "routeToken": {
+          "description": "An opaque token that can be passed to [Navigation SDK](https://developers.google.com/maps/documentation/mobility/driver-sdk/navigation) to reconstruct the route during navigation, and, in the event of rerouting, honor the original intention when the route was created. Treat this token as an opaque blob. Don't compare its value across requests as its value may change even if the service returns the exact same route. NOTE: `Route.route_token` is only available for requests that have set `ComputeRoutesRequest.routing_preference` to `TRAFFIC_AWARE` or `TRAFFIC_AWARE_OPTIMAL`. `Route.route_token` is not supported for requests that have Via waypoints.",
+          "type": "string"
+        },
+        "staticDuration": {
+          "description": "The duration of travel through the route without taking traffic conditions into consideration.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "travelAdvisory": {
+          "$ref": "RouteTravelAdvisory",
+          "description": "Additional information about the route."
+        },
+        "viewport": {
+          "$ref": "Viewport",
+          "description": "The viewport bounding box of the polyline."
+        },
+        "warnings": {
+          "description": "An array of warnings to show when displaying the route.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "RouteLeg": {
+      "description": "Contains a segment between non-`via` waypoints.",
+      "id": "RouteLeg",
+      "properties": {
+        "distanceMeters": {
+          "description": "The travel distance of the route leg, in meters.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "duration": {
+          "description": "The length of time needed to navigate the leg. If the `route_preference` is set to `TRAFFIC_UNAWARE`, then this value is the same as `static_duration`. If the `route_preference` is either `TRAFFIC_AWARE` or `TRAFFIC_AWARE_OPTIMAL`, then this value is calculated taking traffic conditions into account.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "endLocation": {
+          "$ref": "Location",
+          "description": "The end location of this leg. This location might be different from the provided `destination`. For example, when the provided `destination` is not near a road, this is a point on the road."
+        },
+        "localizedValues": {
+          "$ref": "RouteLegLocalizedValues",
+          "description": "Text representations of properties of the `RouteLeg`."
+        },
+        "polyline": {
+          "$ref": "Polyline",
+          "description": "The overall polyline for this leg that includes each `step`'s polyline."
+        },
+        "startLocation": {
+          "$ref": "Location",
+          "description": "The start location of this leg. This location might be different from the provided `origin`. For example, when the provided `origin` is not near a road, this is a point on the road."
+        },
+        "staticDuration": {
+          "description": "The duration of travel through the leg, calculated without taking traffic conditions into consideration.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "steps": {
+          "description": "An array of steps denoting segments within this leg. Each step represents one navigation instruction.",
+          "items": {
+            "$ref": "RouteLegStep"
+          },
+          "type": "array"
+        },
+        "stepsOverview": {
+          "$ref": "StepsOverview",
+          "description": "Overview information about the steps in this `RouteLeg`. This field is only populated for TRANSIT routes."
+        },
+        "travelAdvisory": {
+          "$ref": "RouteLegTravelAdvisory",
+          "description": "Contains the additional information that the user should be informed about, such as possible traffic zone restrictions, on a route leg."
+        }
+      },
+      "type": "object"
+    },
+    "RouteLegLocalizedValues": {
+      "description": "Text representations of certain properties.",
+      "id": "RouteLegLocalizedValues",
+      "properties": {
+        "distance": {
+          "$ref": "LocalizedText",
+          "description": "Travel distance represented in text form."
+        },
+        "duration": {
+          "$ref": "LocalizedText",
+          "description": "Duration, represented in text form and localized to the region of the query. Takes traffic conditions into consideration. Note: If you did not request traffic information, this value is the same value as static_duration."
+        },
+        "staticDuration": {
+          "$ref": "LocalizedText",
+          "description": "Duration without taking traffic conditions into consideration, represented in text form."
+        }
+      },
+      "type": "object"
+    },
+    "RouteLegStep": {
+      "description": "Contains a segment of a `RouteLeg`. A step corresponds to a single navigation instruction. Route legs are made up of steps.",
+      "id": "RouteLegStep",
+      "properties": {
+        "distanceMeters": {
+          "description": "The travel distance of this step, in meters. In some circumstances, this field might not have a value.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "endLocation": {
+          "$ref": "Location",
+          "description": "The end location of this step."
+        },
+        "localizedValues": {
+          "$ref": "RouteLegStepLocalizedValues",
+          "description": "Text representations of properties of the `RouteLegStep`."
+        },
+        "navigationInstruction": {
+          "$ref": "NavigationInstruction",
+          "description": "Navigation instructions."
+        },
+        "polyline": {
+          "$ref": "Polyline",
+          "description": "The polyline associated with this step."
+        },
+        "startLocation": {
+          "$ref": "Location",
+          "description": "The start location of this step."
+        },
+        "staticDuration": {
+          "description": "The duration of travel through this step without taking traffic conditions into consideration. In some circumstances, this field might not have a value.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "transitDetails": {
+          "$ref": "RouteLegStepTransitDetails",
+          "description": "Details pertaining to this step if the travel mode is `TRANSIT`."
+        },
+        "travelAdvisory": {
+          "$ref": "RouteLegStepTravelAdvisory",
+          "description": "Contains the additional information that the user should be informed about, such as possible traffic zone restrictions, on a leg step."
+        },
+        "travelMode": {
+          "description": "The travel mode used for this step.",
+          "enum": [
+            "TRAVEL_MODE_UNSPECIFIED",
+            "DRIVE",
+            "BICYCLE",
+            "WALK",
+            "TWO_WHEELER",
+            "TRANSIT"
+          ],
+          "enumDescriptions": [
+            "No travel mode specified. Defaults to `DRIVE`.",
+            "Travel by passenger car.",
+            "Travel by bicycle.",
+            "Travel by walking.",
+            "Two-wheeled, motorized vehicle. For example, motorcycle. Note that this differs from the `BICYCLE` travel mode which covers human-powered mode.",
+            "Travel by public transit routes, where available."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RouteLegStepLocalizedValues": {
+      "description": "Text representations of certain properties.",
+      "id": "RouteLegStepLocalizedValues",
+      "properties": {
+        "distance": {
+          "$ref": "LocalizedText",
+          "description": "Travel distance represented in text form."
+        },
+        "staticDuration": {
+          "$ref": "LocalizedText",
+          "description": "Duration without taking traffic conditions into consideration, represented in text form."
+        }
+      },
+      "type": "object"
+    },
+    "RouteLegStepTransitDetails": {
+      "description": "Additional information for the `RouteLegStep` related to `TRANSIT` routes.",
+      "id": "RouteLegStepTransitDetails",
+      "properties": {
+        "headsign": {
+          "description": "Specifies the direction in which to travel on this line as marked on the vehicle or at the departure stop. The direction is often the terminus station.",
+          "type": "string"
+        },
+        "headway": {
+          "description": "Specifies the expected time as a duration between departures from the same stop at this time. For example, with a headway seconds value of 600, you would expect a ten minute wait if you should miss your bus.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "localizedValues": {
+          "$ref": "TransitDetailsLocalizedValues",
+          "description": "Text representations of properties of the `RouteLegStepTransitDetails`."
+        },
+        "stopCount": {
+          "description": "The number of stops from the departure to the arrival stop. This count includes the arrival stop, but excludes the departure stop. For example, if your route leaves from Stop A, passes through stops B and C, and arrives at stop D, stop_count returns 3.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "stopDetails": {
+          "$ref": "TransitStopDetails",
+          "description": "Information about the arrival and departure stops for the step."
+        },
+        "transitLine": {
+          "$ref": "TransitLine",
+          "description": "Information about the transit line used in this step."
+        },
+        "tripShortText": {
+          "description": "The text that appears in schedules and sign boards to identify a transit trip to passengers. The text should uniquely identify a trip within a service day. For example, \"538\" is the `trip_short_text` of the Amtrak train that leaves San Jose, CA at 15:10 on weekdays to Sacramento, CA.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RouteLegStepTravelAdvisory": {
+      "description": "Contains the additional information that the user should be informed about, such as possible traffic zone restrictions on a leg step.",
+      "id": "RouteLegStepTravelAdvisory",
+      "properties": {
+        "speedReadingIntervals": {
+          "description": "NOTE: This field is not currently populated.",
+          "items": {
+            "$ref": "SpeedReadingInterval"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "RouteLegTravelAdvisory": {
+      "description": "Contains the additional information that the user should be informed about on a leg step, such as possible traffic zone restrictions.",
+      "id": "RouteLegTravelAdvisory",
+      "properties": {
+        "speedReadingIntervals": {
+          "description": "Speed reading intervals indicating traffic density. This field is only populated for requests when the request has a `TRAFFIC_AWARE` or `TRAFFIC_AWARE_OPTIMAL` ComputeRoutesRequest.routing_preference value, and `TRAFFIC_ON_POLYLINE` is included in the ComputeRoutesRequest.extra_computations. The intervals cover the entire polyline of the `RouteLeg` without overlap. The start point of a specified interval is the same as the end point of the preceding interval. Example: polyline: A ---- B ---- C ---- D ---- E ---- F ---- G speed_reading_intervals: [A,C), [C,D), [D,G).",
+          "items": {
+            "$ref": "SpeedReadingInterval"
+          },
+          "type": "array"
+        },
+        "tollInfo": {
+          "$ref": "TollInfo",
+          "description": "Contains information about tolls on the specific `RouteLeg`. This field is only populated if we expect there are tolls on the `RouteLeg` and `TOLLS` is included in the request's ComputeRoutesRequest.extra_computations. If this field is set but the estimated_price subfield is not populated, we expect that road contains tolls but we do not know an estimated price. If `toll_info` does not exist, then there is no toll on the `RouteLeg`."
+        }
+      },
+      "type": "object"
+    },
+    "RouteLocalizedValues": {
+      "description": "Text representations of certain properties.",
+      "id": "RouteLocalizedValues",
+      "properties": {
+        "distance": {
+          "$ref": "LocalizedText",
+          "description": "Travel distance represented in text form."
+        },
+        "duration": {
+          "$ref": "LocalizedText",
+          "description": "Duration, represented in text form and localized to the region of the query. Takes traffic conditions into consideration. Note: If you did not request traffic information, this value is the same value as `static_duration`."
+        },
+        "staticDuration": {
+          "$ref": "LocalizedText",
+          "description": "Duration without taking traffic conditions into consideration, represented in text form."
+        },
+        "transitFare": {
+          "$ref": "LocalizedText",
+          "description": "Transit fare represented in text form."
+        }
+      },
+      "type": "object"
+    },
+    "RouteMatrixDestination": {
+      "description": "A single destination for ComputeRouteMatrixRequest",
+      "id": "RouteMatrixDestination",
+      "properties": {
+        "waypoint": {
+          "$ref": "Waypoint",
+          "description": "Required. Destination waypoint"
+        }
+      },
+      "type": "object"
+    },
+    "RouteMatrixElement": {
+      "description": "Contains route information computed for an origin/destination pair in the ComputeRouteMatrix API. This proto can be streamed to the client.",
+      "id": "RouteMatrixElement",
+      "properties": {
+        "condition": {
+          "description": "Indicates whether the route was found or not. Independent of status.",
+          "enum": [
+            "ROUTE_MATRIX_ELEMENT_CONDITION_UNSPECIFIED",
+            "ROUTE_EXISTS",
+            "ROUTE_NOT_FOUND"
+          ],
+          "enumDescriptions": [
+            "Only used when the `status` of the element is not OK.",
+            "A route was found, and the corresponding information was filled out for the element.",
+            "No route could be found. Fields containing route information, such as `distance_meters` or `duration`, will not be filled out in the element."
+          ],
+          "type": "string"
+        },
+        "destinationIndex": {
+          "description": "Zero-based index of the destination in the request.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "distanceMeters": {
+          "description": "The travel distance of the route, in meters.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "duration": {
+          "description": "The length of time needed to navigate the route. If you set the routing_preference to `TRAFFIC_UNAWARE`, then this value is the same as `static_duration`. If you set the `routing_preference` to either `TRAFFIC_AWARE` or `TRAFFIC_AWARE_OPTIMAL`, then this value is calculated taking traffic conditions into account.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "fallbackInfo": {
+          "$ref": "FallbackInfo",
+          "description": "In some cases when the server is not able to compute the route with the given preferences for this particular origin/destination pair, it may fall back to using a different mode of computation. When fallback mode is used, this field contains detailed information about the fallback response. Otherwise this field is unset."
+        },
+        "localizedValues": {
+          "$ref": "LocalizedValues",
+          "description": "Text representations of properties of the `RouteMatrixElement`."
+        },
+        "originIndex": {
+          "description": "Zero-based index of the origin in the request.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "staticDuration": {
+          "description": "The duration of traveling through the route without taking traffic conditions into consideration.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "Status",
+          "description": "Error status code for this element."
+        },
+        "travelAdvisory": {
+          "$ref": "RouteTravelAdvisory",
+          "description": "Additional information about the route. For example: restriction information and toll information"
+        }
+      },
+      "type": "object"
+    },
+    "RouteMatrixOrigin": {
+      "description": "A single origin for ComputeRouteMatrixRequest",
+      "id": "RouteMatrixOrigin",
+      "properties": {
+        "routeModifiers": {
+          "$ref": "RouteModifiers",
+          "description": "Optional. Modifiers for every route that takes this as the origin"
+        },
+        "waypoint": {
+          "$ref": "Waypoint",
+          "description": "Required. Origin waypoint"
+        }
+      },
+      "type": "object"
+    },
+    "RouteModifiers": {
+      "description": "Encapsulates a set of optional conditions to satisfy when calculating the routes.",
+      "id": "RouteModifiers",
+      "properties": {
+        "avoidFerries": {
+          "description": "When set to true, avoids ferries where reasonable, giving preference to routes not containing ferries. Applies only to the `DRIVE` and`TWO_WHEELER` `RouteTravelMode`.",
+          "type": "boolean"
+        },
+        "avoidHighways": {
+          "description": "When set to true, avoids highways where reasonable, giving preference to routes not containing highways. Applies only to the `DRIVE` and `TWO_WHEELER` `RouteTravelMode`.",
+          "type": "boolean"
+        },
+        "avoidIndoor": {
+          "description": "When set to true, avoids navigating indoors where reasonable, giving preference to routes not containing indoor navigation. Applies only to the `WALK` `RouteTravelMode`.",
+          "type": "boolean"
+        },
+        "avoidTolls": {
+          "description": "When set to true, avoids toll roads where reasonable, giving preference to routes not containing toll roads. Applies only to the `DRIVE` and `TWO_WHEELER` `RouteTravelMode`.",
+          "type": "boolean"
+        },
+        "avoidTunnels": {
+          "description": "Optional. When set to true, avoids tunnels where reasonable, giving preference to routes not containing tunnels. Applies only to the `DRIVE` and `TWO_WHEELER` `RouteTravelMode`. `RoutingPreference` must be set to `TRAFFIC_AWARE_OPTIMAL`. This field is not supported in ComputeRouteMatrix.",
+          "type": "boolean"
+        },
+        "tollPasses": {
+          "description": "Encapsulates information about toll passes. If toll passes are provided, the API tries to return the pass price. If toll passes are not provided, the API treats the toll pass as unknown and tries to return the cash price. Applies only to the `DRIVE` and `TWO_WHEELER` `RouteTravelMode`.",
+          "items": {
+            "enum": [
+              "TOLL_PASS_UNSPECIFIED",
+              "AU_ETOLL_TAG",
+              "AU_EWAY_TAG",
+              "AU_LINKT",
+              "AR_TELEPASE",
+              "BR_AUTO_EXPRESO",
+              "BR_CONECTCAR",
+              "BR_MOVE_MAIS",
+              "BR_PASSA_RAPIDO",
+              "BR_SEM_PARAR",
+              "BR_TAGGY",
+              "BR_VELOE",
+              "CA_US_AKWASASNE_SEAWAY_CORPORATE_CARD",
+              "CA_US_AKWASASNE_SEAWAY_TRANSIT_CARD",
+              "CA_US_BLUE_WATER_EDGE_PASS",
+              "CA_US_CONNEXION",
+              "CA_US_NEXUS_CARD",
+              "ID_E_TOLL",
+              "IN_FASTAG",
+              "IN_LOCAL_HP_PLATE_EXEMPT",
+              "JP_ETC",
+              "JP_ETC2",
+              "MX_IAVE",
+              "MX_PASE",
+              "MX_QUICKPASS",
+              "MX_SISTEMA_TELEPEAJE_CHIHUAHUA",
+              "MX_TAG_IAVE",
+              "MX_TAG_TELEVIA",
+              "MX_TELEVIA",
+              "MX_VIAPASS",
+              "US_AL_FREEDOM_PASS",
+              "US_AK_ANTON_ANDERSON_TUNNEL_BOOK_OF_10_TICKETS",
+              "US_CA_FASTRAK",
+              "US_CA_FASTRAK_CAV_STICKER",
+              "US_CO_EXPRESSTOLL",
+              "US_CO_GO_PASS",
+              "US_DE_EZPASSDE",
+              "US_FL_BOB_SIKES_TOLL_BRIDGE_PASS",
+              "US_FL_DUNES_COMMUNITY_DEVELOPMENT_DISTRICT_EXPRESSCARD",
+              "US_FL_EPASS",
+              "US_FL_GIBA_TOLL_PASS",
+              "US_FL_LEEWAY",
+              "US_FL_SUNPASS",
+              "US_FL_SUNPASS_PRO",
+              "US_IL_EZPASSIL",
+              "US_IL_IPASS",
+              "US_IN_EZPASSIN",
+              "US_KS_BESTPASS_HORIZON",
+              "US_KS_KTAG",
+              "US_KS_NATIONALPASS",
+              "US_KS_PREPASS_ELITEPASS",
+              "US_KY_RIVERLINK",
+              "US_LA_GEAUXPASS",
+              "US_LA_TOLL_TAG",
+              "US_MA_EZPASSMA",
+              "US_MD_EZPASSMD",
+              "US_ME_EZPASSME",
+              "US_MI_AMBASSADOR_BRIDGE_PREMIER_COMMUTER_CARD",
+              "US_MI_BCPASS",
+              "US_MI_BREAKAWAY",
+              "US_MI_GROSSE_ILE_TOLL_BRIDGE_PASS_TAG",
+              "US_MI_IQ_PROX_CARD",
+              "US_MI_IQ_TAG",
+              "US_MI_MACKINAC_BRIDGE_MAC_PASS",
+              "US_MI_NEXPRESS_TOLL",
+              "US_MN_EZPASSMN",
+              "US_NC_EZPASSNC",
+              "US_NC_PEACH_PASS",
+              "US_NC_QUICK_PASS",
+              "US_NH_EZPASSNH",
+              "US_NJ_DOWNBEACH_EXPRESS_PASS",
+              "US_NJ_EZPASSNJ",
+              "US_NY_EXPRESSPASS",
+              "US_NY_EZPASSNY",
+              "US_OH_EZPASSOH",
+              "US_PA_EZPASSPA",
+              "US_RI_EZPASSRI",
+              "US_SC_PALPASS",
+              "US_TX_AVI_TAG",
+              "US_TX_BANCPASS",
+              "US_TX_DEL_RIO_PASS",
+              "US_TX_EFAST_PASS",
+              "US_TX_EAGLE_PASS_EXPRESS_CARD",
+              "US_TX_EPTOLL",
+              "US_TX_EZ_CROSS",
+              "US_TX_EZTAG",
+              "US_TX_FUEGO_TAG",
+              "US_TX_LAREDO_TRADE_TAG",
+              "US_TX_PLUSPASS",
+              "US_TX_TOLLTAG",
+              "US_TX_TXTAG",
+              "US_TX_XPRESS_CARD",
+              "US_UT_ADAMS_AVE_PARKWAY_EXPRESSCARD",
+              "US_VA_EZPASSVA",
+              "US_WA_BREEZEBY",
+              "US_WA_GOOD_TO_GO",
+              "US_WV_EZPASSWV",
+              "US_WV_MEMORIAL_BRIDGE_TICKETS",
+              "US_WV_MOV_PASS",
+              "US_WV_NEWELL_TOLL_BRIDGE_TICKET"
+            ],
+            "enumDeprecated": [
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              true,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false
+            ],
+            "enumDescriptions": [
+              "Not used. If this value is used, then the request fails.",
+              "Sydney toll pass. See additional details at https://www.myetoll.com.au.",
+              "Sydney toll pass. See additional details at https://www.tollpay.com.au.",
+              "Australia-wide toll pass. See additional details at https://www.linkt.com.au/.",
+              "Argentina toll pass. See additional details at https://telepase.com.ar",
+              "Brazil toll pass. See additional details at https://www.autoexpreso.com",
+              "Brazil toll pass. See additional details at https://conectcar.com.",
+              "Brazil toll pass. See additional details at https://movemais.com.",
+              "Brazil toll pass. See additional details at https://pasorapido.gob.do/",
+              "Brazil toll pass. See additional details at https://www.semparar.com.br.",
+              "Brazil toll pass. See additional details at https://taggy.com.br.",
+              "Brazil toll pass. See additional details at https://veloe.com.br/site/onde-usar.",
+              "Canada to United States border crossing.",
+              "Canada to United States border crossing.",
+              "Ontario, Canada to Michigan, United States border crossing.",
+              "Ontario, Canada to Michigan, United States border crossing.",
+              "Canada to United States border crossing.",
+              "Indonesia. E-card provided by multiple banks used to pay for tolls. All e-cards via banks are charged the same so only one enum value is needed. E.g. - Bank Mandiri https://www.bankmandiri.co.id/e-money - BCA https://www.bca.co.id/flazz - BNI https://www.bni.co.id/id-id/ebanking/tapcash",
+              "India.",
+              "India, HP state plate exemption.",
+              "Japan ETC. Electronic wireless system to collect tolls. https://www.go-etc.jp/",
+              "Japan ETC2.0. New version of ETC with further discount and bidirectional communication between devices on vehicles and antennas on the road. https://www.go-etc.jp/etc2/index.html",
+              "Mexico toll pass. https://iave.capufe.gob.mx/#/",
+              "Mexico https://www.pase.com.mx",
+              "Mexico https://operadoravial.com/quick-pass/",
+              "http://appsh.chihuahua.gob.mx/transparencia/?doc=/ingresos/TelepeajeFormato4.pdf",
+              "Mexico",
+              "Mexico toll pass company. One of many operating in Mexico City. See additional details at https://www.televia.com.mx.",
+              "Mexico toll pass company. One of many operating in Mexico City. https://www.televia.com.mx",
+              "Mexico toll pass. See additional details at https://www.viapass.com.mx/viapass/web_home.aspx.",
+              "AL, USA.",
+              "AK, USA.",
+              "CA, USA.",
+              "Indicates driver has any FasTrak pass in addition to the DMV issued Clean Air Vehicle (CAV) sticker. https://www.bayareafastrak.org/en/guide/doINeedFlex.shtml",
+              "CO, USA.",
+              "CO, USA.",
+              "DE, USA.",
+              "FL, USA.",
+              "FL, USA.",
+              "FL, USA.",
+              "FL, USA.",
+              "FL, USA.",
+              "FL, USA.",
+              "FL, USA.",
+              "IL, USA.",
+              "IL, USA.",
+              "IN, USA.",
+              "KS, USA.",
+              "KS, USA.",
+              "KS, USA.",
+              "KS, USA.",
+              "KY, USA.",
+              "LA, USA.",
+              "LA, USA.",
+              "MA, USA.",
+              "MD, USA.",
+              "ME, USA.",
+              "MI, USA.",
+              "MI, USA.",
+              "MI, USA.",
+              "MI, USA.",
+              "MI, USA. Deprecated as this pass type no longer exists.",
+              "MI, USA.",
+              "MI, USA.",
+              "MI, USA.",
+              "MN, USA.",
+              "NC, USA.",
+              "NC, USA.",
+              "NC, USA.",
+              "NH, USA.",
+              "NJ, USA.",
+              "NJ, USA.",
+              "NY, USA.",
+              "NY, USA.",
+              "OH, USA.",
+              "PA, USA.",
+              "RI, USA.",
+              "SC, USA.",
+              "TX, USA.",
+              "TX, USA.",
+              "TX, USA.",
+              "TX, USA.",
+              "TX, USA.",
+              "TX, USA.",
+              "TX, USA.",
+              "TX, USA.",
+              "TX, USA.",
+              "TX, USA.",
+              "TX, USA.",
+              "TX, USA.",
+              "TX, USA.",
+              "TX, USA.",
+              "UT, USA.",
+              "VA, USA.",
+              "WA, USA.",
+              "WA, USA.",
+              "WV, USA.",
+              "WV, USA.",
+              "WV, USA",
+              "WV, USA."
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "vehicleInfo": {
+          "$ref": "VehicleInfo",
+          "description": "Specifies the vehicle information."
+        }
+      },
+      "type": "object"
+    },
+    "RouteTravelAdvisory": {
+      "description": "Contains the additional information that the user should be informed about, such as possible traffic zone restrictions.",
+      "id": "RouteTravelAdvisory",
+      "properties": {
+        "fuelConsumptionMicroliters": {
+          "description": "The predicted fuel consumption in microliters. This field is only populated when `FUEL_CONSUMPTION` is included in the request's ComputeRoutesRequest.extra_computations.",
+          "format": "int64",
+          "type": "string"
+        },
+        "routeRestrictionsPartiallyIgnored": {
+          "description": "Returned route may have restrictions that are not suitable for requested travel mode or route modifiers.",
+          "type": "boolean"
+        },
+        "speedReadingIntervals": {
+          "description": "Speed reading intervals indicating traffic density. This field is only populated for requests when the request has a `TRAFFIC_AWARE` or `TRAFFIC_AWARE_OPTIMAL` ComputeRoutesRequest.routing_preference value, and `TRAFFIC_ON_POLYLINE` is included in the ComputeRoutesRequest.extra_computations. The intervals cover the entire polyline of the route without overlap. The start point of a specified interval is the same as the end point of the preceding interval. Example: polyline: A ---- B ---- C ---- D ---- E ---- F ---- G speed_reading_intervals: [A,C), [C,D), [D,G).",
+          "items": {
+            "$ref": "SpeedReadingInterval"
+          },
+          "type": "array"
+        },
+        "tollInfo": {
+          "$ref": "TollInfo",
+          "description": "Contains information about tolls on the route. This field is only populated if tolls are expected on the route and `TOLLS` is included in the request's ComputeRoutesRequest.extra_computations. If this field is set, but the `estimatedPrice` subfield is not populated, then the route contains tolls, but the estimated price is unknown. If `toll_info` is not set, then there are no tolls expected on the route."
+        },
+        "transitFare": {
+          "$ref": "Money",
+          "description": "If present, contains the total fare or ticket costs on this route This property is only returned for `TRANSIT` requests and only for routes where fare information is available for all transit steps."
+        }
+      },
+      "type": "object"
+    },
+    "SkywayInfo": {
+      "description": "Encapsulates information about skyways along the polyline.",
+      "id": "SkywayInfo",
+      "properties": {
+        "polylinePointIndex": {
+          "$ref": "PolylinePointIndex",
+          "description": "The location of skyway related information along the polyline."
+        },
+        "skywayPresence": {
+          "description": "Denotes whether a skyway exists for a given stretch of the polyline.",
+          "enum": [
+            "ROAD_FEATURE_STATE_UNSPECIFIED",
+            "EXISTS",
+            "DOES_NOT_EXIST"
+          ],
+          "enumDescriptions": [
+            "The road feature's state was not computed (default value).",
+            "The road feature exists.",
+            "The road feature does not exist."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "SpeedReadingInterval": {
+      "description": "Traffic density indicator on a contiguous segment of a polyline or path. Given a path with points P_0, P_1, ... , P_N (zero-based index), the `SpeedReadingInterval` defines an interval and describes its traffic using the following categories.",
+      "id": "SpeedReadingInterval",
+      "properties": {
+        "endPolylinePointIndex": {
+          "description": "The ending index of this interval in the polyline.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "speed": {
+          "description": "Traffic speed in this interval.",
+          "enum": [
+            "SPEED_UNSPECIFIED",
+            "NORMAL",
+            "SLOW",
+            "TRAFFIC_JAM"
+          ],
+          "enumDescriptions": [
+            "Default value. This value is unused.",
+            "Normal speed, no traffic delays.",
+            "Slowdown detected, medium amount of traffic.",
+            "Traffic delays."
+          ],
+          "type": "string"
+        },
+        "startPolylinePointIndex": {
+          "description": "The starting index of this interval in the polyline.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "Status": {
+      "description": "The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).",
+      "id": "Status",
+      "properties": {
+        "code": {
+          "description": "The status code, which should be an enum value of google.rpc.Code.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "details": {
+          "description": "A list of messages that carry the error details. There is a common set of message types for APIs to use.",
+          "items": {
+            "additionalProperties": {
+              "description": "Properties of the object. Contains field @type with type URL.",
+              "type": "any"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "message": {
+          "description": "A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the google.rpc.Status.details field, or localized by the client.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "StepsOverview": {
+      "description": "Provides overview information about a list of `RouteLegStep`s.",
+      "id": "StepsOverview",
+      "properties": {
+        "multiModalSegments": {
+          "description": "Summarized information about different multi-modal segments of the `RouteLeg.steps`. This field is not populated if the `RouteLeg` does not contain any multi-modal segments in the steps.",
+          "items": {
+            "$ref": "MultiModalSegment"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "TollInfo": {
+      "description": "Encapsulates toll information on a `Route` or on a `RouteLeg`.",
+      "id": "TollInfo",
+      "properties": {
+        "estimatedPrice": {
+          "description": "The monetary amount of tolls for the corresponding `Route` or `RouteLeg`. This list contains a money amount for each currency that is expected to be charged by the toll stations. Typically this list will contain only one item for routes with tolls in one currency. For international trips, this list may contain multiple items to reflect tolls in different currencies.",
+          "items": {
+            "$ref": "Money"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "TransitAgency": {
+      "description": "A transit agency that operates a transit line.",
+      "id": "TransitAgency",
+      "properties": {
+        "name": {
+          "description": "The name of this transit agency.",
+          "type": "string"
+        },
+        "phoneNumber": {
+          "description": "The transit agency's locale-specific formatted phone number.",
+          "type": "string"
+        },
+        "uri": {
+          "description": "The transit agency's URI.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "TransitDetailsLocalizedValues": {
+      "description": "Localized descriptions of values for `RouteTransitDetails`.",
+      "id": "TransitDetailsLocalizedValues",
+      "properties": {
+        "arrivalTime": {
+          "$ref": "LocalizedTime",
+          "description": "Time in its formatted text representation with a corresponding time zone."
+        },
+        "departureTime": {
+          "$ref": "LocalizedTime",
+          "description": "Time in its formatted text representation with a corresponding time zone."
+        }
+      },
+      "type": "object"
+    },
+    "TransitLine": {
+      "description": "Contains information about the transit line used in this step.",
+      "id": "TransitLine",
+      "properties": {
+        "agencies": {
+          "description": "The transit agency (or agencies) that operates this transit line.",
+          "items": {
+            "$ref": "TransitAgency"
+          },
+          "type": "array"
+        },
+        "color": {
+          "description": "The color commonly used in signage for this line. Represented in hexadecimal.",
+          "type": "string"
+        },
+        "iconUri": {
+          "description": "The URI for the icon associated with this line.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The full name of this transit line, For example, \"8 Avenue Local\".",
+          "type": "string"
+        },
+        "nameShort": {
+          "description": "The short name of this transit line. This name will normally be a line number, such as \"M7\" or \"355\".",
+          "type": "string"
+        },
+        "textColor": {
+          "description": "The color commonly used in text on signage for this line. Represented in hexadecimal.",
+          "type": "string"
+        },
+        "uri": {
+          "description": "the URI for this transit line as provided by the transit agency.",
+          "type": "string"
+        },
+        "vehicle": {
+          "$ref": "TransitVehicle",
+          "description": "The type of vehicle that operates on this transit line."
+        }
+      },
+      "type": "object"
+    },
+    "TransitPreferences": {
+      "description": "Preferences for `TRANSIT` based routes that influence the route that is returned.",
+      "id": "TransitPreferences",
+      "properties": {
+        "allowedTravelModes": {
+          "description": "A set of travel modes to use when getting a `TRANSIT` route. Defaults to all supported modes of travel.",
+          "items": {
+            "enum": [
+              "TRANSIT_TRAVEL_MODE_UNSPECIFIED",
+              "BUS",
+              "SUBWAY",
+              "TRAIN",
+              "LIGHT_RAIL",
+              "RAIL"
+            ],
+            "enumDescriptions": [
+              "No transit travel mode specified.",
+              "Travel by bus.",
+              "Travel by subway.",
+              "Travel by train.",
+              "Travel by light rail or tram.",
+              "Travel by rail. This is equivalent to a combination of `SUBWAY`, `TRAIN`, and `LIGHT_RAIL`."
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "routingPreference": {
+          "description": "A routing preference that, when specified, influences the `TRANSIT` route returned.",
+          "enum": [
+            "TRANSIT_ROUTING_PREFERENCE_UNSPECIFIED",
+            "LESS_WALKING",
+            "FEWER_TRANSFERS"
+          ],
+          "enumDescriptions": [
+            "No preference specified.",
+            "Indicates that the calculated route should prefer limited amounts of walking.",
+            "Indicates that the calculated route should prefer a limited number of transfers."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "TransitStop": {
+      "description": "Information about a transit stop.",
+      "id": "TransitStop",
+      "properties": {
+        "location": {
+          "$ref": "Location",
+          "description": "The location of the stop expressed in latitude/longitude coordinates."
+        },
+        "name": {
+          "description": "The name of the transit stop.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "TransitStopDetails": {
+      "description": "Details about the transit stops for the `RouteLegStep`.",
+      "id": "TransitStopDetails",
+      "properties": {
+        "arrivalStop": {
+          "$ref": "TransitStop",
+          "description": "Information about the arrival stop for the step."
+        },
+        "arrivalTime": {
+          "description": "The estimated time of arrival for the step.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "departureStop": {
+          "$ref": "TransitStop",
+          "description": "Information about the departure stop for the step."
+        },
+        "departureTime": {
+          "description": "The estimated time of departure for the step.",
+          "format": "google-datetime",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "TransitVehicle": {
+      "description": "Information about a vehicle used in transit routes.",
+      "id": "TransitVehicle",
+      "properties": {
+        "iconUri": {
+          "description": "The URI for an icon associated with this vehicle type.",
+          "type": "string"
+        },
+        "localIconUri": {
+          "description": "The URI for the icon associated with this vehicle type, based on the local transport signage.",
+          "type": "string"
+        },
+        "name": {
+          "$ref": "LocalizedText",
+          "description": "The name of this vehicle, capitalized."
+        },
+        "type": {
+          "description": "The type of vehicle used.",
+          "enum": [
+            "TRANSIT_VEHICLE_TYPE_UNSPECIFIED",
+            "BUS",
+            "CABLE_CAR",
+            "COMMUTER_TRAIN",
+            "FERRY",
+            "FUNICULAR",
+            "GONDOLA_LIFT",
+            "HEAVY_RAIL",
+            "HIGH_SPEED_TRAIN",
+            "INTERCITY_BUS",
+            "LONG_DISTANCE_TRAIN",
+            "METRO_RAIL",
+            "MONORAIL",
+            "OTHER",
+            "RAIL",
+            "SHARE_TAXI",
+            "SUBWAY",
+            "TRAM",
+            "TROLLEYBUS"
+          ],
+          "enumDescriptions": [
+            "Unused.",
+            "Bus.",
+            "A vehicle that operates on a cable, usually on the ground. Aerial cable cars may be of the type `GONDOLA_LIFT`.",
+            "Commuter rail.",
+            "Ferry.",
+            "A vehicle that is pulled up a steep incline by a cable. A Funicular typically consists of two cars, with each car acting as a counterweight for the other.",
+            "An aerial cable car.",
+            "Heavy rail.",
+            "High speed train.",
+            "Intercity bus.",
+            "Long distance train.",
+            "Light rail transit.",
+            "Monorail.",
+            "All other vehicles.",
+            "Rail.",
+            "Share taxi is a kind of bus with the ability to drop off and pick up passengers anywhere on its route.",
+            "Underground light rail.",
+            "Above ground light rail.",
+            "Trolleybus."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "TunnelInfo": {
+      "description": "Encapsulates information about tunnels along the polyline.",
+      "id": "TunnelInfo",
+      "properties": {
+        "polylinePointIndex": {
+          "$ref": "PolylinePointIndex",
+          "description": "The location of tunnel related information along the polyline."
+        },
+        "tunnelPresence": {
+          "description": "Denotes whether a tunnel exists for a given stretch of the polyline.",
+          "enum": [
+            "ROAD_FEATURE_STATE_UNSPECIFIED",
+            "EXISTS",
+            "DOES_NOT_EXIST"
+          ],
+          "enumDescriptions": [
+            "The road feature's state was not computed (default value).",
+            "The road feature exists.",
+            "The road feature does not exist."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "VehicleInfo": {
+      "description": "Contains the vehicle information, such as the vehicle emission type.",
+      "id": "VehicleInfo",
+      "properties": {
+        "emissionType": {
+          "description": "Describes the vehicle's emission type. Applies only to the `DRIVE` `RouteTravelMode`.",
+          "enum": [
+            "VEHICLE_EMISSION_TYPE_UNSPECIFIED",
+            "GASOLINE",
+            "ELECTRIC",
+            "HYBRID",
+            "DIESEL"
+          ],
+          "enumDescriptions": [
+            "No emission type specified. Default to `GASOLINE`.",
+            "Gasoline/petrol fueled vehicle.",
+            "Electricity powered vehicle.",
+            "Hybrid fuel (such as gasoline + electric) vehicle.",
+            "Diesel fueled vehicle."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Viewport": {
+      "description": "A latitude-longitude viewport, represented as two diagonally opposite `low` and `high` points. A viewport is considered a closed region, i.e. it includes its boundary. The latitude bounds must range between -90 to 90 degrees inclusive, and the longitude bounds must range between -180 to 180 degrees inclusive. Various cases include: - If `low` = `high`, the viewport consists of that single point. - If `low.longitude` > `high.longitude`, the longitude range is inverted (the viewport crosses the 180 degree longitude line). - If `low.longitude` = -180 degrees and `high.longitude` = 180 degrees, the viewport includes all longitudes. - If `low.longitude` = 180 degrees and `high.longitude` = -180 degrees, the longitude range is empty. - If `low.latitude` > `high.latitude`, the latitude range is empty. Both `low` and `high` must be populated, and the represented box cannot be empty (as specified by the definitions above). An empty viewport will result in an error. For example, this viewport fully encloses New York City: { \"low\": { \"latitude\": 40.477398, \"longitude\": -74.259087 }, \"high\": { \"latitude\": 40.91618, \"longitude\": -73.70018 } }",
+      "id": "Viewport",
+      "properties": {
+        "high": {
+          "$ref": "LatLng",
+          "description": "Required. The high point of the viewport."
+        },
+        "low": {
+          "$ref": "LatLng",
+          "description": "Required. The low point of the viewport."
+        }
+      },
+      "type": "object"
+    },
+    "Waypoint": {
+      "description": "Encapsulates a waypoint. Waypoints mark both the beginning and end of a route, and include intermediate stops along the route.",
+      "id": "Waypoint",
+      "properties": {
+        "address": {
+          "description": "Human readable address or a plus code. See https://plus.codes for details.",
+          "type": "string"
+        },
+        "location": {
+          "$ref": "Location",
+          "description": "A point specified using geographic coordinates, including an optional heading."
+        },
+        "navigationPointToken": {
+          "description": "A token that identifies a [`NavigationPoint`](/maps/documentation/geocoding/reference/rest/v4alpha/geocode.destinations/searchDestinations#navigationpoint), obtained from the `SearchDestinations` method of the Geocoding API.",
+          "type": "string"
+        },
+        "placeId": {
+          "description": "The POI Place ID associated with the waypoint.",
+          "type": "string"
+        },
+        "sideOfRoad": {
+          "description": "Indicates that the location of this waypoint is meant to have a preference for the vehicle to stop at a particular side of road. When you set this value, the route will pass through the location so that the vehicle can stop at the side of road that the location is biased towards from the center of the road. This option works only for `DRIVE` and `TWO_WHEELER` `RouteTravelMode`.",
+          "type": "boolean"
+        },
+        "vehicleStopover": {
+          "description": "Indicates that the waypoint is meant for vehicles to stop at, where the intention is to either pickup or drop-off. When you set this value, the calculated route won't include non-`via` waypoints on roads that are unsuitable for pickup and drop-off. This option works only for `DRIVE` and `TWO_WHEELER` travel modes, and when the `location_type` is `Location`.",
+          "type": "boolean"
+        },
+        "via": {
+          "description": "Marks this waypoint as a milestone rather a stopping point. For each non-via waypoint in the request, the response appends an entry to the `legs` array to provide the details for stopovers on that leg of the trip. Set this value to true when you want the route to pass through this waypoint without stopping over. Via waypoints don't cause an entry to be added to the `legs` array, but they do route the journey through the waypoint. You can only set this value on waypoints that are intermediates. The request fails if you set this field on terminal waypoints. If `ComputeRoutesRequest.optimize_waypoint_order` is set to true then this field cannot be set to true; otherwise, the request fails.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Routes API",
+  "version": "v2",
+  "version_module": true
+}
