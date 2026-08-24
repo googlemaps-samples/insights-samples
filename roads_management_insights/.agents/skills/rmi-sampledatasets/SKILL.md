@@ -14,7 +14,7 @@ This skill provides comprehensive context, architectural scaling methods, automa
 
 ## 1. Multi-Region Global Sample Catalog
 
-RMI maintains 11 localized, pre-subscribed sample datasets on Google Cloud Analytics Hub. Anyone with a standard Google account can access and subscribe to these listings directly into their own BigQuery project for zero-copy, zero-egress analysis:
+RMI maintains 10 localized, pre-subscribed sample datasets on Google Cloud Analytics Hub. Anyone with a standard Google account can access and subscribe to these listings directly into their own BigQuery project for zero-copy, zero-egress analysis:
 
 - **Public Analytics Hub Exchange**: [Analytics Hub Data Exchange: `rmi_sampledata_v2_ga_prod`](https://console.cloud.google.com/bigquery/analytics-hub/exchanges/projects/1024202510105/locations/us/dataExchanges/rmi_sampledata_v2_ga_prod)
 - **Publisher Project ID**: `1024202510105`
@@ -38,7 +38,7 @@ RMI maintains 11 localized, pre-subscribed sample datasets on Google Cloud Analy
 | 8 | **`singapore_ga`** | **Singapore** | `src_singapore_ga` | Major expressway and arterial network across Singapore | Spring/Summer 2026 |
 | 9 | **`sydney_ga`** | **Sydney (Australia)** | `src_sydney_ga` | Metropolitan highways (`CONTROLLED_ACCESS`, `LIMITED_ACCESS`) | Spring/Summer 2026 |
 | 10 | **`tokyo_ga`** | **Tokyo (Japan)** | `src_tokyo_ga` | Major priority roads across Tokyo 23 Wards | Spring/Summer 2026 |
-| 11 | **`westyorkshire_ga`** | **West Yorkshire (UK)** | `src_westyorkshire_ga` | Regional corridor monitoring for West Yorkshire | Spring/Summer 2026 |
+
 
 
 
