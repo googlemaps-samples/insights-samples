@@ -2,7 +2,7 @@
   "bundle_id": "rmi-core",
   "version": "1.0.0",
   "description": "Curated suite of agentic skills for Roads Management Insights (RMI) development, APIs, data analytics, and operational runbooks.",
-  "published_at": "2026-08-24T04:49:33.150758+00:00",
+  "published_at": "2026-08-24T05:09:57.729911+00:00",
   "upstream_commit": "untracked_local_build",
   "total_skills_count": 13,
   "skills": {
@@ -183,12 +183,11 @@
     },
     "rmi-sampledatasets": {
       "source_path": "dist/rmi-sampledatasets",
-      "files_count": 5,
+      "files_count": 4,
       "hashes": {
-        "SKILL.md": "426a547fbaec47c605435a8761d0e926105b63325420440a83ec8e65b6794a48",
+        "SKILL.md": "b9363451c4f02614f8743f9b63704a9a2571cb3f3441982040ba599c6a7cb218",
         "references/boston_2026.md": "8b8ff4652727cef880bfe1d4afc2bad6afeadd6037bb66c5699876f66e6fb1df",
         "references/metrics.md": "50c6df038ce7e6e371be9a3c8c3de2e588a6177205354acd1d1e6b09d3907b86",
-        "references/sample_catalog_2026.md": "3da1e5a3b06cc9fbfc88d56cf4f8217e0da59c98bf63390297350407207d2e0a",
         "scripts/list_sample_datasets.sh": "65fe3dc49419ccb834891b5a8367833a18314d48303760afb19952a12f567a1d"
       }
     },

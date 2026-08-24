@@ -21,20 +21,26 @@ RMI maintains 11 localized, pre-subscribed sample datasets on Google Cloud Analy
 - **Location**: `us`
 - **Exchange ID**: `rmi_sampledata_v2_ga_prod`
 
-### Active Regional Listings Matrix
+### Active Regional Listings Snapshot
 
-| # | Listing ID | Metro Area / Region | Source BigQuery Dataset | Primary Route Monitoring Strategy | Baseline Window | Reference |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| 1 | **`boston_ga`** | **Boston, MA (USA)** | `src_boston_ga` | Priority road network (`CONTROLLED_ACCESS`, `LIMITED_ACCESS`, `PRIMARY_HIGHWAY`, `SECONDARY_ROAD`, `MAJOR_ARTERIAL`, `MINOR_ARTERIAL`) (~1,847 routes) | Spring/Summer 2026 | [boston_2026.md](references/boston_2026.md) |
-| 2 | **`src_buenosaires_ga`** | **Buenos Aires (Argentina)** | `src_buenosaires_ga` | Top road priorities across Ciudad Autónoma de Buenos Aires | Spring/Summer 2026 | [sample_catalog_2026.md](references/sample_catalog_2026.md) |
-| 3 | **`detroit_ga`** | **Detroit, MI (USA)** | `src_detroit_ga` | Priority corridors (`CONTROLLED_ACCESS`, `PRIMARY_HIGHWAY`, `SECONDARY_ROAD`) | Spring/Summer 2026 | [sample_catalog_2026.md](references/sample_catalog_2026.md) |
-| 4 | **`manhattan_ga`** | **Manhattan / NYC (USA)** | `src_manhattan_ga` | Origin-Destination pairs from Manhattan to major airports (LGA, JFK, EWR) with 0 intermediate waypoints for dynamic pathing | Spring/Summer 2026 | [sample_catalog_2026.md](references/sample_catalog_2026.md) |
-| 5 | **`paris_ga`** | **Paris (France)** | `src_paris_ga` | Blvd Périphérique ring-road and connected radial feeder segments | Spring/Summer 2026 | [sample_catalog_2026.md](references/sample_catalog_2026.md) |
-| 6 | **`rome_ga`** | **Rome (Italy)** | `src_rome_ga` | Origin-Destination pairs from Colosseum to suburban destinations (Cerveteri, Piana del Sole, Castel Gandolfo, Villa Adriana) | Spring/Summer 2026 | [sample_catalog_2026.md](references/sample_catalog_2026.md) |
-| 7 | **`saopaulostate_ga`** | **São Paulo State (Brazil)** | `src_saopaulostate_ga` | Top road priorities within 200 km radius of central São Paulo | Spring/Summer 2026 | [sample_catalog_2026.md](references/sample_catalog_2026.md) |
-| 8 | **`singapore_ga`** | **Singapore** | `src_singapore_ga` | Major expressway and arterial network across Singapore | Spring/Summer 2026 | [sample_catalog_2026.md](references/sample_catalog_2026.md) |
-| 9 | **`sydney_ga`** | **Sydney (Australia)** | `src_sydney_ga` | Metropolitan highways (`CONTROLLED_ACCESS`, `LIMITED_ACCESS`) | Spring/Summer 2026 | [sample_catalog_2026.md](references/sample_catalog_2026.md) |
-| 10 | **`tokyo_ga`** | **Tokyo (Japan)** | `src_tokyo_ga` | Major priority roads across Tokyo 23 Wards | Spring/Summer 2026 | [sample_catalog_2026.md](references/sample_catalog_2026.md) |
+> [!TIP]
+> **Dynamic Exchange Discovery Recommended**: The table below represents a documented reference snapshot. Because new sample regions, extended time windows, and updated snapshot listings are continuously published to the exchange, **always prefer querying the live Analytics Hub exchange dynamically** using the bundled discovery tool ([`scripts/list_sample_datasets.sh`](scripts/list_sample_datasets.sh)) or the [`api-analyticshub`](../api-analyticshub/SKILL.md) API client to inspect the most up-to-date catalog.
+
+| # | Listing ID | Metro Area / Region | Source BigQuery Dataset | Primary Route Monitoring Strategy | Baseline Window |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | **`boston_ga`** | **Boston, MA (USA)** | `src_boston_ga` | Priority road network (`CONTROLLED_ACCESS`, `LIMITED_ACCESS`, `PRIMARY_HIGHWAY`, `SECONDARY_ROAD`, `MAJOR_ARTERIAL`, `MINOR_ARTERIAL`) (~1,847 routes) | Spring/Summer 2026 |
+| 2 | **`src_buenosaires_ga`** | **Buenos Aires (Argentina)** | `src_buenosaires_ga` | Top road priorities across Ciudad Autónoma de Buenos Aires | Spring/Summer 2026 |
+| 3 | **`detroit_ga`** | **Detroit, MI (USA)** | `src_detroit_ga` | Priority corridors (`CONTROLLED_ACCESS`, `PRIMARY_HIGHWAY`, `SECONDARY_ROAD`) | Spring/Summer 2026 |
+| 4 | **`manhattan_ga`** | **Manhattan / NYC (USA)** | `src_manhattan_ga` | Origin-Destination pairs from Manhattan to major airports (LGA, JFK, EWR) with 0 intermediate waypoints for dynamic pathing | Spring/Summer 2026 |
+| 5 | **`paris_ga`** | **Paris (France)** | `src_paris_ga` | Blvd Périphérique ring-road and connected radial feeder segments | Spring/Summer 2026 |
+| 6 | **`rome_ga`** | **Rome (Italy)** | `src_rome_ga` | Origin-Destination pairs from Colosseum to suburban destinations (Cerveteri, Piana del Sole, Castel Gandolfo, Villa Adriana) | Spring/Summer 2026 |
+| 7 | **`saopaulostate_ga`** | **São Paulo State (Brazil)** | `src_saopaulostate_ga` | Top road priorities within 200 km radius of central São Paulo | Spring/Summer 2026 |
+| 8 | **`singapore_ga`** | **Singapore** | `src_singapore_ga` | Major expressway and arterial network across Singapore | Spring/Summer 2026 |
+| 9 | **`sydney_ga`** | **Sydney (Australia)** | `src_sydney_ga` | Metropolitan highways (`CONTROLLED_ACCESS`, `LIMITED_ACCESS`) | Spring/Summer 2026 |
+| 10 | **`tokyo_ga`** | **Tokyo (Japan)** | `src_tokyo_ga` | Major priority roads across Tokyo 23 Wards | Spring/Summer 2026 |
+| 11 | **`westyorkshire_ga`** | **West Yorkshire (UK)** | `src_westyorkshire_ga` | Regional corridor monitoring for West Yorkshire | Spring/Summer 2026 |
+
+
 
 
 ---
@@ -157,7 +163,6 @@ The sample datasets are lightweight and highly partitioned, making interactive v
 ## 5. References & Linked Artifacts
 
 * [Analytics Hub Data Exchange: `rmi_sampledata_v2_ga_prod`](https://console.cloud.google.com/bigquery/analytics-hub/exchanges/projects/1024202510105/locations/us/dataExchanges/rmi_sampledata_v2_ga_prod)
-* [Global Sample Catalog (2026)](references/sample_catalog_2026.md)
 * [Boston 2026 Dataset Metadata Reference](references/boston_2026.md)
 * [RMI Multipliers & Ingestion Costs](references/metrics.md)
 * [Discovery Script: `list_sample_datasets.sh`](scripts/list_sample_datasets.sh)
