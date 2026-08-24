@@ -14,8 +14,8 @@ It supports three main tasks:
 
 ## Prerequisites
 
-The python environment must have:
-- `google-genai`, `pandas-gbq`, and `pillow` libraries installed.
+The environment must have:
+- Dependencies from `requirements.txt` installed.
 - Valid Google Cloud credentials to run BigQuery and Vertex AI queries.
 
 ## Instructions
@@ -47,4 +47,4 @@ python3 street_view_insights/full_frame/skills/analyze_utility_pole/scripts/anal
 - `--project` (Optional): Google Cloud project ID.
 - `--dataset` (Optional): BigQuery dataset name.
 - `--table` (Optional): BigQuery observations table name.
-- `--model` (Optional): Gemini model to use (defaults to `gemini-3.5-flash`).
+- `--model` (Optional): Gemini model to use (defaults to `gemini-3.7-flash`).

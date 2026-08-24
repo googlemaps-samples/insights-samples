@@ -8,7 +8,9 @@ import time
 from io import BytesIO
 from PIL import Image
 from google import genai
+from google.cloud import bigquery
 from google.genai import types
+
 
 CROPPED_INSPECTION_PROMPT = """You are an expert utility inspection engineer. Analyze the provided cropped/focused image of a utility pole:
 1. **Identify Attachments**: List all attachments, including transformers, crossarms, lights, riser caps, cables, and signs.
@@ -71,7 +73,7 @@ def parse_args():
     
     # Task inputs
     parser.add_argument("--image", help="Path to local image file or gs:// URI (required for 'inspect').")
-    parser.add_argument("--asset-id", help="Target asset ID or observation ID for BigQuery lookup.")
+    parser.add_argument("--asset-id", help="Target asset ID, observation ID or pano ID for BigQuery lookup.")
     parser.add_argument("--cropped-image", help="Cropped image for comparison task.")
     parser.add_argument("--full-image", help="Full-frame image for comparison task.")
     
@@ -83,7 +85,7 @@ def parse_args():
     
     # Gemini model arguments
     parser.add_argument("--location", default="global", help="Google Cloud location/region.")
-    parser.add_argument("--model", default="gemini-3.5-flash", help="Model to use (e.g. gemini-3.5-flash).")
+    parser.add_argument("--model", default="gemini-3.7-flash", help="Model to use (e.g. gemini-3.7-flash).")
     return parser.parse_args()
 
 def convert_to_gs_uri(image_url: str) -> str:
@@ -100,7 +102,6 @@ def convert_to_gs_uri(image_url: str) -> str:
     return image_url
 
 def query_image_from_bq(args, table_name):
-    from google.cloud import bigquery
     client_bq = bigquery.Client(project=args.project)
     project_id = client_bq.project or args.project
         
@@ -120,7 +121,6 @@ def query_image_from_bq(args, table_name):
     return rows[0].gcs_uri, rows[0].bbox, rows[0].asset_type, project_id
 
 def query_asset_observations(args, table_name):
-    from google.cloud import bigquery
     client_bq = bigquery.Client(project=args.project)
     project_id = client_bq.project or args.project
         
@@ -158,14 +158,12 @@ def main():
             sys.exit(1)
             
         project_id = args.project
-        bbox = None
-        asset_type = "Unknown"
         
         if args.image:
             image_uri = args.image
         else:
             try:
-                image_uri, bbox_raw, asset_type, project_id = query_image_from_bq(args, table_name)
+                image_uri, _, _, project_id = query_image_from_bq(args, table_name)
             except Exception as e:
                 print(f"Error querying BigQuery: {e}", file=sys.stderr)
                 sys.exit(1)
@@ -262,7 +260,6 @@ def main():
         project_id = args.project
         if not project_id:
             try:
-                from google.cloud import bigquery
                 client_bq = bigquery.Client()
                 project_id = client_bq.project
             except Exception:

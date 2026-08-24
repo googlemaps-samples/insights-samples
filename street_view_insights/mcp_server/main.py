@@ -204,7 +204,7 @@ def analyze_cropped_asset(
     observation_id: str,
     prompt: str,
     padding_pixels: int = 50,
-    model_name: str = "gemini-3.5-flash"
+    model_name: str = "gemini-3.7-flash"
 ) -> str:
     """
     Downloads the full-frame image for the given observation, crops it to the asset's bounding box
@@ -293,7 +293,7 @@ def analyze_full_frame_context(
     observation_id: str,
     prompt: str,
     draw_bbox: bool = True,
-    model_name: str = "gemini-3.5-flash"
+    model_name: str = "gemini-3.7-flash"
 ) -> str:
     """
     Downloads the full-frame image, optionally overlays the asset bounding box in solid red,
@@ -396,7 +396,7 @@ def analyze_panorama_perspective(
     pitch: float,
     prompt: str,
     fov: float = 90.0,
-    model_name: str = "gemini-3.5-flash"
+    model_name: str = "gemini-3.7-flash"
 ) -> str:
     """
     Extracts a perspective projection crop from a spherical panorama pano_id,

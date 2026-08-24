@@ -7,22 +7,31 @@ import json
 from io import BytesIO
 from PIL import Image
 from google import genai
+from google.cloud import bigquery, storage
 from google.genai import types
 
 SURFACE_MATERIAL_PROMPT = """Act as a civil engineering material analyst specializing in road and ground surfaces. 
-Analyze the provided panoramic street view image and accurately identify the dominant surface material and ground characteristics.
+Analyze the provided panoramic street view image, accurately identify the dominant surface material, and assess pavement condition.
 
 Follow these evaluation steps:
 1. **Identify Primary Ground Surface**: Delineate the main traveled road, pathway, or ground surface area.
-2. **Visual Evidence Extraction**: Observe texture, micro-structure, reflectance, color, aggregate size, and wear/cracking patterns.
-3. **Classify Material**: Classify into standard civil surface types (Paved Asphalt, Concrete, Gravel, Dirt, Mud, Cobblestone, Turf, Unpaved).
+2. **Granular Material Classification**: Classify into standard civil surface types:
+   - Asphalt Concrete (Paved)
+   - Portland Cement Concrete (Paved)
+   - Pavers / Cobblestone
+   - Unpaved Gravel
+   - Dirt / Soil
+   - Mud
+3. **Pavement Condition Index (PCI) & Distress Detection**:
+   - Pavement Health: Good | Fair | Poor | N/A (Unpaved)
+   - Distresses Detected: Potholes, Alligator Cracking, Longitudinal Cracks, Rutting, Sealed Cracks, Ruts, None
 
 Return your analysis strictly in structured JSON format matching this schema:
 {
-  "primary_material": "[Paved Asphalt | Concrete | Gravel | Dirt | Mud | Cobblestone | Unpaved]",
-  "secondary_materials": ["list of secondary materials present, e.g. Concrete Shoulder, Gravel Edge"],
-  "confidence_score": "0-100%",
-  "surface_condition": "[Good | Fair | Damaged/Potholes | Severely Degraded]",
+  "primary_material": "[Asphalt Concrete (Paved) | Portland Cement Concrete (Paved) | Pavers / Cobblestone | Unpaved Gravel | Dirt / Soil | Mud]",
+  "pavement_condition": "[Good | Fair | Poor | N/A (Unpaved)]",
+  "distress_features_detected": ["Potholes", "Alligator Cracking", "None"],
+  "confidence_score": "High | Medium | Low",
   "visual_reasoning": "[1-3 sentences describing specific visual cues supporting the classification]"
 }
 """
@@ -38,7 +47,7 @@ def parse_args():
     parser.add_argument("--output", help="Optional path to save JSON result file.")
     
     # BigQuery connection arguments
-    parser.add_argument("--project", default=os.getenv("GOOGLE_CLOUD_PROJECT", "YOUR_PROJECT_ID"), 
+    parser.add_argument("--project", default=os.getenv("GOOGLE_CLOUD_PROJECT"), 
                         help="Google Cloud project ID.")
     parser.add_argument("--dataset", default=os.getenv("BIGQUERY_DATASET", "imagery_insights___us"), 
                         help="BigQuery dataset name.")
@@ -47,7 +56,7 @@ def parse_args():
     
     # Gemini model arguments
     parser.add_argument("--location", default="global", help="Google Cloud location/region.")
-    parser.add_argument("--model", default="gemini-3.5-flash", help="Model to use (e.g. gemini-3.5-flash).")
+    parser.add_argument("--model", default="gemini-3.7-flash", help="Model to use (e.g. gemini-3.7-flash).")
     return parser.parse_args()
 
 def convert_to_gs_uri(image_url: str) -> str:
@@ -64,8 +73,7 @@ def convert_to_gs_uri(image_url: str) -> str:
     return image_url
 
 def query_image_from_bq(args):
-    from google.cloud import bigquery
-    client_bq = bigquery.Client(project=args.project if args.project != "YOUR_PROJECT_ID" else None)
+    client_bq = bigquery.Client(project=args.project)
     project_id = client_bq.project or args.project
     
     if args.observation_id:
@@ -109,13 +117,6 @@ def main():
     
     if args.image:
         gcs_uri = convert_to_gs_uri(args.image)
-        if project_id == "YOUR_PROJECT_ID":
-            try:
-                from google.cloud import bigquery
-                client_bq = bigquery.Client()
-                project_id = client_bq.project
-            except Exception:
-                pass
     else:
         try:
             gcs_uri, project_id = query_image_from_bq(args)
@@ -131,7 +132,16 @@ def main():
     
     try:
         if gcs_uri.startswith("gs://"):
-            image_part = types.Part.from_uri(file_uri=gcs_uri, mime_type="image/jpeg")
+            try:
+                bucket_name, blob_name = gcs_uri.replace("gs://", "").split("/", 1)
+                storage_client = storage.Client(project=project_id)
+                bucket = storage_client.bucket(bucket_name)
+                blob = bucket.blob(blob_name)
+                img_data = blob.download_as_bytes()
+                image_part = types.Part.from_bytes(data=img_data, mime_type="image/jpeg")
+            except Exception as download_err:
+                print(f"Warning: GCS direct download failed ({download_err}), trying from_uri...", file=sys.stderr)
+                image_part = types.Part.from_uri(file_uri=gcs_uri, mime_type="image/jpeg")
         else:
             img = Image.open(gcs_uri)
             if img.mode in ("RGBA", "P"):
