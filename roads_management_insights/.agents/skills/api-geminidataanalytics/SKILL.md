@@ -143,15 +143,21 @@ echo "${response}" | jq '.executedQueryResult'
 
 ---
 
-## 5. Discovery Documents & Resources
+## 5. Execution Strategy & Determinism Protocol
 
-- [Gemini Data Analytics GA v1 Discovery Doc (2026-08-15)](references/discoveryDocs/geminidataanalytics_v1_20260815.json)
-- [Gemini Data Analytics v1beta Discovery Doc (2026-08-15)](references/discoveryDocs/geminidataanalytics_v1beta_20260815.json)
-- [Gemini Data Analytics v1alpha Discovery Doc (2026-08-15)](references/discoveryDocs/geminidataanalytics_v1alpha_20260815.json)
-- [GA Client Script (v1)](scripts/geminidataanalytics_v1.sh)
-- [Client Script (v1beta)](scripts/geminidataanalytics_v1beta.sh)
-- [Client Script (v1alpha)](scripts/geminidataanalytics_v1alpha.sh)
-- [Payload Helpers](scripts/geminidataanalytics_helpers.sh)
+### Tier 1: Deterministic Client Scripts (Primary / Recommended)
+Whenever POSIX shell execution is available, agents **MUST** prioritize using the pre-tested helper and client scripts located in `scripts/`:
+- Sourcing GA v1 client: `source scripts/geminidataanalytics_v1.sh`
+- Sourcing v1beta client: `source scripts/geminidataanalytics_v1beta.sh`
+- Sourcing v1alpha client: `source scripts/geminidataanalytics_v1alpha.sh`
+- Sourcing payload helpers: `source scripts/geminidataanalytics_helpers.sh`
+
+*Why:* Eliminates code hallucination risks, guarantees exact ChatRequest and DataAgent payload schemas, manages OAuth2 tokens and `X-Goog-User-Project` quota headers, and automatically routes regional calls (`https://${LOCATION}-geminidataanalytics.googleapis.com`).
+
+### Tier 2: Direct REST / Discovery Contract (Polyglot Fallback)
+If executing in environments without shell access (e.g., pure Python/Node.js runtimes, notebooks, or backend microservices):
+- Refer directly to the canonical Discovery Documents in `references/discoveryDocs/` (`geminidataanalytics_v1_20260815.json`, `geminidataanalytics_v1beta_20260815.json`, `geminidataanalytics_v1alpha_20260815.json`) for parameter schemas, data types, and HTTP methods.
+- Issue requests directly via your runtime's native HTTP client without inventing ungrounded parameters.
 
 ---
 
@@ -160,3 +166,8 @@ echo "${response}" | jq '.executedQueryResult'
 - [Gemini Conversational Analytics API Overview](https://cloud.google.com/gemini/docs/conversational-analytics-api/overview)
 - [Conversational Analytics REST Reference](https://cloud.google.com/gemini/docs/conversational-analytics-api/reference/rest)
 - [BigQuery Natural Language Querying Guide](https://cloud.google.com/bigquery/docs/gemini-data-analytics)
+- [Discovery Documents](references/discoveryDocs/)
+- [Public API Discovery Document (GA v1)](https://geminidataanalytics.googleapis.com/$discovery/rest?version=v1)
+- [Public API Discovery Document (v1beta)](https://geminidataanalytics.googleapis.com/$discovery/rest?version=v1beta)
+- [Public API Discovery Document (v1alpha)](https://geminidataanalytics.googleapis.com/$discovery/rest?version=v1alpha)
+

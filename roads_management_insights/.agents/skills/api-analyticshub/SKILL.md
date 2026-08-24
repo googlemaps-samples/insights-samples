@@ -131,4 +131,31 @@ When transferring massive dataset files (>4 GB) in parallel to GCS, network or p
     ```
     This automatically resumes incomplete stream transfers, verifying hash checksums of already uploaded segments and only transmitting remaining packets, reducing recovery time to seconds.
 
+---
+
+## Execution Strategy & Determinism Protocol
+
+### Tier 1: Deterministic Client Scripts (Primary / Recommended)
+Whenever POSIX shell execution is available, agents **MUST** prioritize using the pre-tested helper and client scripts located in `scripts/`:
+- Sourcing client: `source scripts/analyticshub_v1.sh`
+- Sourcing helpers: `source scripts/analyticshub_v1_helpers.sh`
+
+*Why:* Eliminates code hallucination risks, guarantees exact payload structure for Data Exchanges and Listings, manages OAuth2 tokens and `X-Goog-User-Project` quota headers, and automatically handles regional endpoint routing.
+
+### Tier 2: Direct REST / Discovery Contract (Polyglot Fallback)
+If executing in environments without shell access (e.g., pure Python/Node.js runtimes, notebooks, or backend microservices):
+- Refer directly to the canonical Discovery Document in `references/discoveryDocs/analyticshub_v1_20260813.json` for parameter schemas, data types, and HTTP methods.
+- Issue requests directly via your runtime's native HTTP client without inventing ungrounded parameters.
+
+---
+
+## References
+
+- [Google Cloud Analytics Hub Documentation](https://cloud.google.com/bigquery/docs/analytics-hub-introduction)
+- [Analytics Hub REST API Reference](https://cloud.google.com/bigquery/docs/reference/analytics-hub/rest)
+- [Discovery Documents](references/discoveryDocs/)
+- [Public API Discovery Document (v1)](https://analyticshub.googleapis.com/$discovery/rest?version=v1)
+
+
+
 

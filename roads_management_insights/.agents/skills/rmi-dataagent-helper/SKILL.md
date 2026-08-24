@@ -51,9 +51,9 @@ ON `my_project.rmi.cleaned_routes`;
 ```
 
 ### 2.2 Standard Job ID Headers
-Instruct the Data Agent to prepend standardized `rmisqlfactory_` Job IDs to all generated SQL:
+Instruct the Data Agent to prepend standardized `rmica_` Job IDs to all generated SQL:
 ```sql
--- Job ID: rmisqlfactory_<persona>_YYYYMMDD_HHMMSS
+-- Job ID: rmica_<persona>_YYYYMMDD_HHMMSS
 ```
 
 ---

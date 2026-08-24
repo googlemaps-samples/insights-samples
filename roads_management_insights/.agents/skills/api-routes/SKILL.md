@@ -110,3 +110,29 @@ curl -s -X POST \
   }' \
   "https://routes.googleapis.com/v1/computeRoutes?key=${API_KEY}"
 ```
+
+---
+
+## 6. Execution Strategy & Determinism Protocol
+
+### Tier 1: Deterministic Client Scripts (Primary / Recommended)
+Whenever POSIX shell execution is available, agents **MUST** prioritize using the pre-tested helper and client scripts located in `scripts/`:
+- Sourcing client: `source scripts/routes_v2.sh`
+- Sourcing helpers: `source scripts/routes_v2_helpers.sh`
+
+*Why:* Eliminates code hallucination risks, guarantees exact ComputeRoutesRequest JSON payloads and FieldMask headers (`X-Goog-FieldMask`), manages OAuth2 tokens and `X-Goog-User-Project` quota headers, and routes correctly to `https://routes.googleapis.com/v2`.
+
+### Tier 2: Direct REST / Discovery Contract (Polyglot Fallback)
+If executing in environments without shell access (e.g., pure Python/Node.js runtimes, notebooks, or backend microservices):
+- Refer directly to the canonical Discovery Document in `references/discoveryDocs/routes_v2_20260819.json` for parameter schemas, data types, and HTTP methods.
+- Issue requests directly via your runtime's native HTTP client without inventing ungrounded parameters.
+
+---
+
+## References
+
+- [Google Maps Platform Routes API Overview](https://developers.google.com/maps/documentation/routes)
+- [Discovery Documents](references/discoveryDocs/)
+- [Public API Discovery Document (v2)](https://routes.googleapis.com/$discovery/rest?version=v2)
+
+

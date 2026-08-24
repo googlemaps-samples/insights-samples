@@ -1,45 +1,90 @@
-# BigQuery Data Agent: RMI Best Practices
+# BigQuery Data Agent: RMI Operational Best Practices & Grounding Protocol
 
-This guide details how to configure a BigQuery Data Agent to handle RMI's geospatial and temporal complexities.
+This guide details enterprise-grade architectural patterns and operational runbooks for provisioning, grounding, and maintaining BigQuery Conversational Data Agents for Roads Management Insights (RMI).
 
-## 1. Metadata Anchoring (The "How")
-BigQuery Data Agents rely heavily on the metadata stored in your dataset.
+---
 
-### Action: Annotate your tables
-Run the following SQL to help the agent "see" the RMI schema:
+## 1. Location & Hierarchy Governance
+
+The Gemini Data Analytics API (`geminidataanalytics.googleapis.com`) enforces a **global location hierarchy**:
+```text
+projects/<PROJECT_ID>/locations/global/dataAgents/<AGENT_ID>
+```
+
+> [!IMPORTANT]
+> Do not attempt to provision or list Data Agents under regional locations (such as `us-central1` or `asia-east1`). Doing so will trigger `403 PERMISSION_DENIED` with `location is not allowed (must be one of map[global:true])`.
+
+---
+
+## 2. Pre-Flight Datasource Validation
+
+Before invoking `createSync` or `patch`, ensure that all BigQuery tables declared in `datasourceReferences.bq.tableReferences` exist in the target dataset and are readable by the service account or authenticated user.
+
+```json
+{
+  "datasourceReferences": {
+    "bq": {
+      "tableReferences": [
+        { "projectId": "my_project", "datasetId": "my_dataset", "tableId": "recent_roads_data" },
+        { "projectId": "my_project", "datasetId": "my_dataset", "tableId": "historical_travel_time" },
+        { "projectId": "my_project", "datasetId": "my_dataset", "tableId": "routes_status" }
+      ]
+    }
+  }
+}
+```
+
+If any table is missing or invalid, the API rejects provisioning immediately with:
+`400 INVALID_ARGUMENT: User does not have read access to one or more BigQuery resources referenced in agent configuration, or one or more of these resources are invalid.`
+
+---
+
+## 3. Metadata Anchoring & Schema Annotations
+
+BigQuery Data Agents interpret table schemas via GoogleSQL metadata. Annotate your analytical views to guide LLM semantic translation:
+
 ```sql
-ALTER VIEW `your_project.rmi.cleaned_routes`
+ALTER VIEW `my_project.rmi.cleaned_routes`
 SET OPTIONS (
   description="Main view for analyzing RMI route performance. Use this for travel time and SRI analysis."
 );
 
 ALTER COLUMN duration_in_seconds 
 SET OPTIONS(description="The actual traffic-aware travel time in seconds.")
-ON `your_project.rmi.cleaned_routes`;
+ON `my_project.rmi.cleaned_routes`;
 ```
 
-## 2. Defining "Agent Instructions"
-In the BQ Data Agent console, add these specific instructions to the "Agent Instructions" block:
+---
 
-> "You are an RMI Data Expert. When a user asks about 'delay', always calculate the ratio between duration_in_seconds and static_duration_in_seconds. When a user asks about 'road segments', use the Speed Reading Intervals (SRI) data. Always include a filter for record_time based on the user's requested period (default to the last 24 hours if not specified)."
+## 4. Full Catalog Golden Query Ingestion
 
-## 3. Handling Geospatial Reasoning
-Since RMI is spatial, the Data Agent needs specific guidance on GIS functions.
+To eliminate SQL hallucinations, unpartitioned full scans, and syntax errors, inject 100% of verified analytical queries (from `rmi-sql`) into the agent's `exampleQueries`:
 
-- **Instruction**: "If a user asks for a 'Map' or 'Visualization', ensure the SQL selects the `route_geometry` field and any `interval_coordinates`."
-- **Instruction**: "For 'bottleneck' analysis, prioritize queries that UNNEST the `speed_reading_intervals` array."
+1. **Natural Language Question**: Formulate clear, real-world business questions (`-- Business Question:`).
+2. **Deterministic SQL Template**: Include required partition bounds (`record_time BETWEEN ...`), spatial integrity checks (`ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString'`), and standard FinOps Job ID headers.
 
-## 5. Persona-Based Instruction Library
-Copy and paste these templates into the "Agent Instructions" block in the BigQuery console to tailor the agent for a specific role.
+---
 
-### For the Traffic Operations Manager (TOM)
-> "Focus on the 'here and now'. For any time-series question, default to the last 60 minutes using the `recent_roads_data` table. Prioritize Speed Reading Intervals (SRI) to locate specific segment-level jams. If a ratio exceeds 1.5, flag it as a 'significant delay'."
+## 5. Traceability Job ID Standard
 
-### For the Urban Planner
-> "Focus on strategic trends. For time-series analysis, use `TIMESTAMP_TRUNC(record_time, DAY)` or `WEEK`. Prioritize spatial joins against administrative boundaries (polygons). When comparing 'Before and After' scenarios, use a clear split-date filter."
+Enforce standardized `rmisqlfactory_` job ID prefixes in the agent's system instructions:
+```sql
+-- Job ID: rmisqlfactory_<persona><N>_YYYYMMDD_HHMMSS
+```
+This enables BigQuery Administrators (`bqa`) to attribute scan bytes, query concurrency, and compute costs directly to specific agent personas via `INFORMATION_SCHEMA.JOBS`.
 
-### For the BigQuery Admin
-> "Focus on platform health. Prioritize the `INFORMATION_SCHEMA.JOBS` view. Your primary metrics are `total_bytes_billed` and query concurrency. If a query scans more than 10GB of `historical_travel_time`, recommend adding a `record_time` partition filter."
+---
 
-### For the Logistics Coordinator (Preview)
-> "Focus on SLA and reliability. Calculate the 'Travel Time Reliability' by looking at the P95 duration. When asked about 'Delivery Impact', join `routes_status` with `historical_travel_time` to identify variability on critical supply chains."
+## 6. Safe Mutation via Asynchronous Patch (`updateMask`)
+
+When updating existing agents (instructions, golden queries, or table bindings), use `geminidataanalytics_v1_dataAgents_patch` with explicit `updateMask`:
+
+```bash
+geminidataanalytics_v1_dataAgents_patch \
+  "projects/${PROJECT_ID}/locations/global/dataAgents/${AGENT_ID}" \
+  "${PAYLOAD_JSON}" \
+  "displayName,description,dataAnalyticsAgent.stagingContext" \
+  "${PROJECT_ID}"
+```
+
+This triggers an asynchronous Long Running Operation (`OperationMetadata` with `verb: "update"`), preventing state corruption or `already exists` conflicts.

@@ -4,7 +4,7 @@ set -euo pipefail
 # ==============================================================================
 # list_sample_datasets.sh
 # Retrieves and formats all available RMI sample datasets published on Analytics Hub.
-# Leverages the api-analyticshub client.
+# Pure POSIX Bash + JQ implementation (Zero Python runtime dependency).
 # ==============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,70 +51,71 @@ if [[ "${OUTPUT_FORMAT}" == "--json" || "${OUTPUT_FORMAT}" == "-j" ]]; then
   exit 0
 fi
 
-# 4. Format and display tabular overview
+# 4. Check if listings exist
+count=$(echo "${RAW_RESPONSE}" | jq '.listings // [] | length')
+if [[ "${count}" -eq 0 ]]; then
+  echo "No active listings found in exchange."
+  exit 0
+fi
+
+# 5. Format and display tabular overview (Pure Bash + JQ)
 echo ""
 echo "========================================================================================================="
 echo "                    ROADS MANAGEMENT INSIGHTS (RMI) SAMPLE DATASETS CATALOG                             "
 echo "========================================================================================================="
 echo "Exchange URL: https://console.cloud.google.com/bigquery/analytics-hub/exchanges/projects/${PROJECT_ID}/locations/${LOCATION}/dataExchanges/${EXCHANGE_ID}"
 echo ""
+echo "${count} sample dataset(s) available on Analytics Hub:"
+echo ""
 
-python3 -c '
-import sys
-import json
+printf "%-3s | %-20s | %-32s | %-8s\n" "#" "Listing ID" "Display Name" "State"
+printf -- "----+----------------------+----------------------------------+---------\n"
 
-raw_input = sys.stdin.read()
-try:
-    data = json.loads(raw_input)
-except Exception as e:
-    print("Error parsing API response: {}".format(e))
-    sys.exit(1)
+idx=1
+while IFS=$'\t' read -r lid name state desc contact req_access rs_text; do
+  printf "%-3s | %-20s | %-32s | %-8s\n" "${idx}" "${lid}" "${name}" "${state}"
+  idx=$((idx + 1))
+done < <(echo "${RAW_RESPONSE}" | jq -r '
+  .listings[] |
+  [
+    (.name | split("/")[-1]),
+    .displayName,
+    .state,
+    (.description // "N/A"),
+    (.primaryContact // "N/A"),
+    (.requestAccess // "N/A"),
+    (if ((.documentation // "") | test("## Route setting")) then
+      ((.documentation | capture("## Route setting(?<rs>[\\s\\S]*?)(?:## Key Data Points|$)").rs // "N/A")
+      | gsub("\\n+"; " ") | gsub("\\s+"; " ") | sub("^\\s*"; ""))
+    else "N/A" end)
+  ] | @tsv
+')
 
-listings = data.get("listings", [])
-if not listings:
-    print("No active listings found in exchange.")
-    sys.exit(0)
+echo ""
+echo "========================================================================================================="
+echo "Detailed Listing Metadata & Route Setting Criteria:"
+echo "========================================================================================================="
 
-print("{} sample dataset(s) available:\n".format(len(listings)))
-header_fmt = "{:<3} | {:<20} | {:<32} | {:<42} | {:<8}"
-header = header_fmt.format("#", "Listing ID", "Display Name", "BigQuery Source Dataset", "State")
-print(header)
-print("-" * len(header))
-
-for idx, l in enumerate(listings, 1):
-    lid = l.get("name", "").split("/")[-1]
-    name = l.get("displayName", "N/A")
-    ds = l.get("bigqueryDataset", {}).get("dataset", "N/A")
-    state = l.get("state", "UNKNOWN")
-    print(header_fmt.format(idx, lid, name, ds, state))
-
-print("\n" + "=" * 115)
-print("Detailed Listing Metadata & Route Setting Criteria:")
-print("=" * 115)
-
-for idx, l in enumerate(listings, 1):
-    lid = l.get("name", "").split("/")[-1]
-    name = l.get("displayName", "N/A")
-    ds = l.get("bigqueryDataset", {}).get("dataset", "N/A")
-    desc = l.get("description", "").strip()
-    contact = l.get("primaryContact", "N/A")
-    req_access = l.get("requestAccess", "N/A")
-    doc = l.get("documentation", "")
-    
-    rs_text = "N/A"
-    if "## Route setting" in doc:
-        start = doc.find("## Route setting")
-        end = doc.find("## Key Data Points", start)
-        if end != -1:
-            raw_rs = doc[start:end].replace("## Route setting", "").strip()
-            lines = [line.strip() for line in raw_rs.splitlines() if line.strip()]
-            rs_text = " ".join(lines)
-        else:
-            rs_text = doc[start:start+200].strip()
-
-    print("\n[{}] {} ({})".format(idx, name, lid))
-    print("    • BigQuery Source: {}".format(ds))
-    print("    • Description:     {}".format(desc))
-    print("    • Contact / Access: {} / {}".format(contact, req_access))
-    print("    • Route Criteria:  {}".format(rs_text))
-' <<< "${RAW_RESPONSE}"
+idx=1
+while IFS=$'\t' read -r lid name state desc contact req_access rs_text; do
+  echo ""
+  echo "[${idx}] ${name} (${lid})"
+  echo "    • Description:     ${desc}"
+  echo "    • Contact / Access: ${contact} / ${req_access}"
+  echo "    • Route Criteria:  ${rs_text}"
+  idx=$((idx + 1))
+done < <(echo "${RAW_RESPONSE}" | jq -r '
+  .listings[] |
+  [
+    (.name | split("/")[-1]),
+    .displayName,
+    .state,
+    (.description // "N/A"),
+    (.primaryContact // "N/A"),
+    (.requestAccess // "N/A"),
+    (if ((.documentation // "") | test("## Route setting")) then
+      ((.documentation | capture("## Route setting(?<rs>[\\s\\S]*?)(?:## Key Data Points|$)").rs // "N/A")
+      | gsub("\\n+"; " ") | gsub("\\s+"; " ") | sub("^\\s*"; ""))
+    else "N/A" end)
+  ] | @tsv
+')

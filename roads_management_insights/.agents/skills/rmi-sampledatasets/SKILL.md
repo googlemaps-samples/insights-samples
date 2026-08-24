@@ -24,20 +24,20 @@ RMI maintains 10 localized, pre-subscribed sample datasets on Google Cloud Analy
 ### Active Regional Listings Snapshot
 
 > [!TIP]
-> **Dynamic Exchange Discovery Recommended**: The table below represents a documented reference snapshot. Because new sample regions, extended time windows, and updated snapshot listings are continuously published to the exchange, **always prefer querying the live Analytics Hub exchange dynamically** using the bundled discovery tool ([`scripts/list_sample_datasets.sh`](scripts/list_sample_datasets.sh)) or the [`api-analyticshub`](../api-analyticshub/SKILL.md) API client to inspect the most up-to-date catalog.
+> **Subscribed Linked Dataset Model**: Because publisher source datasets reside in provider projects without direct query access, users subscribe to listings via Analytics Hub to create a **linked dataset** inside their own destination project (e.g. `[YOUR_PROJECT].[YOUR_LINKED_DATASET]`). All queries must target the subscriber's linked dataset.
 
-| # | Listing ID | Metro Area / Region | Source BigQuery Dataset | Primary Route Monitoring Strategy | Baseline Window |
+| # | Listing ID | Metro Area / Region | Default Linked Dataset Name | Primary Route Monitoring Strategy | Baseline Window |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| 1 | **`boston_ga`** | **Boston, MA (USA)** | `src_boston_ga` | Priority road network (`CONTROLLED_ACCESS`, `LIMITED_ACCESS`, `PRIMARY_HIGHWAY`, `SECONDARY_ROAD`, `MAJOR_ARTERIAL`, `MINOR_ARTERIAL`) (~1,847 routes) | Spring/Summer 2026 |
-| 2 | **`src_buenosaires_ga`** | **Buenos Aires (Argentina)** | `src_buenosaires_ga` | Top road priorities across Ciudad Autónoma de Buenos Aires | Spring/Summer 2026 |
-| 3 | **`detroit_ga`** | **Detroit, MI (USA)** | `src_detroit_ga` | Priority corridors (`CONTROLLED_ACCESS`, `PRIMARY_HIGHWAY`, `SECONDARY_ROAD`) | Spring/Summer 2026 |
-| 4 | **`manhattan_ga`** | **Manhattan / NYC (USA)** | `src_manhattan_ga` | Origin-Destination pairs from Manhattan to major airports (LGA, JFK, EWR) with 0 intermediate waypoints for dynamic pathing | Spring/Summer 2026 |
-| 5 | **`paris_ga`** | **Paris (France)** | `src_paris_ga` | Blvd Périphérique ring-road and connected radial feeder segments | Spring/Summer 2026 |
-| 6 | **`rome_ga`** | **Rome (Italy)** | `src_rome_ga` | Origin-Destination pairs from Colosseum to suburban destinations (Cerveteri, Piana del Sole, Castel Gandolfo, Villa Adriana) | Spring/Summer 2026 |
-| 7 | **`saopaulostate_ga`** | **São Paulo State (Brazil)** | `src_saopaulostate_ga` | Top road priorities within 200 km radius of central São Paulo | Spring/Summer 2026 |
-| 8 | **`singapore_ga`** | **Singapore** | `src_singapore_ga` | Major expressway and arterial network across Singapore | Spring/Summer 2026 |
-| 9 | **`sydney_ga`** | **Sydney (Australia)** | `src_sydney_ga` | Metropolitan highways (`CONTROLLED_ACCESS`, `LIMITED_ACCESS`) | Spring/Summer 2026 |
-| 10 | **`tokyo_ga`** | **Tokyo (Japan)** | `src_tokyo_ga` | Major priority roads across Tokyo 23 Wards | Spring/Summer 2026 |
+| 1 | **`boston_ga`** | **Boston, MA (USA)** | `ah_rmi_boston` | Priority road network (`CONTROLLED_ACCESS`, `LIMITED_ACCESS`, `PRIMARY_HIGHWAY`, `SECONDARY_ROAD`, `MAJOR_ARTERIAL`, `MINOR_ARTERIAL`) (~1,847 routes) | Spring/Summer 2026 |
+| 2 | **`src_buenosaires_ga`** | **Buenos Aires (Argentina)** | `ah_rmi_buenosaires` | Top road priorities across Ciudad Autónoma de Buenos Aires | Spring/Summer 2026 |
+| 3 | **`detroit_ga`** | **Detroit, MI (USA)** | `ah_rmi_detroit` | Priority corridors (`CONTROLLED_ACCESS`, `PRIMARY_HIGHWAY`, `SECONDARY_ROAD`) | Spring/Summer 2026 |
+| 4 | **`manhattan_ga`** | **Manhattan / NYC (USA)** | `ah_rmi_manhattan` | Origin-Destination pairs from Manhattan to major airports (LGA, JFK, EWR) with 0 intermediate waypoints for dynamic pathing | Spring/Summer 2026 |
+| 5 | **`paris_ga`** | **Paris (France)** | `ah_rmi_paris` | Blvd Périphérique ring-road and connected radial feeder segments | Spring/Summer 2026 |
+| 6 | **`rome_ga`** | **Rome (Italy)** | `ah_rmi_rome` | Origin-Destination pairs from Colosseum to suburban destinations (Cerveteri, Piana del Sole, Castel Gandolfo, Villa Adriana) | Spring/Summer 2026 |
+| 7 | **`saopaulostate_ga`** | **São Paulo State (Brazil)** | `ah_rmi_saopaulostate` | Top road priorities within 200 km radius of central São Paulo | Spring/Summer 2026 |
+| 8 | **`singapore_ga`** | **Singapore** | `ah_rmi_singapore` | Major expressway and arterial network across Singapore | Spring/Summer 2026 |
+| 9 | **`sydney_ga`** | **Sydney (Australia)** | `ah_rmi_sydney` | Metropolitan highways (`CONTROLLED_ACCESS`, `LIMITED_ACCESS`) | Spring/Summer 2026 |
+| 10 | **`tokyo_ga`** | **Tokyo (Japan)** | `ah_rmi_tokyo` | Major priority roads across Tokyo 23 Wards | Spring/Summer 2026 |
 
 
 
@@ -163,41 +163,51 @@ The sample datasets are lightweight and highly partitioned, making interactive v
 ## 5. References & Linked Artifacts
 
 * [Analytics Hub Data Exchange: `rmi_sampledata_v2_ga_prod`](https://console.cloud.google.com/bigquery/analytics-hub/exchanges/projects/1024202510105/locations/us/dataExchanges/rmi_sampledata_v2_ga_prod)
-* [Boston 2026 Dataset Metadata Reference](references/boston_2026.md)
 * [RMI Multipliers & Ingestion Costs](references/metrics.md)
 * [Discovery Script: `list_sample_datasets.sh`](scripts/list_sample_datasets.sh)
+
 
 ---
 
 ## 6. Examples
 
-### Example 1: Morning Commute Peak Performance Audit
-Analyze average speed drops during morning rush hour (7:00 AM – 9:00 AM UTC) across the Boston network for June 2026:
+### Example 1: Morning Commute Peak Performance Audit (Local Timezone Aware)
+Analyze average speed drops during morning rush hour (7:00 AM – 9:00 AM local Boston time / EDT) across the Boston network for June 2026:
 ```sql
 SELECT 
-  selected_route_id,
-  AVG(duration_in_seconds) AS avg_peak_duration,
-  AVG(static_duration_in_seconds) AS free_flow_duration,
+  h.selected_route_id,
+  s.display_name,
+  ROUND(AVG(h.duration_in_seconds), 1) AS avg_peak_duration,
+  ROUND(AVG(h.static_duration_in_seconds), 1) AS free_flow_duration,
   -- Compute Peak Travel Time Index (TTI)
-  SAFE_DIVIDE(
-    AVG(duration_in_seconds), 
-    AVG(static_duration_in_seconds)
-  ) AS peak_tti
+  ROUND(SAFE_DIVIDE(
+    AVG(h.duration_in_seconds), 
+    AVG(h.static_duration_in_seconds)
+  ), 2) AS peak_tti
 FROM 
-  `LINKED_DATASET_NAME.historical_travel_time`
+  `my_project.ah_rmi_boston.historical_travel_time` AS h
+JOIN
+  `my_project.ah_rmi_boston.routes_status` AS s
+  USING (selected_route_id)
 WHERE 
   -- Static Temporal Anchor matching active Spring/Summer 2026 snapshot
-  record_time BETWEEN '2026-06-01' AND '2026-07-01'
-  -- Morning commute hour bounds
-  AND EXTRACT(HOUR FROM record_time) BETWEEN 7 AND 9
+  h.record_time BETWEEN '2026-06-01' AND '2026-07-01'
+  -- Morning commute hour bounds converted to local Boston time (America/New_York: EDT UTC-4)
+  AND EXTRACT(HOUR FROM DATETIME(h.record_time, 'America/New_York')) BETWEEN 7 AND 8
+  AND s.status = 'STATUS_RUNNING'
+  AND ST_GEOMETRYTYPE(h.route_geometry) = 'ST_LineString'
 GROUP BY 
-  selected_route_id
+  h.selected_route_id,
+  s.display_name
+HAVING
+  peak_tti > 1.1
 ORDER BY 
-  peak_tti DESC;
+  peak_tti DESC
+LIMIT 20;
 ```
 
 ### Example 2: Operational Route Status & Attribute Mapping
-Count active routes and list validation states grouped by custom regions defined in route metadata:
+Count active routes and list validation states grouped by custom road priority tiers defined in route metadata:
 ```sql
 SELECT 
   JSON_VALUE(route_attributes, '$.priority') AS priority_tier,
@@ -205,7 +215,7 @@ SELECT
   validation_error,
   COUNT(1) AS route_count
 FROM 
-  `LINKED_DATASET_NAME.routes_status`
+  `my_project.ah_rmi_boston.routes_status`
 GROUP BY 
   priority_tier,
   status,
@@ -213,3 +223,4 @@ GROUP BY
 ORDER BY 
   route_count DESC;
 ```
+
