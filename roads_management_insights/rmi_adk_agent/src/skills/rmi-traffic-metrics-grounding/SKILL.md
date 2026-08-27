@@ -12,12 +12,6 @@ description: >
 
 # RMI Traffic Metrics Grounding Skill
 
-## When to Use This Skill
-
-Activate this skill when the user asks about **traffic performance** —
-congestion severity, travel time reliability, delay, speed breakdowns,
-before/after comparisons, or network health.
-
 ## Metrics
 
 ### A1. Travel Time Index (TTI)
@@ -25,12 +19,9 @@ before/after comparisons, or network health.
 -   **Triggers**: "how congested", "congestion level", "traffic conditions",
     "delay ratio", "delay index", "avg_delay_ratio", "avg_delay_index"
 -   **Formula**: TTI = duration_in_seconds / static_duration_in_seconds
--   **Interpretation**: 1.0 = free-flow. 1.3 = 30% slower. > 2.0 = severe.
+-   **Interpretation**: 1.0 = free-flow. 1.3 = 30% slower.
 -   **Aliases**: "delay ratio", "delay index", "congestion ratio". When the user
-    asks for any of these, use this TTI formula (`duration / static`). Do
-    **not** use the excess-delay formula `(duration - static) / static` — that
-    is metric A2 (Delay Per Trip), measured in seconds, not a ratio.
--   **Aggregations**: by route, hour-of-day, day-of-week, date
+    asks for any of these, use this TTI formula (`duration / static`).
 
 ```sql
 SELECT
@@ -217,8 +208,7 @@ GROUP BY selected_route_id
     time"
 -   **Formula**: % Congested = count(TTI > threshold) / count(all)
 -   **Threshold**: default TTI > 1.25. Ask user for preference.
--   **Interpretation**: temporal frequency of congestion. Distinct from TTI
-    (severity at a moment).
+-   **Interpretation**: temporal frequency of congestion. Distinct from TTI.
 
 ```sql
 SELECT
@@ -257,9 +247,7 @@ GROUP BY selected_route_id
     improved.
 
 The example below uses TTI. Substitute any metric formula depending on the
-user's request. The `execute_sql` tool does not support `@` parameterized
-queries — the agent must ask the user for the cutoff date (never guess) and
-dynamically inline it as a `TIMESTAMP('YYYY-MM-DD', '<TIMEZONE>')` literal
+user's request. Dynamically inline timestamps as `TIMESTAMP('YYYY-MM-DD', '<TIMEZONE>')` 
 during SQL synthesis using the roadway's local timezone. Ensure before and after
 date ranges are balanced to avoid seasonal bias.
 
@@ -398,14 +386,7 @@ ORDER BY local_hour
     all weekday off-peak hours are 'Off_Peak'. BigQuery `EXTRACT(DAYOFWEEK)`
     returns 1 = Sunday, 7 = Saturday.
 
-5.  **Before/After balance (A8)**: ensure before and after date ranges are
-    balanced (e.g., 4 weeks before vs. 4 weeks after) to avoid day-of-week and
-    seasonal bias. Always require a date from the user; do not guess. Use inline
-    `TIMESTAMP('YYYY-MM-DD', '<TIMEZONE>')` literals — `@` parameterized queries
-    are not supported by `execute_sql`. Always supply the roadway's local
-    timezone argument so UTC midnight is not accidentally used.
-
-6.  **% Time Congested threshold (A7)**: default to TTI > 1.25. Ask the user if
+5.  **% Time Congested threshold (A7)**: default to TTI > 1.25. Ask the user if
     they want a different threshold.
 
 7.  **Percentile computation**: `APPROX_QUANTILES(value, 100)` returns a
