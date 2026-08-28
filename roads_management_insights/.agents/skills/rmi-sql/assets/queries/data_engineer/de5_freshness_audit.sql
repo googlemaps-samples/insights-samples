@@ -44,15 +44,15 @@ WITH freshness AS (
     MAX(record_time) as last_updated
   FROM `LINKED_DATASET_NAME.historical_travel_time`
   -- Scans the full sample month to find the latest record for every route
-  WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND record_time BETWEEN '2026-06-01' AND '2026-06-30'
+  WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
   GROUP BY 1
 )
 SELECT
   s.selected_route_id,
   s.display_name,
   f.last_updated,
-  -- Using '2026-06-30' as the reference 'Now' for this static sample dataset
-  TIMESTAMP_DIFF(TIMESTAMP('2026-06-30'), f.last_updated, HOUR) AS hours_since_last_update
+  -- Using '2026-07-30' as the reference 'Now' for this static sample dataset
+  TIMESTAMP_DIFF(TIMESTAMP('2026-07-30'), f.last_updated, HOUR) AS hours_since_last_update
 FROM `LINKED_DATASET_NAME.routes_status` s
 LEFT JOIN freshness f USING(selected_route_id)
 -- Focus on routes that SHOULD be providing data

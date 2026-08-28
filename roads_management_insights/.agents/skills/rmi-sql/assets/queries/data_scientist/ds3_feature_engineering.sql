@@ -35,11 +35,11 @@ WITH quality_filtered_base AS (
     TIMESTAMP_TRUNC(h.record_time, HOUR) as record_hour,
     h.duration_in_seconds,
     ST_LENGTH(h.route_geometry) as actual_length,
-    SAFE_CAST(JSON_VALUE(s.route_attributes, '$.route_length') AS FLOAT64) as intended_length
+    SAFE_CAST(COALESCE(JSON_VALUE(s.route_attributes, '$.route_length_meters'), JSON_VALUE(s.route_attributes, '$.route_length')) AS FLOAT64) as intended_length
   FROM `LINKED_DATASET_NAME.historical_travel_time` h
   JOIN `LINKED_DATASET_NAME.routes_status` s USING(selected_route_id)
   WHERE h.selected_route_id = 'boston-v2--2rwshKeDrs'
-    AND h.record_time BETWEEN '2026-06-01' AND '2026-06-30'
+    AND h.record_time BETWEEN '2026-07-01' AND '2026-07-30'
     -- Quality filter: Only process single, continuous paths
     AND ST_GEOMETRYTYPE(h.route_geometry) = 'ST_LineString'
     AND h.duration_in_seconds IS NOT NULL
@@ -57,7 +57,7 @@ hourly_averages AS (
 time_grid AS (
   -- Generate a continuous hourly grid for the study period
   SELECT hour
-  FROM UNNEST(GENERATE_TIMESTAMP_ARRAY('2026-06-01', '2026-06-29', INTERVAL 1 HOUR)) as hour
+  FROM UNNEST(GENERATE_TIMESTAMP_ARRAY('2026-07-01', '2026-07-29', INTERVAL 1 HOUR)) as hour
 ),
 regularized_series AS (
   SELECT

@@ -40,7 +40,7 @@
 */
 
 -- Step 1: Define the static anchor date to narrow down partitions
-DECLARE anchor_date DATE DEFAULT '2026-06-29';
+DECLARE anchor_date DATE DEFAULT '2026-07-29';
 
 -- Step 2: Find the exact latest timestamp and define the 30-minute window
 DECLARE latest_timestamp TIMESTAMP;
@@ -61,7 +61,7 @@ WITH base_intervals AS (
     ST_MAKELINE(sri.interval_coordinates) as interval_geometry,
     -- Core metrics for integrity check
     ST_LENGTH(r.route_geometry) as actual_route_length_meters,
-    SAFE_CAST(JSON_VALUE(s.route_attributes, '$.route_length') AS FLOAT64) as intended_route_length_meters
+    SAFE_CAST(COALESCE(JSON_VALUE(s.route_attributes, '$.route_length_meters'), JSON_VALUE(s.route_attributes, '$.route_length')) AS FLOAT64) as intended_route_length_meters
   FROM `LINKED_DATASET_NAME.recent_roads_data` r
   JOIN `LINKED_DATASET_NAME.routes_status` s USING(selected_route_id),
   UNNEST(speed_reading_intervals) AS sri WITH OFFSET AS segment_offset

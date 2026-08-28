@@ -40,7 +40,7 @@ WITH route_context AS (
   FROM `LINKED_DATASET_NAME.historical_travel_time`
   -- We pick a 7-day context window for 3 specific routes
   WHERE selected_route_id IN ('boston-v2--2rwshKeDrs', 'boston-v2-3Ttz1C5QMuI', 'boston-v2-J1awoQiuHLY')
-    AND record_time BETWEEN '2026-06-14' AND '2026-06-21'
+    AND record_time BETWEEN '2026-07-14' AND '2026-07-21'
     AND duration_in_seconds IS NOT NULL
   GROUP BY 1, 2
 )

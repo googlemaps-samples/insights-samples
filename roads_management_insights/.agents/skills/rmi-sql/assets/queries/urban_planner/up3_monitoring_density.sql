@@ -35,7 +35,7 @@ WITH route_centroids AS (
     -- Use the centroid to represent the general location of the route polyline
     ST_CENTROID(route_geometry) as centroid
   FROM `LINKED_DATASET_NAME.historical_travel_time`
-  WHERE record_time BETWEEN '2026-06-01' AND '2026-06-30'
+  WHERE record_time BETWEEN '2026-07-01' AND '2026-07-30'
 )
 SELECT
   -- Grid the coordinates to a precision of ~1.1km

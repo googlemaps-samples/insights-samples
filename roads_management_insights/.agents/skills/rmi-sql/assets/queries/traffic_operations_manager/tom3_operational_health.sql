@@ -37,7 +37,7 @@ SELECT
   -- 'low_road_usage_start_time' is specifically populated when probe density drops below threshold
   low_road_usage_start_time,
   -- Time elapsed since the error was first detected (relative to sample end date)
-  DATETIME_DIFF(DATETIME('2026-06-30'), DATETIME(low_road_usage_start_time, 'UTC'), DAY) AS days_in_error_state
+  DATETIME_DIFF(DATETIME('2026-07-30'), DATETIME(low_road_usage_start_time, 'UTC'), DAY) AS days_in_error_state
 FROM `LINKED_DATASET_NAME.routes_status`
 -- We only care about errors on routes that are supposed to be active (STATUS_RUNNING)
 WHERE status = 'STATUS_RUNNING'

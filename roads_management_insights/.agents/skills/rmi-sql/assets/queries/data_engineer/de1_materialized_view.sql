@@ -51,7 +51,7 @@ SELECT
   static_duration_in_seconds,
   route_geometry
 FROM `LINKED_DATASET_NAME.historical_travel_time`
-WHERE record_time >= TIMESTAMP_SUB(TIMESTAMP('2026-06-29'), INTERVAL 7 DAY)
+WHERE record_time >= TIMESTAMP_SUB(TIMESTAMP('2026-07-29'), INTERVAL 7 DAY)
   AND display_name LIKE '%Massachusetts Avenue%'
   AND duration_in_seconds IS NOT NULL
   AND static_duration_in_seconds > 0;

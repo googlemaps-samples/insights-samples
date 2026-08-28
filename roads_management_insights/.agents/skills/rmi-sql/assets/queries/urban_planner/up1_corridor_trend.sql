@@ -38,7 +38,7 @@ WITH weekly_trends AS (
   FROM `LINKED_DATASET_NAME.historical_travel_time`
   -- Filter for a specific corridor of interest (e.g., Storrow Drive)
   WHERE selected_route_id = 'boston-v2--2rwshKeDrs'
-    AND record_time BETWEEN '2026-06-01' AND '2026-06-30'
+    AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
     AND duration_in_seconds IS NOT NULL
     AND static_duration_in_seconds > 0
   GROUP BY 1, 2

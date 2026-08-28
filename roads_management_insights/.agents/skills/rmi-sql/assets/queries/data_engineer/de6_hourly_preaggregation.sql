@@ -41,7 +41,7 @@ WITH hourly_stage AS (
   -- Stage 2 executes ARRAY_AGG, capping array length at exactly <= 24 elements per route/day,
   -- reducing downstream network transport and visualization client memory by over 95%.
   WHERE ST_GEOMETRYTYPE(r.route_geometry) = 'ST_LineString'
-    AND r.record_time >= '2026-06-15 00:00:00' AND r.record_time < '2026-06-16 00:00:00'
+    AND r.record_time >= '2026-07-15 00:00:00' AND r.record_time < '2026-07-16 00:00:00'
   GROUP BY r.selected_route_id, s.display_name, hour_of_day
 )
 SELECT 

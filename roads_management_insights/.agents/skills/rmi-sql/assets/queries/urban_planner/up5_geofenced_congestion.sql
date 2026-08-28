@@ -43,7 +43,7 @@ WITH intersecting_routes AS (
   -- BigQuery leverages native S2 cell spatial indexing for ST_INTERSECTS, performing
   -- sub-second bounding box pruning across millions of polyline records.
   WHERE ST_INTERSECTS(route_geometry, downtown_zone)
-    AND record_time BETWEEN '2026-06-01' AND '2026-06-30'
+    AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
     -- Quality filter: Exclude non-continuous geometries
     AND ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString'
     AND duration_in_seconds IS NOT NULL

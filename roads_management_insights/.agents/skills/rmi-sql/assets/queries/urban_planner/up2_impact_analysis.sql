@@ -33,7 +33,7 @@
 -- Study Area: Downtown Boston Intersection
 DECLARE study_area GEOGRAPHY DEFAULT ST_GEOGFROMTEXT('POLYGON((-71.06 42.35, -71.05 42.35, -71.05 42.34, -71.06 42.34, -71.06 42.35))');
 -- Project Milestone: Date when construction was completed
-DECLARE completion_date DATE DEFAULT '2026-06-15';
+DECLARE completion_date DATE DEFAULT '2026-07-15';
 
 WITH impact_data AS (
   SELECT
@@ -45,7 +45,7 @@ WITH impact_data AS (
   -- BigQuery leverages native S2 cell indexing for ST_INTERSECTS, performing
   -- sub-second bounding box pruning across millions of polyline records.
   WHERE ST_INTERSECTS(route_geometry, study_area)
-    AND record_time BETWEEN '2026-06-01' AND '2026-06-30'
+    AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
     AND duration_in_seconds IS NOT NULL
     AND static_duration_in_seconds > 0
 )

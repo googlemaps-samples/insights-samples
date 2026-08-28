@@ -1,67 +1,136 @@
 ---
 name: api-analyticshub
-description: Expert guidance on BigQuery Analytics Hub. Use this skill when the user asks about shared datasets, linked datasets, data exchange, subscribing to listings, or querying tables with privacy policies like AGGREGATION_THRESHOLD. Also handles resource management (CRUD operations) for Exchanges, Listings, and Subscriptions. Make sure to use this skill whenever the user mentions Analytics Hub, data sharing exchanges, creating listings, or subscribing to linked datasets.
+description: Expert guidance on BigQuery Analytics Hub. Use this skill when the user asks about shared datasets, linked datasets, data exchange, subscribing to listings, discovering public datasets, or querying tables with privacy policies like AGGREGATION_THRESHOLD. Also handles resource management (CRUD operations) for Exchanges, Listings, and Subscriptions. Make sure to use this skill whenever the user mentions Analytics Hub, data sharing exchanges, creating listings, public datasets exchange, or subscribing to linked datasets.
 ---
 
 # BigQuery Analytics Hub
 
-Analytics Hub allows for zero-copy data sharing between organizations via linked datasets. This skill covers both querying shared data and managing Analytics Hub resources.
+Analytics Hub enables zero-copy data sharing between organizations via linked datasets. This skill covers discovering data exchanges (including the central Google Cloud Public Datasets Exchange), listing and subscribing to datasets, managing exchange/listing resources, and querying shared data.
 
-## Resource Management (CRUD Operations)
+---
 
-Since `gcloud` and `gmp-cli` do not natively support Analytics Hub, use the provided bash client or direct API calls.
+## 1. Resource Management (CRUD Operations)
 
-### Core Client
-The `scripts/analyticshub_v1.sh` script provides functions for all API operations.
-- **Location**: `scripts/analyticshub_v1.sh` (sources `api-common.sh` and `analyticshub_v1_helpers.sh`).
-- **Pagination**: Use `scripts/list_all_pages.sh` to automatically page through results until all items are retrieved.
-- **Reference**: See `references/analyticshub_v1_20260721.json` for full method signatures and resource schemas.
+Since `gcloud` and `gmp-cli` do not natively support all Analytics Hub management APIs, use the provided POSIX bash client or direct API calls.
 
-### Common Operations
+### Core Client & Utilities
+* **Client Script**: `scripts/analyticshub_v1.sh` (sources `api-common.sh` and `analyticshub_v1_helpers.sh`).
+* **Payload Helpers**: `scripts/analyticshub_v1_helpers.sh` (provides `create_destination_dataset_json`, `create_subscribe_listing_request_json`, `create_listing_json`, etc.).
+* **Automatic Paginator**: `scripts/list_all_pages.sh` (automatically pages through `nextPageToken` until all resources are fetched).
+* **API Discovery Contract**: [Discovery Documents](references/discoveryDocs/) (see `references/discoveryDocs/analyticshub_v1_20260813.json`).
 
-#### 1. List Data Exchanges (All Pages)
+---
+
+## 2. Common Operations & Practical Workflows
+
+### 1. Discover Data Exchanges
+
+#### A. List Data Exchanges in a Project (All Pages)
 ```bash
-source api-analyticshub/scripts/list_all_pages.sh
+source scripts/list_all_pages.sh
 list_all_pages analyticshub_projects_locations_dataExchanges_list "my-project" "us"
 ```
 
-#### 2. Create a Listing
-
-##### BigQuery Dataset Listing
+#### B. Get Details of a Data Exchange
 ```bash
-source api-analyticshub/scripts/analyticshub_v1.sh
-
-# 1. Create the dataset source JSON
-dataset_json=$(create_big_query_dataset_source_json "projects/my-project/datasets/my_dataset")
-
-# 2. Create the listing JSON
-listing_json=$(create_listing_json "My Shared Data" "Description" "contact@example.com" "http://docs" "${dataset_json}")
-
-# 3. Call the API
-analyticshub_projects_locations_dataExchanges_listings_create "my-project" "us" "my-exchange" "my-listing" "${listing_json}"
+source scripts/analyticshub_v1.sh
+analyticshub_projects_locations_dataExchanges_get "1057666841514" "us" "google_cloud_public_datasets_17e74966199"
 ```
 
-##### Listing Validation & Display Name Constraints
-* **Allowed Characters**: `displayName` MUST contain ONLY unicode letters, numbers, underscores, dashes, ampersands, and spaces.
-* **Prohibited Characters**: Parentheses `(`, `)` are strictly FORBIDDEN in `displayName` and cause `INVALID_ARGUMENT` API rejections.
-* **Spacing**: `displayName` must NOT start or end with spaces.
+---
 
-#### 3. Subscribe to a Listing
+### 2. Discover & List Datasets in a Data Exchange
 
-##### Standard BigQuery Dataset Listing
+Google Cloud hosts a central, publicly accessible Data Exchange containing **176+ freely adoptable public datasets**:
+* **Web UI / Exchange Path**: `/exchanges/projects/1057666841514/locations/us/dataExchanges/google_cloud_public_datasets_17e74966199`
+* **Resource Path**: `projects/1057666841514/locations/us/dataExchanges/google_cloud_public_datasets_17e74966199`
+* **Host Project Number**: `1057666841514`
+* **Location**: `us`
+* **Data Exchange ID**: `google_cloud_public_datasets_17e74966199`
+* **Catalog Highlights**: 176 datasets including AlphaFold Protein Structures, American Community Survey (ACS) / Census, NOAA Global Surface Weather, OpenStreetMap / Overture Maps, COVID-19 Public Data, Google Trends, and Cryptocurrency Analytics.
+
+#### A. List First Page of Listings in the Public Exchange
 ```bash
-source api-analyticshub/scripts/analyticshub_v1.sh
+source scripts/analyticshub_v1.sh
 
-# 1. Create the subscription request JSON (destination dataset)
-sub_request=$(create_subscribe_listing_request_json "projects/my-project/datasets/linked_dataset")
-
-# 2. Subscribe
-analyticshub_projects_locations_dataExchanges_listings_subscribe "publisher-project" "us" "exchange-id" "listing-id" "${sub_request}"
+# List the first 20 listings in the Google Cloud Public Datasets Exchange
+analyticshub_projects_locations_dataExchanges_listings_list \
+  "1057666841514" "us" "google_cloud_public_datasets_17e74966199" 20
 ```
 
-##### Pub/Sub Topic Listing with Advanced Subscriptions (Bigtable / Compression)
+#### B. List All 176 Public Datasets (Auto-Paging) with Clean Formatting
 ```bash
-source api-analyticshub/scripts/analyticshub_v1.sh
+source scripts/list_all_pages.sh
+
+# Stream and format all 176 listings: [Listing ID] Display Name (Provider)
+list_all_pages analyticshub_projects_locations_dataExchanges_listings_list \
+  "1057666841514" "us" "google_cloud_public_datasets_17e74966199" | \
+  jq -r '. | "\(.name | split("/")[-1]): \(.displayName) (\(.dataProvider.name // .publisher.name // "Google"))"'
+```
+
+#### C. Get Full Metadata for a Specific Listing
+```bash
+source scripts/analyticshub_v1.sh
+
+# Inspect a specific public dataset listing (e.g., American Community Survey)
+analyticshub_projects_locations_dataExchanges_listings_get \
+  "1057666841514" "us" "google_cloud_public_datasets_17e74966199" "d2d533e16f204c62b7e122d1cf837e39"
+```
+
+---
+
+### 3. Subscribe to a Listing
+
+Subscribing provisions a **linked dataset** inside your destination BigQuery project. Queries run against the publisher's zero-copy storage without ingestion or copy costs.
+
+#### A. Subscribe to a Public Dataset Listing (Recommended: Structured Payload)
+```bash
+source scripts/analyticshub_v1.sh
+source scripts/analyticshub_v1_helpers.sh
+
+# 1. Build the DestinationDataset configuration
+# Parameters: dataset_id, project_id, location, friendly_name, description
+dest_ds=$(create_destination_dataset_json \
+  "linked_census_acs" \
+  "my-subscriber-project" \
+  "us" \
+  "American Community Survey Public Dataset" \
+  "Subscribed from Google Cloud Public Datasets Exchange")
+
+# 2. Build the SubscribeListingRequest payload
+sub_request=$(create_subscribe_listing_request_json "${dest_ds}")
+
+# 3. Subscribe to the listing in the public exchange
+analyticshub_projects_locations_dataExchanges_listings_subscribe \
+  "1057666841514" \
+  "us" \
+  "google_cloud_public_datasets_17e74966199" \
+  "d2d533e16f204c62b7e122d1cf837e39" \
+  "${sub_request}"
+```
+
+#### B. Subscribe using Shorthand Resource Path
+```bash
+source scripts/analyticshub_v1.sh
+source scripts/analyticshub_v1_helpers.sh
+
+# 1. Create subscription payload directly from destination dataset path
+sub_request=$(create_subscribe_listing_request_json \
+  "projects/my-subscriber-project/datasets/linked_alphafold" "us")
+
+# 2. Subscribe to listing (e.g. AlphaFold Protein Structure Database)
+analyticshub_projects_locations_dataExchanges_listings_subscribe \
+  "1057666841514" \
+  "us" \
+  "google_cloud_public_datasets_17e74966199" \
+  "alphafold_protein_structure_database_18245cca049" \
+  "${sub_request}"
+```
+
+#### C. Pub/Sub Topic Listing with Advanced Subscriptions (Bigtable / Compression)
+```bash
+source scripts/analyticshub_v1.sh
+source scripts/analyticshub_v1_helpers.sh
 
 # 1. Build Bigtable output configuration (Optional)
 btc=$(create_bigtable_config_json "default" "sa@example.com" "projects/p/instances/i/tables/t" "true")
@@ -80,81 +149,119 @@ dest=$(create_destination_pubsub_subscription_json "${sub}")
 sub_request=$(create_subscribe_listing_request_pubsub_json "${dest}")
 
 # 6. Subscribe
-analyticshub_projects_locations_dataExchanges_listings_subscribe "publisher-project" "us" "exchange-id" "listing-id" "${sub_request}"
+analyticshub_projects_locations_dataExchanges_listings_subscribe \
+  "publisher-project" "us" "exchange-id" "listing-id" "${sub_request}"
 ```
 
-## Privacy Policies & Querying
+---
 
-Shared datasets often use an **Aggregation Threshold Policy**.
+### 4. Create & Publish Listings
+
+#### A. Create a BigQuery Dataset Listing
+```bash
+source scripts/analyticshub_v1.sh
+source scripts/analyticshub_v1_helpers.sh
+
+# 1. Create the dataset source JSON
+dataset_json=$(create_big_query_dataset_source_json "projects/my-project/datasets/my_dataset")
+
+# 2. Create the listing JSON
+listing_json=$(create_listing_json "My Shared Data" "Description" "contact@example.com" "https://docs.example.com" "${dataset_json}")
+
+# 3. Register the listing in your exchange
+analyticshub_projects_locations_dataExchanges_listings_create \
+  "my-project" "us" "my-exchange" "my-listing" "${listing_json}"
+```
+
+#### Listing Validation & Display Name Constraints
+* **Allowed Characters**: `displayName` MUST contain ONLY unicode letters, numbers, underscores, dashes, ampersands, and spaces.
+* **Prohibited Characters**: Parentheses `(`, `)` are strictly FORBIDDEN in `displayName` and cause `INVALID_ARGUMENT` API rejections.
+* **Spacing**: `displayName` must NOT start or end with spaces.
+
+---
+
+### 5. Manage Subscriptions
+
+```bash
+source scripts/analyticshub_v1.sh
+
+# List all active subscriptions in subscriber project
+analyticshub_projects_locations_subscriptions_list "my-subscriber-project" "us"
+
+# Get details of an active subscription
+analyticshub_projects_locations_subscriptions_get "my-subscriber-project" "us" "sub-12345"
+
+# Refresh a subscription (synchronizes schema alterations)
+analyticshub_projects_locations_subscriptions_refresh "my-subscriber-project" "us" "sub-12345" "{}"
+
+# Revoke a subscription
+analyticshub_projects_locations_subscriptions_revoke "my-subscriber-project" "us" "sub-12345" "{}"
+
+# Delete a subscription record
+analyticshub_projects_locations_subscriptions_delete "my-subscriber-project" "us" "sub-12345"
+```
+
+---
+
+## 3. Privacy Policies & Querying Shared Data
+
+Shared datasets often implement an **Aggregation Threshold Policy** to preserve privacy.
 
 ### Mandatory Syntax
-When a policy is active, you **MUST** use the `WITH AGGREGATION_THRESHOLD` clause.
+When an aggregation policy is active, queries **MUST** include the `WITH AGGREGATION_THRESHOLD` clause:
 
 ```sql
 SELECT WITH AGGREGATION_THRESHOLD
   category,
   COUNT(id) AS total_count
 FROM
-  `subscriber-project.linked_dataset.table`
+  `my-subscriber-project.linked_dataset.table`
 GROUP BY
   category
 ```
 
-### Constraints
-- **Mandatory Aggregation**: Every selected column must be in the `GROUP BY` or be an aggregate function.
-- **Privacy Unit Column**: BigQuery counts the unique entities in this column (e.g., `id`). If the count is below the threshold (e.g., 5), the row is omitted.
-- **Data Egress**: Publishers may enable "Data Egress Restriction," preventing `EXPORT DATA` or `CREATE TABLE AS SELECT` (CTAS).
-
-## Best Practices
-- **Dataset Naming**: Prefix linked datasets with `ah_` or `ext_` (e.g., `ah_places_insights`).
-- **IAM Roles**: 
-    - **Platform Access**: Grant `roles/analyticshub.viewer` (discovery) or `roles/analyticshub.subscriber` (subscription management).
-    - **Query Access**: Grant `roles/bigquery.dataViewer` on the **linked dataset** and `roles/bigquery.jobUser` in the local project.
-- **Automation**: Use the `create_*_json` helpers to ensure valid request payloads.
-
-### 3. Automated Listing Registration & Dynamic Lineage Documentation
-
-To eliminate human error and accelerate delivery of complex data products, automate the formulation of rich listing metadata payloads:
-*   **Dynamic Configurations**: Maintain a central mapping file (e.g., JSON) linking locality IDs to metadata defaults (descriptions, snapshot suffixes, contacts).
-*   **Automated Lineage Extraction**: Use robust stream parsing (`sed`/`awk`) to extract the exact spatial boundary definition SQL block (`closed_geom AS ...`) directly from regional SQL sources to embed live documentation.
-*   **Dynamic Markdown Templating**: Compile a professional markdown overview detailing schemas, disclaimers, topological simplifications, and lineage queries, then read and format it into a valid JSON string payload.
-*   **Idempotent Execution**: Check for existing listings before attempting creation to support seamless retries and prevent "Resource already exists" failures.
-
-### 4. Robust GCS Ingestion Recovery (ECP Proxy Resumption Pattern)
-
-When transferring massive dataset files (>4 GB) in parallel to GCS, network or proxy components like the ECP Proxy may throw transient errors:
-`ERROR: Task 'gs://bucket/file.jsonl' failed: ECP Proxy indicated an internal error: Failed to forward request`
-*   **Recovery Rule**: Under the *Data Preservation Mandate*, do **NOT** delete local processed source files or rerun long-running pipeline steps on a transfer failure.
-*   **Idempotent Resumption**: Execute a targeted, idempotent GCS copy resume:
-    ```bash
-    find /local/data/dir -maxdepth 1 -type f | gcloud storage cp --read-paths-from-stdin gs://target-bucket/dir/
-    ```
-    This automatically resumes incomplete stream transfers, verifying hash checksums of already uploaded segments and only transmitting remaining packets, reducing recovery time to seconds.
+### Key Constraints
+* **Mandatory Aggregation**: Every selected column must either appear in `GROUP BY` or be inside an aggregate function (`COUNT`, `SUM`, `AVG`).
+* **Privacy Unit Column**: BigQuery evaluates distinct privacy unit values (e.g. `id`). Rows below the publisher's threshold (e.g. < 5 unique entities) are omitted.
+* **Data Egress Protection**: When publishers enable data egress restrictions, `EXPORT DATA` and `CREATE TABLE AS SELECT` (CTAS) are blocked.
 
 ---
 
-## Execution Strategy & Determinism Protocol
+## 4. Best Practices
+
+* **Dataset Naming**: Prefix linked datasets with `ah_` or `ext_` (e.g., `ah_census_acs`, `ah_alphafold`).
+* **IAM Roles**: 
+  * **Discovery**: Grant `roles/analyticshub.viewer` to search exchanges and listings.
+  * **Subscription**: Grant `roles/analyticshub.subscriber` and `roles/bigquery.admin` (or `roles/bigquery.dataEditor`) to link datasets into a project.
+  * **Querying**: Grant `roles/bigquery.dataViewer` on the **linked dataset** and `roles/bigquery.jobUser` on the subscriber project.
+* **Automation**: Always use the `create_*_json` helper functions to construct valid API payloads.
+
+---
+
+## 5. Execution Strategy & Determinism Protocol
 
 ### Tier 1: Deterministic Client Scripts (Primary / Recommended)
 Whenever POSIX shell execution is available, agents **MUST** prioritize using the pre-tested helper and client scripts located in `scripts/`:
-- Sourcing client: `source scripts/analyticshub_v1.sh`
-- Sourcing helpers: `source scripts/analyticshub_v1_helpers.sh`
+* Sourcing client: `source scripts/analyticshub_v1.sh`
+* Sourcing helpers: `source scripts/analyticshub_v1_helpers.sh`
 
 *Why:* Eliminates code hallucination risks, guarantees exact payload structure for Data Exchanges and Listings, manages OAuth2 tokens and `X-Goog-User-Project` quota headers, and automatically handles regional endpoint routing.
 
 ### Tier 2: Direct REST / Discovery Contract (Polyglot Fallback)
 If executing in environments without shell access (e.g., pure Python/Node.js runtimes, notebooks, or backend microservices):
-- Refer directly to the canonical Discovery Document in `references/discoveryDocs/analyticshub_v1_20260813.json` for parameter schemas, data types, and HTTP methods.
-- Issue requests directly via your runtime's native HTTP client without inventing ungrounded parameters.
+* Refer directly to the canonical Discovery Document in `references/discoveryDocs/analyticshub_v1_20260813.json` for parameter schemas, data types, and HTTP methods.
+* Issue requests directly via your runtime's native HTTP client without inventing ungrounded parameters.
 
 ---
 
 ## References
 
-- [Google Cloud Analytics Hub Documentation](https://cloud.google.com/bigquery/docs/analytics-hub-introduction)
-- [Analytics Hub REST API Reference](https://cloud.google.com/bigquery/docs/reference/analytics-hub/rest)
-- [Discovery Documents](references/discoveryDocs/)
-- [Public API Discovery Document (v1)](https://analyticshub.googleapis.com/$discovery/rest?version=v1)
+* [Google Cloud Analytics Hub Documentation](https://cloud.google.com/bigquery/docs/analytics-hub-introduction)
+* [Analytics Hub REST API Reference](https://cloud.google.com/bigquery/docs/reference/analytics-hub/rest)
+* [Google Cloud Public Datasets Exchange](https://cloud.google.com/bigquery/public-data)
+* [Discovery Documents](references/discoveryDocs/)
+* [Public API Discovery Document (v1)](https://analyticshub.googleapis.com/$discovery/rest?version=v1)
+
 
 
 

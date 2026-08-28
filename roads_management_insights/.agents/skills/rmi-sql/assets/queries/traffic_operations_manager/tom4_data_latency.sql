@@ -35,7 +35,7 @@ WITH last_data_arrival AS (
     MAX(record_time) AS last_arrival
   FROM `LINKED_DATASET_NAME.historical_travel_time`
   -- Focused partition scan for the full sample month
-  WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND record_time BETWEEN '2026-06-01' AND '2026-06-30'
+  WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
   GROUP BY 1
 )
 SELECT
@@ -43,11 +43,11 @@ SELECT
   s.display_name,
   l.last_arrival,
   -- Measured relative to the end of the sample period
-  TIMESTAMP_DIFF(TIMESTAMP('2026-06-30 00:00:00'), l.last_arrival, MINUTE) as minutes_of_silence
+  TIMESTAMP_DIFF(TIMESTAMP('2026-07-30 00:00:00'), l.last_arrival, MINUTE) as minutes_of_silence
 FROM `LINKED_DATASET_NAME.routes_status` s
 LEFT JOIN last_data_arrival l USING (selected_route_id)
 -- Focus on routes that are supposed to be producing data
 WHERE s.status = 'STATUS_RUNNING'
   -- Threshold: Highlight routes that haven't sent a record in the last few hours of the dataset
-  AND l.last_arrival < TIMESTAMP('2026-06-29 21:55:00')
+  AND l.last_arrival < TIMESTAMP('2026-07-29 21:55:00')
 ORDER BY minutes_of_silence DESC;

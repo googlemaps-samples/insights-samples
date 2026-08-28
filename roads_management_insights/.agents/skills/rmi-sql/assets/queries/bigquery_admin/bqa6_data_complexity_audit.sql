@@ -36,7 +36,7 @@ SELECT
   AVG(ST_NUMPOINTS(route_geometry)) as avg_num_points,
   SAFE_CAST(NULL AS FLOAT64) as avg_attr_bytes
 FROM `LINKED_DATASET_NAME.historical_travel_time`
-WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND record_time BETWEEN '2026-06-01' AND '2026-06-30'
+WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
 
 UNION ALL
 
@@ -49,7 +49,7 @@ SELECT
   AVG(ST_NUMPOINTS(route_geometry)) as avg_num_points,
   SAFE_CAST(NULL AS FLOAT64) as avg_attr_bytes
 FROM `LINKED_DATASET_NAME.recent_roads_data`
-WHERE record_time BETWEEN '2026-06-01' AND '2026-06-30'
+WHERE record_time BETWEEN '2026-07-01' AND '2026-07-30'
 
 UNION ALL
 
