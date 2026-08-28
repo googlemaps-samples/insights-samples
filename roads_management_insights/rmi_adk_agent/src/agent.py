@@ -12,13 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pathlib
+
 from google.adk.agents import Agent
 from google.adk.planners import BuiltInPlanner
+from google.adk.skills import load_skill_from_dir
 from google.adk.tools.agent_tool import AgentTool
 from google.adk.tools.bigquery import BigQueryCredentialsConfig
 from google.adk.tools.bigquery import BigQueryToolset
 from google.adk.tools.bigquery.config import BigQueryToolConfig
 from google.adk.tools.bigquery.config import WriteMode
+from google.adk.tools.skill_toolset import SkillToolset
 import google.auth
 from google.genai import types
 
@@ -50,6 +54,13 @@ if credentials_config:
 else:
     bigquery_toolset = []
 
+# Load ADK skill for traffic metrics grounding
+_SKILLS_DIR = pathlib.Path(__file__).parent / "skills"
+_metrics_skill = load_skill_from_dir(
+    _SKILLS_DIR / "rmi-traffic-metrics-grounding"
+)
+rmi_skill_toolset = SkillToolset(skills=[_metrics_skill])
+
 
 # Agent Definition
 bq_agent = Agent(
@@ -75,5 +86,5 @@ root_agent = Agent(
         )
     ),
     instruction=prompts.RMI_AGENT_PROMPT,
-    tools=[AgentTool(bq_agent)],
+    tools=[AgentTool(bq_agent), rmi_skill_toolset],
 )
