@@ -37,7 +37,7 @@ WITH peak_hour_data AS (
     SAFE_DIVIDE(h.duration_in_seconds, h.static_duration_in_seconds) AS delay_ratio
   FROM `LINKED_DATASET_NAME.historical_travel_time` AS h
   JOIN `LINKED_DATASET_NAME.routes_status` AS s USING (selected_route_id)
-  WHERE h.record_time BETWEEN '2026-06-01' AND '2026-06-30'
+  WHERE h.record_time BETWEEN '2026-07-01' AND '2026-07-30'
     -- STATUS_RUNNING ensures we only analyze routes that are currently being monitored
     AND s.status = 'STATUS_RUNNING'
     -- AM Peak Window: 7:00 AM to 8:59 AM Local Time

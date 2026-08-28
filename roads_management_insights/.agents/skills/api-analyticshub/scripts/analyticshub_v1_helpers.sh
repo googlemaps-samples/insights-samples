@@ -78,12 +78,48 @@ create_data_provider_json() {
     jq -n --arg name "$1" --arg pc "$2" '{name: $name, primaryContact: $pc}'
 }
 
+# Creates a JSON object for a DestinationDataset.
+# @param string dataset_id Required. The ID of the dataset to create. e.g. "my_linked_dataset"
+# @param string project_id Required. The project ID containing the destination dataset. e.g. "my-project"
+# @param string location Optional. Geographic location where the dataset should reside (default: "us").
+# @param string friendly_name Optional. A descriptive name for the dataset.
+# @param string description Optional. A user-friendly description of the dataset.
+create_destination_dataset_json() {
+    local dataset_id="$1"
+    local project_id="$2"
+    local location="${3:-us}"
+    local friendly_name="${4:-}"
+    local description="${5:-}"
+
+    local json_output
+    json_output=$(jq -n \
+        --arg did "$dataset_id" \
+        --arg pid "$project_id" \
+        --arg loc "$location" \
+        '{datasetReference: {datasetId: $did, projectId: $pid}, location: $loc}')
+
+    if [[ -n "${friendly_name}" ]]; then
+        json_output=$(echo "${json_output}" | jq --arg fn "$friendly_name" '.friendlyName = $fn')
+    fi
+    if [[ -n "${description}" ]]; then
+        json_output=$(echo "${json_output}" | jq --arg desc "$description" '.description = $desc')
+    fi
+    echo "${json_output}"
+}
+
 # Creates a JSON object for a SubscribeListingRequest.
-# @param string destination_dataset
+# @param string destination_dataset_or_json (Accepts DestinationDataset JSON or dataset resource path "projects/P/datasets/D")
+# @param string location Optional. Location of the destination dataset (default: "us").
 create_subscribe_listing_request_json() {
     local arg="$1"
+    local location="${2:-us}"
     if [[ "${arg}" =~ ^[[:space:]]*\{ ]]; then
         jq -n --argjson dd "${arg}" '{destinationDataset: $dd}'
+    elif [[ "${arg}" =~ ^projects/([^/]+)/datasets/([^/]+)$ ]]; then
+        local pid="${BASH_REMATCH[1]}"
+        local did="${BASH_REMATCH[2]}"
+        jq -n --arg pid "$pid" --arg did "$did" --arg loc "$location" \
+            '{destinationDataset: {datasetReference: {projectId: $pid, datasetId: $did}, location: $loc}}'
     else
         jq -n --arg dd "${arg}" '{destinationDataset: $dd}'
     fi

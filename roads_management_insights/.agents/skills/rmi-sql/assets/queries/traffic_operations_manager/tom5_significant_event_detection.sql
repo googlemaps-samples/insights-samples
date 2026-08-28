@@ -41,7 +41,7 @@ SELECT
 FROM `LINKED_DATASET_NAME.historical_travel_time` AS h
 JOIN `LINKED_DATASET_NAME.routes_status` AS s USING(selected_route_id)
 -- Filter for the final days of the sample dataset
-WHERE h.record_time BETWEEN '2026-06-27' AND '2026-06-30'
+WHERE h.record_time BETWEEN '2026-07-27' AND '2026-07-30'
   -- Focus on active monitoring fleet
   AND s.status = 'STATUS_RUNNING'
   -- Filter for \"Significant\" events

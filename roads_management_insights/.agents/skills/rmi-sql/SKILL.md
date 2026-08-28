@@ -21,13 +21,13 @@ This skill provides expert-level procedural knowledge for applying BigQuery capa
 - **Path Integrity**: Always filter for `ST_LineString` on traffic-aware datasets (e.g., `routes_status`). **Apply this filter as early as possible (e.g., in the first CTE)** to optimize performance. *Note: Static road network tables typically don't require this check.*
 - **Route Deviation Audit**: Filter for routes where the actual physical length (`ST_LENGTH(route_geometry)`) deviates significantly from the intended `route_length` (stored in `route_attributes`). Apply a tolerance ratio (e.g., `0.9` to `1.1`) in the early CTEs to exclude unreliable records:
     ```sql
-    WHERE SAFE_DIVIDE(ST_LENGTH(route_geometry), SAFE_CAST(JSON_VALUE(route_attributes, '$.route_length') AS FLOAT64)) BETWEEN 0.9 AND 1.1
+    WHERE SAFE_DIVIDE(ST_LENGTH(route_geometry), SAFE_CAST(COALESCE(JSON_VALUE(route_attributes, '$.route_length_meters'), JSON_VALUE(route_attributes, '$.route_length')) AS FLOAT64)) BETWEEN 0.9 AND 1.1
     ```
 - **Dynamic Path Variation & Detour Detection (`road_segment_ids`)**:
   - *Fingerprinting Path Variants*: Use `ARRAY_TO_STRING(road_segment_ids, '|')` to convert the segment Place ID sequence into a string fingerprint that can be grouped (`GROUP BY 1, 2, 3`).
-  - *June 19, 2026 Temporal Schema Threshold*: The `road_segment_ids` column was added on **June 19, 2026**. Telemetry records prior to this date contain empty/NULL arrays. All queries using `road_segment_ids` MUST enforce:
+  - *July 1, 2026 Temporal Schema Threshold*: The `road_segment_ids` column was added on **July 1, 2026**. Telemetry records prior to this date contain empty/NULL arrays. All queries using `road_segment_ids` MUST enforce:
     ```sql
-    WHERE record_time >= '2026-06-19' AND ARRAY_LENGTH(road_segment_ids) > 0
+    WHERE record_time >= '2026-07-01' AND ARRAY_LENGTH(road_segment_ids) > 0
     ```
   - *Detour Delay Multiplier*: Aggregate variants into an array sorted by sample count (`ARRAY_AGG(STRUCT(...) ORDER BY num_of_records DESC)`). Index `0` is the dominant baseline path; subsequent indices are detour variants. Compute `SAFE_DIVIDE(variations[OFFSET(1)].avg_duration_in_seconds, variations[OFFSET(0)].avg_duration_in_seconds)` to isolate high-penalty congestion diversions.
 
@@ -110,7 +110,7 @@ WITH hourly_stage AS (
     END AS worst_hourly_speed
   FROM `dataset.recent_roads_data`, UNNEST(speed_reading_intervals) AS sri
   WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString'
-    AND record_time >= '2026-06-15 00:00:00' AND record_time < '2026-06-16 00:00:00'
+    AND record_time >= '2026-07-15 00:00:00' AND record_time < '2026-07-16 00:00:00'
   GROUP BY selected_route_id, hour_of_day
 )
 SELECT 

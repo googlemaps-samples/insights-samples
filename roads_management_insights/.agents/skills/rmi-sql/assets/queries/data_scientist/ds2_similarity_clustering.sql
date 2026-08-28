@@ -50,7 +50,7 @@ SELECT
   COALESCE(AVG(CASE WHEN EXTRACT(HOUR FROM DATETIME(record_time, 'America/New_York')) BETWEEN 12 AND 14 THEN SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds) END), 1.0) AS avg_midday_delay,
   COALESCE(AVG(CASE WHEN EXTRACT(HOUR FROM DATETIME(record_time, 'America/New_York')) BETWEEN 16 AND 18 THEN SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds) END), 1.0) AS avg_pm_delay
 FROM `LINKED_DATASET_NAME.historical_travel_time`
-WHERE record_time BETWEEN '2026-06-01' AND '2026-06-30'
+WHERE record_time BETWEEN '2026-07-01' AND '2026-07-30'
   AND duration_in_seconds IS NOT NULL
   AND static_duration_in_seconds > 0
 GROUP BY selected_route_id;
@@ -64,7 +64,7 @@ WITH route_features AS (
     COALESCE(AVG(CASE WHEN EXTRACT(HOUR FROM DATETIME(record_time, 'America/New_York')) BETWEEN 12 AND 14 THEN SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds) END), 1.0) AS avg_midday_delay,
     COALESCE(AVG(CASE WHEN EXTRACT(HOUR FROM DATETIME(record_time, 'America/New_York')) BETWEEN 16 AND 18 THEN SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds) END), 1.0) AS avg_pm_delay
   FROM `LINKED_DATASET_NAME.historical_travel_time`
-  WHERE record_time BETWEEN '2026-06-01' AND '2026-06-30'
+  WHERE record_time BETWEEN '2026-07-01' AND '2026-07-30'
   GROUP BY 1, 2
 )
 SELECT

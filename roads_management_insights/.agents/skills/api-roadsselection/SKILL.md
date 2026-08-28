@@ -253,6 +253,10 @@ Always perform pre-flight checks on user inputs or generated files to avoid API-
 *   **Problem**: The `batchCreate` endpoint is atomic per batch. If even a single route within a batch of up to 1000 routes already exists on the project, the entire batch fails with `ALREADY_EXISTS` (409).
 *   **Resolution**: Sourcing scripts must intercept `ALREADY_EXISTS` errors alongside `INVALID_ARGUMENT` errors. The calling wrapper must extract the request indices of the already-registered routes from the `fieldViolations` list in the `BadRequest` payload, exclude those routes, and dynamically retry the remaining items in the batch.
 
+### 7. BigQuery View / Table Ingestion: Float Coercion for LatLng
+*   **Problem**: When querying curated selected route views from BigQuery (e.g., `bq query --format=json`), BigQuery serializes nested `FLOAT64` coordinates inside STRUCTs as **JSON string literals** (e.g., `"latitude": "40.42278"`). If passed without type conversion, the Roads Selection API rejects the payload with `INVALID_ARGUMENT` because the `LatLng` proto requires strict numeric numbers.
+*   **Resolution**: Always coerce coordinate fields to floating-point numbers (`float(val)` in Python or `tonumber` in `jq`) before packaging the `CreateSelectedRouteRequest`.
+
 ---
 
 ## 5. Error Reference and Recovery Table
@@ -261,6 +265,7 @@ Always perform pre-flight checks on user inputs or generated files to avoid API-
 | :--- | :--- | :--- |
 | `INVALID_ARGUMENT` (ID format) | Underscore `_` used in `selectedRouteId` | Rename ID replacing `_` with `-` (e.g. `route_01` -> `route-01`). |
 | `INVALID_ARGUMENT` (displayName) | `displayName` exceeds 100 bytes (common with UTF-8 Portuguese/multibyte chars) | Truncate the display name to a maximum of 80 characters. |
+| `INVALID_ARGUMENT` (LatLng type) | Lat/Lng coordinates passed as strings from BigQuery JSON exports | Coerce coordinates to numeric floats (`float(lat)`, `float(lng)`). |
 | `INVALID_ARGUMENT` (Too many waypoints) | Intermediates > 25 | Apply spatial path simplification or drop redundant intermediates. |
 | `STATE_INVALID` / `LOW_ROAD_USAGE` | Path doesn't map to roads with enough commercial/fleet traffic | Advise the user that this specific alley/minor street is excluded from fleet statistics. |
 | `OUT_OF_JURISDICTION` | Route is outside the authorized municipal boundary | Move waypoints within the municipal contract boundaries. |

@@ -23,7 +23,7 @@
 -- Estimated Bytes Processed: < 1 MB (Standard SQL on RMI Tables)
 
 SELECT
-  JSON_VALUE(route_attributes, '$.tier') as service_tier,
+  COALESCE(JSON_VALUE(route_attributes, '$.tier'), JSON_VALUE(route_attributes, '$.priority'), 'STANDARD_TIER') as service_tier,
   -- Aggregate total lost time (Actual - Free-flow) converted to hours
   ROUND(SUM(duration_in_seconds - static_duration_in_seconds) / 3600, 1) as total_delay_hours,
   COUNT(DISTINCT h.selected_route_id) as monitored_routes,
@@ -31,7 +31,7 @@ SELECT
   ROUND(AVG(SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds)), 2) as avg_delay_index
 FROM `LINKED_DATASET_NAME.historical_travel_time` h
 JOIN `LINKED_DATASET_NAME.routes_status` s ON h.selected_route_id = s.selected_route_id
-WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND h.record_time BETWEEN '2026-06-01' AND '2026-06-30'
+WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND h.record_time BETWEEN '2026-07-01' AND '2026-07-30'
   -- Filter for records where actual was slower than free-flow
   AND (duration_in_seconds - static_duration_in_seconds) > 0
   AND duration_in_seconds IS NOT NULL

@@ -28,7 +28,7 @@ WITH daily_stats AS (
     selected_route_id,
     COUNT(*) as records_per_day
   FROM `LINKED_DATASET_NAME.historical_travel_time`
-  WHERE record_time BETWEEN '2026-06-01' AND '2026-06-30'
+  WHERE record_time BETWEEN '2026-07-01' AND '2026-07-30'
   GROUP BY 1, 2
 ),
 avg_usage AS (

@@ -39,7 +39,7 @@ WITH afternoon_stats AS (
     duration_in_seconds,
     static_duration_in_seconds
   FROM `LINKED_DATASET_NAME.historical_travel_time`
-  WHERE record_time BETWEEN '2026-06-01' AND '2026-06-30'
+  WHERE record_time BETWEEN '2026-07-01' AND '2026-07-30'
     -- Afternoon period: 2 PM to 5 PM Local Time (Boston)
     AND EXTRACT(HOUR FROM DATETIME(record_time, 'America/New_York')) BETWEEN 14 AND 17
     AND duration_in_seconds IS NOT NULL

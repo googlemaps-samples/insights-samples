@@ -100,7 +100,7 @@ OPTIONS (
   description="Cleaned view of SelectedRoutes excluding invalid routes and promoting custom attributes to typed columns."
 ) AS
 SELECT selected_route_id, display_name, status, validation_error,
-       SAFE_CAST(JSON_VALUE(route_attributes, '$.route_length') AS FLOAT64) AS route_length_meters
+       SAFE_CAST(COALESCE(JSON_VALUE(route_attributes, '$.route_length_meters'), JSON_VALUE(route_attributes, '$.route_length')) AS FLOAT64) AS route_length_meters
 FROM `LINKED_DATASET_NAME.routes_status`
 WHERE status != 'STATUS_INVALID';
 ```

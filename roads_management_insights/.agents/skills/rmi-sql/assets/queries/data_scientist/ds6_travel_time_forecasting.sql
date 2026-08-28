@@ -67,7 +67,7 @@ SELECT
   AVG(duration_in_seconds) as duration_in_seconds
 FROM `LINKED_DATASET_NAME.historical_travel_time`
 WHERE selected_route_id = 'boston-v2--2rwshKeDrs'
-  AND record_time BETWEEN '2026-06-01' AND '2026-06-21'
+  AND record_time BETWEEN '2026-07-01' AND '2026-07-21'
   AND duration_in_seconds IS NOT NULL
 GROUP BY 1;
 
@@ -94,7 +94,7 @@ actual_data AS (
     AVG(duration_in_seconds) as actual_duration
   FROM `LINKED_DATASET_NAME.historical_travel_time`
   WHERE selected_route_id = 'boston-v2--2rwshKeDrs'
-    AND record_time BETWEEN '2026-06-22' AND '2026-06-29'
+    AND record_time BETWEEN '2026-07-22' AND '2026-07-29'
     AND duration_in_seconds IS NOT NULL
   GROUP BY 1
   )

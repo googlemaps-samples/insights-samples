@@ -37,7 +37,7 @@ WITH exploded_sris AS (
     sri.speed
   FROM `LINKED_DATASET_NAME.recent_roads_data`,
   UNNEST(speed_reading_intervals) AS sri
-  WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND record_time BETWEEN '2026-06-01' AND '2026-06-30'
+  WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
 )
 SELECT
   selected_route_id,

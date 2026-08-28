@@ -36,10 +36,10 @@ OPTIONS(
 SELECT
   selected_route_id,
   JSON_VALUE(route_attributes, '$.region') as region,
-  JSON_VALUE(route_attributes, '$.tier') as tier,
+  COALESCE(JSON_VALUE(route_attributes, '$.tier'), JSON_VALUE(route_attributes, '$.priority'), 'STANDARD_TIER') as tier,
   JSON_VALUE(route_attributes, '$.priority') as priority,
   -- route_attributes values are always strings. Casting to FLOAT64 for numerical analysis.
-  SAFE_CAST(JSON_VALUE(route_attributes, '$.route_length') AS FLOAT64) as route_length_meters
+  SAFE_CAST(COALESCE(JSON_VALUE(route_attributes, '$.route_length_meters'), JSON_VALUE(route_attributes, '$.route_length')) AS FLOAT64) as route_length_meters
 FROM `LINKED_DATASET_NAME.routes_status`
 -- Example: Filtering by priority attribute
 -- WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND JSON_VALUE(route_attributes, '$.priority') = 'high';

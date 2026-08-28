@@ -27,10 +27,10 @@
   
   IMPORTANT SCHEMA NOTE:
   The 'road_segment_ids' column (ARRAY<STRING> containing topological Place IDs)
-  was added to 'historical_travel_time' on June 19, 2026.
+  was added to 'historical_travel_time' on July 1, 2026.
   Telemetry records prior to this date have empty/NULL arrays for this column.
   Therefore, queries utilizing 'road_segment_ids' MUST filter for:
-    record_time >= '2026-06-19' AND ARRAY_LENGTH(road_segment_ids) > 0
+    record_time >= '2026-07-01' AND ARRAY_LENGTH(road_segment_ids) > 0
   
   WORKFLOW:
   1. Flattens road_segment_ids into a pipe-delimited string (fingerprint) to allow GROUP BY.
@@ -48,8 +48,8 @@ WITH path_variants AS (
     COUNT(h.record_time) AS num_of_records
   FROM `LINKED_DATASET_NAME.historical_travel_time` AS h
   JOIN `LINKED_DATASET_NAME.routes_status` AS s USING (selected_route_id)
-  -- Schema Temporal Filter: road_segment_ids is only populated from 2026-06-19 onward
-  WHERE h.record_time >= '2026-06-19'
+  -- Schema Temporal Filter: road_segment_ids is only populated from 2026-07-01 onward
+  WHERE h.record_time >= '2026-07-01'
     AND ARRAY_LENGTH(h.road_segment_ids) > 0
     AND s.status = 'STATUS_RUNNING'
     AND h.duration_in_seconds IS NOT NULL

@@ -102,45 +102,49 @@ When dealing with historical temporal datasets (like vehicle counts or hourly tr
 
 When rendering dual-direction roads, multi-lane telemetry, or overlaying direction-specific indicators, paths must be shifted laterally to represent the correct driving side of the road (Left-Hand Traffic vs. Right-Hand Traffic) and prevent overlapping overlap anomalies.
 
-### A. Deck.gl Native PathStyleExtension
-For highly optimized WebGL rendering of parallel LineStrings without modifying the original geometries, leverage the Deck.gl `PathStyleExtension`.
+### A. The Multi-Layer Synchronization Trap (PathStyleExtension vs. Companion Layers)
+Deck.gl provides `PathStyleExtension({ offset: true })` for GPU vertex shader offsets. However, **in complex GIS applications with companion layers (e.g. directional arrowheads, start/end point circles, extruded 3D ribbons), `PathStyleExtension` creates severe visual desynchronization:**
+1. **Width-Coupled Shader Offsets:** `PathStyleExtension` calculates offset as `getOffset * getWidth`. If a road line has a base width of 1 meter or 2 pixels, the shader only shifts it by a tiny fraction (e.g. $0.6\text{ m}$).
+2. **Layer Incompatibility:** Companion layers like `ScatterplotLayer` (start dots) or extruded `GeoJsonLayer` (3D ribbons) cannot use `PathStyleExtension`. If they are analytically offset in meters (e.g. $2.5\text{ m}$), arrows and markers will visibly decouple and float far off the road corridor into sidewalks or buildings.
+3. **Luma.gl Layout Warnings:** In Deck.gl v9, using `PathStyleExtension` on certain composite layer setups can trigger `luma.gl: Binding pathStyleUniforms not set: Not found in shader layout.` warnings.
 
-1. **Activate the Extension**:
-   ```javascript
-   import { PathStyleExtension } from '@deck.gl/extensions';
-   // ...
-   new GeoJsonLayer({
-     // ...
-     extensions: [new PathStyleExtension({ offset: true })]
-   })
-   ```
+### B. The Robust Solution: Unified Analytical Geometry Offsetting
+For guaranteed pixel-perfect and meter-accurate alignment across all composite sublayers, perform a **unified analytical coordinate offset** (typically $1.5\text{ m}$ to $2.0\text{ m}$, representing half a standard lane width) at the geometry preparation layer:
 
-2. **Define Offset Ratios**:
-   The offset is defined as a fraction of the line width. A positive offset shifts the line to the right of its direction of travel; a negative offset shifts it to the left.
-   * **Right-Hand Traffic (RHD)**: Shift right (`0.6` x line width).
-   * **Left-Hand Traffic (LHT)**: Shift left (`-0.6` x line width).
+```typescript
+/**
+ * Safely offsets a LineString or Feature<LineString> laterally in meters.
+ * Positive distance offsets to the right of travel direction, negative to the left.
+ */
+function offsetLine(
+  geomOrFeature: geojson.LineString | geojson.Feature<geojson.LineString>,
+  offsetDistanceMeters: number
+): geojson.Feature<geojson.LineString> {
+  if (!geomOrFeature || offsetDistanceMeters === 0) {
+    return geomOrFeature.type === 'Feature' ? geomOrFeature : turf.lineString(geomOrFeature.coordinates);
+  }
+  try {
+    const feat = geomOrFeature.type === 'Feature' ? geomOrFeature : turf.lineString(geomOrFeature.coordinates);
+    const offset = turf.lineOffset(feat, offsetDistanceMeters, { units: 'meters' });
+    if (offset?.geometry?.coordinates?.length >= 2) {
+      return offset;
+    }
+  } catch (e) {
+    console.warn("offsetLine failed, falling back to original geometry:", e);
+  }
+  return geomOrFeature.type === 'Feature' ? geomOrFeature : turf.lineString(geomOrFeature.coordinates);
+}
+```
 
-3. **Compute getOffset Dynamically**:
-   ```javascript
-   getOffset: (f) => {
-     const priority = f.properties?.road_priority;
-     if (isMajorRoad(priority)) {
-       return isLeftHandTraffic ? -0.6 : 0.6;
-     }
-     return 0;
-   }
-   ```
+#### Multi-Layer Pipeline Pattern:
+1. **Base Road Polylines (`PathLayer`):** Pass `offsetLine(line, isLeftHandTraffic ? -1.5 : 1.5)` into `getPath`.
+2. **Directional Arrowheads (`PathLayer`):** Derive arrow vectors from the *same* offset line geometry via `turf.along`.
+3. **Start/End Markers (`ScatterplotLayer`):** Anchor marker positions directly on the *same* offset line.
+4. **Time-Stacked Traffic (`RecentTrafficLayer`):** Offset 2D coordinates by $\pm 1.5\text{ m}$ *before* mapping vertical elevation ($Z = \text{minutes} \times 1.5$).
+5. **3D Ribbon Volumes (`RouteDeviationLayer`):** Apply `offsetLine` *before* `turf.buffer()`, generating perfectly separated, non-colliding parallel 3D extruded volume walls.
 
-4. **Add Reactivity Triggers**:
-   Ensure the render engine redraws when the driving side setting changes:
-   ```javascript
-   updateTriggers: {
-     getOffset: [isLeftHandTraffic]
-   }
-   ```
-
-### B. Analytical Manual Coordinate Offsets (Offline/Fallback)
-When generating raw GeoJSON or rendering standalone Point markers along the side of the road (e.g., arrow markers, segment endpoints), calculate lateral coordinates manually in meters and project them back into degrees.
+### C. Manual Projection Math (Zero-Dependency Offline Fallback)
+When Turf.js is unavailable, calculate lateral coordinates manually in meters and project them back into degrees.
 
 Given a segment from `p1` to `p2`:
 1. **Direction Vector**:
@@ -150,7 +154,6 @@ Given a segment from `p1` to `p2`:
    $$n_{dx} = \frac{\Delta x}{\text{Length}}, \quad n_{dy} = \frac{\Delta y}{\text{Length}}$$
    $$p_{dx} = n_{dy}, \quad p_{dy} = -n_{dx}$$
 3. **Meters-to-Degrees Projection Scaling**:
-   Latitude and longitude degrees per meter scale differently based on the current latitude:
    $$\text{degPerMeterLat} = \frac{1}{111111}$$
    $$\text{degPerMeterLon} = \frac{1}{111111 \cdot \cos(\text{lat} \cdot \frac{\pi}{180})}$$
 4. **Shifted Coordinates**:
@@ -497,6 +500,37 @@ To balance instant spatial response times with zero-staleness real-time accuracy
 
 ---
 
+## 🎛️ 21. Material Design 3 Map UI & Feature Inspection Architecture
+
+When building analytical geospatial dashboards and map tools (such as route setting or corridor inspection consoles), map UI elements must provide clear visual hierarchy, quick copyability of resource identifiers, and self-documenting action triggers.
+
+### A. The Copyable Monospace Resource Container Pattern
+* **Problem**: Raw resource identifiers (e.g. `roads/ChIJ-bfSMGoZ...` or `routes/12345`) are lengthy, hard to read, and awkward to select manually from standard text elements without accidental whitespace inclusion.
+* **Pattern**: Render resource IDs inside a dedicated monospace container box with an inline 1-click clipboard copy button:
+  1. Truncate text visually with `text-overflow: ellipsis` and set `user-select: all`.
+  2. Implement direct clipboard writing: `navigator.clipboard.writeText(resourceName)`.
+  3. Provide temporary visual confirmation by toggling the icon from `content_copy` to `check` for 1500ms.
+
+### B. Categorized Action Grids vs. Cryptic Icon Rows
+* **Problem**: Packing 6 to 8 icon-only buttons into a horizontal strip creates severe cognitive friction; users cannot distinguish nuanced operations (e.g., `unfold_more` vs `compare_arrows` vs `merge_type` vs `alt_route`).
+* **Pattern**: Group actions into labeled, 2-column Material Design 3 button grids (`md-filled-tonal-button`, `md-outlined-button`):
+  - **`TRACKING`**: Primary tonal button (`+ Track Road`) and secondary outlined button (`Untrack`).
+  - **`NETWORK STRETCH`**: Clearly labeled directional actions (`Stretch 1-Way`, `Stretch 2-Way`).
+  - **`ROUTE MANAGEMENT` / `ANALYTICS`**: Clear triggers for lifecycle mutations (`Retrack`, `Hide Layer`) and analytics workflows (`Recent Traffic`, `History`).
+
+### C. Modern Google Maps InfoWindow Balloon Overrides
+* **Problem**: Standard Google Maps InfoWindows have harsh boxy borders (`.gm-style-iw-c`), rigid padding, and unstyled multi-feature category headers.
+* **Pattern**: Override InfoWindow styles cleanly with Material 3 surface elevation:
+  1. Set `border-radius: 16px !important;` and soft drop shadows `box-shadow: 0 8px 28px rgba(0,0,0,0.18) !important;` on `.gm-style-iw-c`.
+  2. For multi-selection intersections (e.g. overlapping two-way road segments), group features by `FeatureClass` and render styled category headers (`<md-icon>`, category title, and pill count badge).
+  3. Render dedicated `GROUP ACTIONS` blocks for bulk multi-feature operations (`Track All`, `Track 2-Way Stretch`).
+
+### D. Floating Pill Search Bars & Control Toolbars
+* **Pill Search Bars**: Float search inputs as 24px rounded pill containers (`border-radius: 24px`) with leading category icons (`alt_route` / `route`), subtle border outlines, and smooth focus-within drop shadows.
+* **Toolbars**: Replace legacy yellowish/beige headers with clean `#f8f9fa` uppercase headers and 12px rounded container frames.
+
+---
+
 ## Guidelines
 - **Premium Styling Tokens**: Avoid raw visual colors; use the curated, responsive dark-mode palettes defined in the RMI design system.
 - **Avoid Overlays Overlap**: Limit concurrent layers to 3 active Deck.gl layers to preserve map responsiveness.
@@ -514,6 +548,11 @@ To balance instant spatial response times with zero-staleness real-time accuracy
 - **Anchor Marker zIndex**: Explicitly set `zIndex: 9999` on standard marker overlays to keep anchors floating above interleaved WebGL contexts.
 - **Minimalist Base Cartography**: Ingest a custom slate-black JSON stylesheet to hide POIs, transit networks, and road labels, maximizing visual focus on overlay data.
 - **On-Demand Live API Execution**: Scope live API streaming fetches to manual layer checkbox interactions, avoiding automatic execution during map navigation.
+- **Monospace Resource Copying**: Package lengthy entity names (`roads/...`, `routes/...`) into monospace containers with 1-click clipboard copying and timeout checkmark confirmation.
+- **Categorized Action Grids**: Never rely on raw icon-only toolbars for multi-mode actions; use titled 2-column button grids with explicit text labels.
+- **Material 3 InfoWindows**: Style on-map InfoWindows with 16px corner radii, class category headers with count pills, and dedicated bulk group actions.
+- **Pill Search Controls**: Design on-map search bars as 24px rounded floating pills with leading domain icons and focus elevation rings.
+
 
 
 

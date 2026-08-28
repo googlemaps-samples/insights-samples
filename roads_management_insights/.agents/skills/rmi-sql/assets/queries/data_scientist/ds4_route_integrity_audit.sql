@@ -46,11 +46,11 @@ WITH base_comparison AS (
     h.display_name,
     h.record_time,
     ST_LENGTH(h.route_geometry) AS actual_length,
-    SAFE_CAST(JSON_VALUE(s.route_attributes, '$.route_length') AS FLOAT64) AS intended_length
+    SAFE_CAST(COALESCE(JSON_VALUE(s.route_attributes, '$.route_length_meters'), JSON_VALUE(s.route_attributes, '$.route_length')) AS FLOAT64) AS intended_length
   FROM `LINKED_DATASET_NAME.historical_travel_time` h
   JOIN `LINKED_DATASET_NAME.routes_status` s USING (selected_route_id)
   WHERE s.status = 'STATUS_RUNNING'
-    AND h.record_time BETWEEN '2026-06-01' AND '2026-06-30'
+    AND h.record_time BETWEEN '2026-07-01' AND '2026-07-30'
     -- Quality filter: Exclude non-continuous geometries
     AND ST_GEOMETRYTYPE(h.route_geometry) = 'ST_LineString'
 ),
