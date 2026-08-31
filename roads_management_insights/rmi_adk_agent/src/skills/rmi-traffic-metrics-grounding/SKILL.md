@@ -247,9 +247,9 @@ GROUP BY selected_route_id
     improved.
 
 The example below uses TTI. Substitute any metric formula depending on the
-user's request. Dynamically inline timestamps as `TIMESTAMP('YYYY-MM-DD', '<TIMEZONE>')` 
-during SQL synthesis using the roadway's local timezone. Ensure before and after
-date ranges are balanced to avoid seasonal bias.
+user's request. Dynamically inline timestamps as `TIMESTAMP('YYYY-MM-DD',
+'<TIMEZONE>')` during SQL synthesis using the roadway's local timezone. Ensure
+before and after date ranges are balanced to avoid seasonal bias.
 
 ```sql
 SELECT
@@ -389,7 +389,7 @@ ORDER BY local_hour
 5.  **% Time Congested threshold (A7)**: default to TTI > 1.25. Ask the user if
     they want a different threshold.
 
-7.  **Percentile computation**: `APPROX_QUANTILES(value, 100)` returns a
+6.  **Percentile computation**: `APPROX_QUANTILES(value, 100)` returns a
     101-element array (indices 0–100). `[OFFSET(N)]` extracts the Nth
     percentile. For P95 use `[OFFSET(95)]`, for P80 use `[OFFSET(80)]`. Adapt
     the offset for any user-requested percentile.
