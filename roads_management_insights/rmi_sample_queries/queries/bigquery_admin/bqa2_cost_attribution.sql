@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_bqa2_YYYYMMDDHHMMSS
+-- Persona: bigquery_admin
+-- Purpose: RMI BigQuery Analytical Query (bqa2)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");

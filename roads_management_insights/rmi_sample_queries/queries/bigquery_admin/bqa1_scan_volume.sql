@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_bqa1_YYYYMMDDHHMMSS
+-- Persona: bigquery_admin
+-- Purpose: RMI BigQuery Analytical Query (bqa1)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,7 +38,8 @@ SELECT
   -- Average scan size helps distinguish between 'many small queries' vs 'one massive scan'
   AVG(total_bytes_billed) / POW(1024, 3) AS avg_gb_per_job
 FROM `region-us`.INFORMATION_SCHEMA.JOBS
-WHERE creation_time BETWEEN TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), MONTH) AND CURRENT_TIMESTAMP()
+-- Fast audit default (7 days). Use 'BETWEEN TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), MONTH) AND CURRENT_TIMESTAMP()' for full-month billing audits.
+WHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
   AND job_type = 'QUERY'
   -- Heuristic filter: Look for queries mentioning RMI core tables
   AND (

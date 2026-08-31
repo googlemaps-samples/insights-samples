@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # Helper script to list all items from an Analytics Hub list call by paging through tokens.
 
 source "$(dirname "${BASH_SOURCE[0]}")/analyticshub_v1.sh"

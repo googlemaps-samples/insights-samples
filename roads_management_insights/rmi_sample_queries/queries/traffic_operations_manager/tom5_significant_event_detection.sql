@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_tom5_YYYYMMDDHHMMSS
+-- Persona: traffic_operations_manager
+-- Purpose: RMI BigQuery Analytical Query (tom5)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,14 +38,17 @@ SELECT
   h.static_duration_in_seconds,
   -- Delay ratio > 2.0 means travel time is 2x slower than ideal
   ROUND(SAFE_DIVIDE(h.duration_in_seconds, h.static_duration_in_seconds), 2) AS delay_ratio
-FROM `boston_oct_2025_sample_data.historical_travel_time` AS h
-JOIN `boston_oct_2025_sample_data.routes_status` AS s USING(selected_route_id)
--- Filter for the final day of the sample dataset
-WHERE h.record_time BETWEEN '2025-10-30' AND '2025-11-01'
+FROM `LINKED_DATASET_NAME.historical_travel_time` AS h
+JOIN `LINKED_DATASET_NAME.routes_status` AS s USING(selected_route_id)
+-- Filter for the final days of the sample dataset
+WHERE h.record_time BETWEEN '2026-07-27' AND '2026-07-30'
   -- Focus on active monitoring fleet
   AND s.status = 'STATUS_RUNNING'
-  -- Filter for "Significant" events
+  -- Filter for \"Significant\" events
   AND SAFE_DIVIDE(h.duration_in_seconds, h.static_duration_in_seconds) > 2.0
   -- Quality filter: Exclude non-continuous geometries
   AND ST_GEOMETRYTYPE(h.route_geometry) = 'ST_LineString'
-ORDER BY delay_ratio DESC;
+  AND h.duration_in_seconds IS NOT NULL
+  AND h.static_duration_in_seconds > 0
+  ORDER BY delay_ratio DESC;
+

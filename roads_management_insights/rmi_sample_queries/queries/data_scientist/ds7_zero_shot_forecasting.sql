@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_ds7_YYYYMMDDHHMMSS
+-- Persona: data_scientist
+-- Purpose: RMI BigQuery Analytical Query (ds7)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,12 +37,14 @@ WITH route_context AS (
     selected_route_id,
     TIMESTAMP_TRUNC(record_time, HOUR) as record_hour,
     AVG(duration_in_seconds) as duration_in_seconds
-  FROM `boston_oct_2025_sample_data.historical_travel_time`
+  FROM `LINKED_DATASET_NAME.historical_travel_time`
   -- We pick a 7-day context window for 3 specific routes
-  WHERE selected_route_id IN ('route-4202493217', 'route-3850158153', 'route-381361371')
-    AND record_time BETWEEN '2025-10-14' AND '2025-10-21'
+  WHERE selected_route_id IN ('boston-v2--2rwshKeDrs', 'boston-v2-3Ttz1C5QMuI', 'boston-v2-J1awoQiuHLY')
+    AND record_time BETWEEN '2026-07-14' AND '2026-07-21'
+    AND duration_in_seconds IS NOT NULL
   GROUP BY 1, 2
 )
+
 -- STEP 2: Use AI.FORECAST to generate predictions.
 -- Note: TimesFM is a managed foundation model; no CREATE MODEL is required.
 SELECT

@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_de1_YYYYMMDDHHMMSS
+-- Persona: data_engineer
+-- Purpose: RMI BigQuery Analytical Query (de1)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,18 +16,33 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
--- Data Engineer Query 1: Create Materialized Subset
--- Business Question: Generate a query to create a 7-day materialized view of historical_travel_time for a specific corridor.
+-- Data Engineer Query 1: Create Materialized Corridor Subset Table
+-- Business Question: Generate a query to create a clustered materialized table of historical_travel_time for a specific corridor.
 -- Product Stage: GA
 -- Estimated Bytes Processed: ~150 MB
--- Metadata: Uses ALTER statements to apply technical descriptions to all columns and the view itself.
+-- Metadata: Creates a clustered table with column-level descriptions to store a materialized extract from linked datasets.
 
--- NOTE: The source dataset (e.g., `boston_oct_2025_sample_data`) is a read-only subscription from Analytics Hub.
--- This materialized view MUST be created in a separate, writable dataset within your project.
+-- ARCHITECTURAL NOTE: Analytics Hub shared datasets are read-only linked datasets.
+-- BigQuery explicitly forbids 'CREATE MATERIALIZED VIEW' directly against linked tables.
+-- Instead, we use 'CREATE OR REPLACE TABLE ... CLUSTER BY selected_route_id' with column-level
+-- OPTIONS descriptions to materialize query outputs in a writable dataset, providing fast
+-- downstream lookups without hitting linked table materialized view restrictions.
 -- Replace `your-project.your-dataset` with your target location.
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS `your-project.your-dataset.storrow_drive_view`
-CLUSTER BY selected_route_id AS
+CREATE OR REPLACE TABLE `your-project.your-dataset.massachusetts_avenue_corridor`
+(
+  selected_route_id STRING OPTIONS(description="Unique identifier for the SelectedRoute resource. Primary correlation key across RMI telemetry datasets."),
+  display_name STRING OPTIONS(description="User-provided descriptive name for the route. Intended for human readability in reports and UI dashboards."),
+  record_time TIMESTAMP OPTIONS(description="The UTC timestamp representing when the route data was computed. Daily partitioning column for pruning scans."),
+  duration_in_seconds FLOAT64 OPTIONS(description="The traffic-aware duration of the route in seconds under observed real-time traffic conditions."),
+  static_duration_in_seconds FLOAT64 OPTIONS(description="The traffic-unaware (static) duration of the route in seconds under ideal free-flow conditions."),
+  route_geometry GEOGRAPHY OPTIONS(description="The traffic-aware optimal polyline geometry of the route as a GEOGRAPHY object (WKT, EPSG:4326).")
+)
+PARTITION BY DATE(record_time)
+CLUSTER BY selected_route_id
+OPTIONS (
+  description="A 7-day materialized extract of RMI historical travel time data specifically for the Massachusetts Avenue corridor, inheriting canonical column descriptions."
+) AS
 SELECT
   selected_route_id,
   display_name,
@@ -31,31 +50,8 @@ SELECT
   duration_in_seconds,
   static_duration_in_seconds,
   route_geometry
-FROM `boston_oct_2025_sample_data.historical_travel_time`
-WHERE record_time >= TIMESTAMP_SUB(TIMESTAMP('2025-10-31'), INTERVAL 7 DAY)
-  AND display_name LIKE '%Storrow-Drive%';
-
--- Applying view-level metadata
-ALTER MATERIALIZED VIEW `your-project.your-dataset.storrow_drive_view`
-SET OPTIONS (
-  description="A 7-day rolling subset of RMI historical travel time data specifically for the Storrow Drive corridor."
-);
-
--- Applying column-level metadata descriptions
-ALTER COLUMN selected_route_id SET OPTIONS(description="Unique identifier for the SelectedRoute resource.")
-ON `your-project.your-dataset.storrow_drive_view`;
-
-ALTER COLUMN display_name SET OPTIONS(description="User-provided descriptive name for the route.")
-ON `your-project.your-dataset.storrow_drive_view`;
-
-ALTER COLUMN record_time SET OPTIONS(description="The UTC timestamp representing when the route data was computed.")
-ON `your-project.your-dataset.storrow_drive_view`;
-
-ALTER COLUMN duration_in_seconds SET OPTIONS(description="The traffic-aware duration of the route in seconds.")
-ON `your-project.your-dataset.storrow_drive_view`;
-
-ALTER COLUMN static_duration_in_seconds SET OPTIONS(description="The traffic-unaware (static) duration of the route in seconds.")
-ON `your-project.your-dataset.storrow_drive_view`;
-
-ALTER COLUMN route_geometry SET OPTIONS(description="The traffic-aware polyline geometry of the route as a GEOGRAPHY object.")
-ON `your-project.your-dataset.storrow_drive_view`;
+FROM `LINKED_DATASET_NAME.historical_travel_time`
+WHERE record_time >= TIMESTAMP_SUB(TIMESTAMP('2026-07-29'), INTERVAL 7 DAY)
+  AND display_name LIKE '%Massachusetts Avenue%'
+  AND duration_in_seconds IS NOT NULL
+  AND static_duration_in_seconds > 0;

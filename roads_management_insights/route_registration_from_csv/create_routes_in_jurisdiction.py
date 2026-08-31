@@ -188,6 +188,9 @@ def create_route_segment(token, origin, destination, display_name, route_id_coun
         "Content-Type": "application/json"
     }
     
+    # Baseline Geometry Note: Dynamic route registration uses Google Routes backend.
+    # When computing custom intermediate geometries via Routes API v2, always enforce
+    # routingPreference: "TRAFFIC_UNAWARE" to avoid baseline distortion from temporary detours.
     payload = {
         "dynamic_route": {
             "origin": {"latitude": origin[0], "longitude": origin[1]},

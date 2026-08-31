@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_de3_YYYYMMDDHHMMSS
+-- Persona: data_engineer
+-- Purpose: RMI BigQuery Analytical Query (de3)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,13 +40,13 @@
 */
 
 -- Step 1: Define the static anchor date to narrow down partitions
-DECLARE anchor_date DATE DEFAULT '2025-10-31';
+DECLARE anchor_date DATE DEFAULT '2026-07-29';
 
 -- Step 2: Find the exact latest timestamp and define the 30-minute window
 DECLARE latest_timestamp TIMESTAMP;
 SET latest_timestamp = (
   SELECT MAX(record_time)
-  FROM `boston_oct_2025_sample_data.recent_roads_data`
+  FROM `LINKED_DATASET_NAME.recent_roads_data`
   WHERE record_time >= TIMESTAMP(anchor_date)
 );
 
@@ -57,9 +61,9 @@ WITH base_intervals AS (
     ST_MAKELINE(sri.interval_coordinates) as interval_geometry,
     -- Core metrics for integrity check
     ST_LENGTH(r.route_geometry) as actual_route_length_meters,
-    CAST(JSON_VALUE(s.route_attributes, '$.route_length') AS FLOAT64) as intended_route_length_meters
-  FROM `boston_oct_2025_sample_data.recent_roads_data` r
-  JOIN `boston_oct_2025_sample_data.routes_status` s USING(selected_route_id),
+    SAFE_CAST(COALESCE(JSON_VALUE(s.route_attributes, '$.route_length_meters'), JSON_VALUE(s.route_attributes, '$.route_length')) AS FLOAT64) as intended_route_length_meters
+  FROM `LINKED_DATASET_NAME.recent_roads_data` r
+  JOIN `LINKED_DATASET_NAME.routes_status` s USING(selected_route_id),
   UNNEST(speed_reading_intervals) AS sri WITH OFFSET AS segment_offset
   WHERE r.record_time >= TIMESTAMP(anchor_date)
     -- Capture only records from the last 30 minutes

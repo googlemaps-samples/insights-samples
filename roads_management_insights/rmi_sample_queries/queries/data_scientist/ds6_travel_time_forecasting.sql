@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_ds6_YYYYMMDDHHMMSS
+-- Persona: data_scientist
+-- Purpose: RMI BigQuery Analytical Query (ds6)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,6 +50,7 @@
 
 -- STEP 1: Train the ARIMA_PLUS model using a 3-week window.
 -- We use hourly aggregation (AVG) to regularize the input for the ARIMA algorithm.
+-- Model Description: ARIMA_PLUS time-series forecasting model for route travel duration with automated anomaly smoothing and weekly seasonality decomposition.
 CREATE OR REPLACE MODEL `your-project.your-dataset.travel_time_forecast_model`
 OPTIONS(
   model_type='ARIMA_PLUS',
@@ -53,14 +58,17 @@ OPTIONS(
   time_series_data_col='duration_in_seconds',
   auto_arima=TRUE,          -- Automatically finds the best P, D, Q parameters.
   data_frequency='HOURLY',
-  clean_spikes_and_dips=TRUE -- Prevents one-off accidents from skewing the long-term trend.
+  -- BQML BEST PRACTICE: clean_spikes_and_dips = TRUE ensures anomalous one-off traffic incidents
+  -- (e.g. major multi-lane accidents or storms) are automatically smoothed and do not distort weekly diurnal seasonality.
+  clean_spikes_and_dips=TRUE
 ) AS
 SELECT
   TIMESTAMP_TRUNC(record_time, HOUR) as record_hour,
   AVG(duration_in_seconds) as duration_in_seconds
-FROM `boston_oct_2025_sample_data.historical_travel_time`
-WHERE selected_route_id = 'route-4202493217'
-  AND record_time BETWEEN '2025-10-01' AND '2025-10-21'
+FROM `LINKED_DATASET_NAME.historical_travel_time`
+WHERE selected_route_id = 'boston-v2--2rwshKeDrs'
+  AND record_time BETWEEN '2026-07-01' AND '2026-07-21'
+  AND duration_in_seconds IS NOT NULL
 GROUP BY 1;
 
 -- STEP 2: Evaluate the model's training metrics.
@@ -69,7 +77,7 @@ GROUP BY 1;
 SELECT * FROM ML.EVALUATE(MODEL `your-project.your-dataset.travel_time_forecast_model`);
 
 -- STEP 3: Compare Forecast vs. Actual for the 4th week (Backtesting).
--- We forecast a 168-hour 'horizon' (7 full days) to match the final week of October.
+-- We forecast a 168-hour 'horizon' (7 full days) to match the final week of the observation month.
 WITH forecast_data AS (
   SELECT
     forecast_timestamp,
@@ -84,11 +92,12 @@ actual_data AS (
   SELECT
     TIMESTAMP_TRUNC(record_time, HOUR) as record_hour,
     AVG(duration_in_seconds) as actual_duration
-  FROM `boston_oct_2025_sample_data.historical_travel_time`
-  WHERE selected_route_id = 'route-4202493217'
-    AND record_time BETWEEN '2025-10-22' AND '2025-10-29'
+  FROM `LINKED_DATASET_NAME.historical_travel_time`
+  WHERE selected_route_id = 'boston-v2--2rwshKeDrs'
+    AND record_time BETWEEN '2026-07-22' AND '2026-07-29'
+    AND duration_in_seconds IS NOT NULL
   GROUP BY 1
-)
+  )
 SELECT
   f.forecast_timestamp,
   ROUND(f.predicted_duration, 1) as forecast_seconds,

@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_tom2_YYYYMMDDHHMMSS
+-- Persona: traffic_operations_manager
+-- Purpose: RMI BigQuery Analytical Query (tom2)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,9 +35,9 @@ WITH exploded_sris AS (
     display_name,
     -- 'speed' represents the RMI traffic state for that specific interval
     sri.speed
-  FROM `boston_oct_2025_sample_data.recent_roads_data`,
+  FROM `LINKED_DATASET_NAME.recent_roads_data`,
   UNNEST(speed_reading_intervals) AS sri
-  WHERE record_time BETWEEN '2025-10-01' AND '2025-11-01'
+  WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
 )
 SELECT
   selected_route_id,

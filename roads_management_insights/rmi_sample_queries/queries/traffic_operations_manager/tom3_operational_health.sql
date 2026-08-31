@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_tom3_YYYYMMDDHHMMSS
+-- Persona: traffic_operations_manager
+-- Purpose: RMI BigQuery Analytical Query (tom3)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,8 +37,8 @@ SELECT
   -- 'low_road_usage_start_time' is specifically populated when probe density drops below threshold
   low_road_usage_start_time,
   -- Time elapsed since the error was first detected (relative to sample end date)
-  DATETIME_DIFF(DATETIME('2025-11-01'), DATETIME(low_road_usage_start_time, 'UTC'), DAY) AS days_in_error_state
-FROM `boston_oct_2025_sample_data.routes_status`
+  DATETIME_DIFF(DATETIME('2026-07-30'), DATETIME(low_road_usage_start_time, 'UTC'), DAY) AS days_in_error_state
+FROM `LINKED_DATASET_NAME.routes_status`
 -- We only care about errors on routes that are supposed to be active (STATUS_RUNNING)
 WHERE status = 'STATUS_RUNNING'
   -- Filter specifically for the Low Road Usage warning

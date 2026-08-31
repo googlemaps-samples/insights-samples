@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_up4_YYYYMMDDHHMMSS
+-- Persona: urban_planner
+-- Purpose: RMI BigQuery Analytical Query (up4)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,10 +38,12 @@ WITH afternoon_stats AS (
     END AS day_type,
     duration_in_seconds,
     static_duration_in_seconds
-  FROM `boston_oct_2025_sample_data.historical_travel_time`
-  WHERE record_time BETWEEN '2025-10-01' AND '2025-11-01'
+  FROM `LINKED_DATASET_NAME.historical_travel_time`
+  WHERE record_time BETWEEN '2026-07-01' AND '2026-07-30'
     -- Afternoon period: 2 PM to 5 PM Local Time (Boston)
     AND EXTRACT(HOUR FROM DATETIME(record_time, 'America/New_York')) BETWEEN 14 AND 17
+    AND duration_in_seconds IS NOT NULL
+    AND static_duration_in_seconds > 0
 )
 SELECT
   day_type,

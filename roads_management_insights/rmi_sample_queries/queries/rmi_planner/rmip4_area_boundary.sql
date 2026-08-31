@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_rmip4_YYYYMMDDHHMMSS
+-- Persona: rmi_planner
+-- Purpose: RMI BigQuery Analytical Query (rmip4)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,23 +24,22 @@
 
 /*
   NOTE: This query creates a persistent view of a target city's official boundary.
-  The source dataset (e.g., `boston_oct_2025_sample_data`) is read-only.
+  The source dataset (e.g., `LINKED_DATASET_NAME`) is read-only.
   This view MUST be created in a separate, writable dataset within your project.
   Replace `your-project.your-dataset` with your target location.
 */
 
 CREATE OR REPLACE VIEW `your-project.your-dataset.target_area_boundary` 
 (
-  division_id OPTIONS(description="Stable identifier for the administrative division."),
-  area_name OPTIONS(description="The primary display name (e.g. Boston)."),
-  region OPTIONS(description="The ISO state/province code (e.g. US-MA)."),
-  country OPTIONS(description="The ISO country code."),
+  division_id OPTIONS(description="Stable identifier for the administrative division from Overture Maps division_area."),
+  area_name OPTIONS(description="The primary display name of the administrative area (e.g., Boston)."),
+  region OPTIONS(description="The ISO state/province code (e.g., US-MA)."),
+  country OPTIONS(description="The ISO country code (e.g., US)."),
   geometry OPTIONS(description="The physical land boundary of the division as a GEOGRAPHY polygon.")
 )
 OPTIONS(
-  description="A reusable administrative boundary for geofencing RMI analytical assets."
-)
-AS
+  description="A reusable administrative boundary view for geofencing RMI analytical assets and corridor spatial joins."
+) AS
 SELECT 
   id AS division_id,
   names.primary AS area_name,

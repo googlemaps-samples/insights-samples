@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_rmip1_YYYYMMDDHHMMSS
+-- Persona: rmi_planner
+-- Purpose: RMI BigQuery Analytical Query (rmip1)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,8 +27,8 @@ WITH daily_stats AS (
     DATE(record_time) as log_date,
     selected_route_id,
     COUNT(*) as records_per_day
-  FROM `boston_oct_2025_sample_data.historical_travel_time`
-  WHERE record_time BETWEEN '2025-10-01' AND '2025-11-01'
+  FROM `LINKED_DATASET_NAME.historical_travel_time`
+  WHERE record_time BETWEEN '2026-07-01' AND '2026-07-30'
   GROUP BY 1, 2
 ),
 avg_usage AS (

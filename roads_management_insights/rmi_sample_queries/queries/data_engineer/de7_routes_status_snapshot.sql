@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_de7_YYYYMMDDHHMMSS
+-- Persona: data_engineer
+-- Purpose: RMI BigQuery Analytical Query (de7)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,22 +34,25 @@
     --target_dataset="your_dataset" \
     --schedule="every 24 hours" \
     --params='{
-      "query":"INSERT INTO `your-project.your-dataset.routes_status_history` SELECT CURRENT_TIMESTAMP() as snapshot_time, * FROM `boston_oct_2025_sample_data.routes_status`"
+      "query":"INSERT INTO `your-project.your-dataset.routes_status_history` SELECT CURRENT_TIMESTAMP() as snapshot_time, * FROM `LINKED_DATASET_NAME.routes_status`"
     }'
 */
 
--- STEP 1: Initialize the partitioned history table with enriched metadata
+-- STEP 1: Initialize the partitioned history table with inherited metadata
 CREATE TABLE IF NOT EXISTS `your-project.your-dataset.routes_status_history` (
-  snapshot_time TIMESTAMP OPTIONS(description="The UTC timestamp when this snapshot was captured."),
-  selected_route_id STRING OPTIONS(description="Unique identifier for the SelectedRoute resource."),
-  display_name STRING OPTIONS(description="User-provided descriptive name for the route."),
-  status STRING OPTIONS(description="Current operational state (e.g., STATUS_RUNNING, STATUS_INVALID)."),
-  validation_error STRING OPTIONS(description="Detailed reason if the route failed validation."),
-  low_road_usage_start_time TIMESTAMP OPTIONS(description="Timestamp when low road usage was first detected."),
-  route_attributes STRING OPTIONS(description="JSON string of custom business metadata.")
+  snapshot_time TIMESTAMP OPTIONS(description="The UTC timestamp when this daily snapshot was captured."),
+  selected_route_id STRING OPTIONS(description="Unique identifier for the SelectedRoute resource. Primary correlation key across RMI telemetry datasets."),
+  display_name STRING OPTIONS(description="User-provided descriptive name for the route. Intended for human readability in reports and UI dashboards."),
+  status STRING OPTIONS(description="Current operational lifecycle state of the route at snapshot time (e.g., STATUS_RUNNING, STATUS_INVALID)."),
+  validation_error STRING OPTIONS(description="Detailed error code explaining why the route is in STATUS_INVALID at snapshot time (NULL for valid running routes)."),
+  low_road_usage_start_time TIMESTAMP OPTIONS(description="The UTC timestamp when low road usage was first detected during periodic re-validation."),
+  route_attributes STRING OPTIONS(description="JSON-formatted flat string of custom key-value metadata attributes (e.g., region, tier, priority, route_length).")
 )
 PARTITION BY DATE(snapshot_time)
-CLUSTER BY selected_route_id;
+CLUSTER BY selected_route_id
+OPTIONS (
+  description="Daily historical snapshots of SelectedRoutes status and metadata, inheriting canonical column descriptions from routes_status."
+);
 
 -- STEP 2: The Periodic Append Logic (Manually executable version)
 -- This statement appends the current state of all routes into the history table.
@@ -58,4 +65,4 @@ SELECT
   validation_error,
   low_road_usage_start_time,
   route_attributes
-FROM `boston_oct_2025_sample_data.routes_status`;
+FROM `LINKED_DATASET_NAME.routes_status`;

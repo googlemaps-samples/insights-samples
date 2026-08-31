@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_up5_YYYYMMDDHHMMSS
+-- Persona: urban_planner
+-- Purpose: RMI BigQuery Analytical Query (up5)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,14 +35,19 @@ DECLARE downtown_zone GEOGRAPHY DEFAULT ST_GEOGFROMTEXT('POLYGON((-71.066 42.358
 
 WITH intersecting_routes AS (
   SELECT
-    h.selected_route_id,
-    h.display_name,
-    SAFE_DIVIDE(h.duration_in_seconds, h.static_duration_in_seconds) AS delay_ratio
-  FROM `boston_oct_2025_sample_data.historical_travel_time` h
-  WHERE ST_INTERSECTS(h.route_geometry, downtown_zone)
-    AND h.record_time BETWEEN '2025-10-01' AND '2025-11-01'
+    selected_route_id,
+    display_name,
+    SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds) AS delay_ratio
+  FROM `LINKED_DATASET_NAME.historical_travel_time`
+  -- S2 SPATIAL INDEXING NOTE:
+  -- BigQuery leverages native S2 cell spatial indexing for ST_INTERSECTS, performing
+  -- sub-second bounding box pruning across millions of polyline records.
+  WHERE ST_INTERSECTS(route_geometry, downtown_zone)
+    AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
     -- Quality filter: Exclude non-continuous geometries
-    AND ST_GEOMETRYTYPE(h.route_geometry) = 'ST_LineString'
+    AND ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString'
+    AND duration_in_seconds IS NOT NULL
+    AND static_duration_in_seconds > 0
 )
 SELECT
   selected_route_id,
