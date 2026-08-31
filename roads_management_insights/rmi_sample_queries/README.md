@@ -1,115 +1,84 @@
-# Road Management Insights (RMI) - Sample Query Library
+# Roads Management Insights (RMI) - Sample Query Library
 
-This folder contains a curated library of SQL queries and interactive notebooks designed for the Road Management Insights (RMI) BigQuery dataset. These assets are organized by analytical persona to help users quickly find the right starting point for their specific use case.
+This directory contains a curated library of hand-written, verified SQL queries and interactive Jupyter notebooks designed for the **Roads Management Insights (RMI)** BigQuery dataset.
+
+All sample queries and notebooks adhere to standard BigQuery GIS best practices, FinOps partition pruning, canonical column naming (`selected_route_id`, `record_time`), and query traceability comments.
+
+---
 
 ## 📂 Folder Structure
 
-- **`/queries`**: A collection of verified SQL queries categorized by persona. These queries demonstrate best practices for querying the RMI data model, including travel time analysis, bottleneck detection, and spatial joins.
-- **`/notebooks`**: Interactive Jupyter notebooks ready to be opened in Google Colab or BigQuery Studio. These notebooks provide a guided environment to execute the sample queries against the RMI sample dataset.
-
-## 🚀 Getting Started
-
-1. **Browse Queries**: Explore the roles below to find working SQL samples for your specific business questions.
-2. **Interactive Analysis**: Open the `.ipynb` files in the `/notebooks` directory for a guided, hands-on experience.
-3. **Dataset**: All queries are designed to run against the `boston_oct_2025_sample_data` shared dataset.
+* **[`/queries`](queries/)**: A collection of verified SQL queries categorized by analytical persona.
+* **[`/notebooks`](notebooks/)**: Interactive Jupyter notebooks ready to be opened in Google Colab or BigQuery Studio.
 
 ---
 
 ## 👥 Query Catalog by Persona
 
-### Traffic Operations Manager
-*Real-time monitoring and immediate bottleneck detection.*
+### 1. [BigQuery Admin](queries/bigquery_admin/)
+*Operational health, resource contention, security, slot allocations, and query cost auditing.*
+* **bqa0**: [Metadata Inventory and Partition Overview](queries/bigquery_admin/bqa0_metadata_inventory.sql) — Zero-cost metadata check of row counts and storage scale.
+* **bqa1**: [Query Scan Volume & Billing Cost Audit](queries/bigquery_admin/bqa1_scan_volume.sql) — Top scan consumers and billable query patterns.
+* **bqa2**: [Cost Attribution per Business Persona](queries/bigquery_admin/bqa2_cost_attribution.sql) — Attribute compute costs by persona job headers.
+* **bqa3**: [Unmanaged Derived Dataset & View Inventory](queries/bigquery_admin/bqa3_derived_resources.sql) — Audit downstream dependent views and tables.
+* **bqa4**: [High-Frequency Query Pattern & SRI Audit](queries/bigquery_admin/bqa4_query_patterns.sql) — Identify heavy unnest operations.
+* **bqa5**: [Full Table Scan & Partition Pruning Audit](queries/bigquery_admin/bqa5_partition_pruning.sql) — Detect unpartitioned queries.
+* **bqa6**: [Query Structural Complexity Audit](queries/bigquery_admin/bqa6_data_complexity_audit.sql) — Audit query complexity and geometry join performance.
+* 📓 **Notebook**: [BigQuery Admin Samples](notebooks/BigQuery_Admin_Samples.ipynb)
 
-1.  **Peak Hour Delay Analysis**: What is the average travel time delay during the morning peak (7-9 AM) for the top 10 most congested routes?
-    *   [View SQL](queries/traffic_operations_manager/tom1_peak_hour_delay.sql)
-2.  **Persistent Bottlenecks**: Which road segments (SRIs) have been in a 'TRAFFIC_JAM' state most frequently?
-    *   [View SQL](queries/traffic_operations_manager/tom2_persistent_bottlenecks.sql)
-3.  **Operational Health Check**: Which routes are currently flagged with a 'LOW_ROAD_USAGE' validation error?
-    *   [View SQL](queries/traffic_operations_manager/tom3_operational_health.sql)
-4.  **Data Collection Latency**: Are there any active routes that have stopped sending data near the end of the snapshot period?
-    *   [View SQL](queries/traffic_operations_manager/tom4_data_latency.sql)
-5.  **Significant Event Detection**: Which routes experienced a travel time more than double their static baseline?
-    *   [View SQL](queries/traffic_operations_manager/tom5_significant_event_detection.sql)
+### 2. [Data Engineer](queries/data_engineer/)
+*Data pipelines, geometry integrity checks, SRI array flattening, and analysis-ready datasets.*
+* **de1**: [Create Materialized Subset](queries/data_engineer/de1_materialized_view.sql) — Filtered, high-performance 7-day materialized view.
+* **de2**: [Data Cleaning & Typed Column Promotion](queries/data_engineer/de2_data_cleaning.sql) — Cleaned route metadata with typed columns.
+* **de3**: [SRI Flattening & Distance Metrics](queries/data_engineer/de3_sri_flattening.sql) — Transform nested SRI arrays into flattened spatial records.
+* **de4**: [Attribute Extraction & Pivoting](queries/data_engineer/de4_attribute_extraction.sql) — Parse unstructured JSON route attributes into columns.
+* **de5**: [Data Freshness Audit](queries/data_engineer/de5_freshness_audit.sql) — Monitor ingestion latency across active routes.
+* **de6**: [2-Stage Hourly Pre-Aggregation Pattern](queries/data_engineer/de6_hourly_preaggregation.sql) — Transform 2-minute telemetry into lightweight hourly profiles (>95% payload reduction).
+* **de7**: [Automated Status History](queries/data_engineer/de7_routes_status_snapshot.sql) — Capture automated snapshots of route status.
+* 📓 **Notebook**: [Data Engineer Samples](notebooks/Data_Engineer_Samples.ipynb)
 
-### Urban Planner
-*Long-term trends and infrastructure planning.*
+### 3. [Data Scientist](queries/data_scientist/)
+*Statistical analysis, anomaly detection, time-series forecasting, and route behavioral clustering.*
+* **ds1**: [Outlier Detection (Z-Score & IQR)](queries/data_scientist/ds1_outlier_detection.sql) — Statistical travel time outlier detection.
+* **ds2**: [Route Similarity Clustering](queries/data_scientist/ds2_similarity_clustering.sql) — Group routes by diurnal morning/midday/evening delay profiles.
+* **ds3**: [Predictive Feature Engineering](queries/data_scientist/ds3_feature_engineering.sql) — Gap-aware regularized hourly feature set.
+* **ds4**: [Route Geometry Integrity Audit](queries/data_scientist/ds4_route_integrity_audit.sql) — Polyline length deviation analysis.
+* **ds5**: [Reliability Ranking & Persistence](queries/data_scientist/ds5_reliability_ranking.sql) — Buffer Index (P95) and consecutive delay failure windows.
+* **ds6**: [Travel Time Forecasting (ARIMA_PLUS)](queries/data_scientist/ds6_travel_time_forecasting.sql) — Train time-series model for future corridor travel times.
+* **ds7**: [Zero-Shot Spatial Speed Inference](queries/data_scientist/ds7_zero_shot_forecasting.sql) — Zero-shot spatial speed transfer modeling.
+* 📓 **Notebook**: [Data Scientist Samples](notebooks/Data_Scientist_Samples.ipynb)
 
-1.  **Long-Term Corridor Performance**: What has been the week-over-week trend in the average delay ratio for a specific corridor?
-    *   [View SQL](queries/urban_planner/up1_corridor_trend.sql)
-2.  **Traffic Monitoring Density**: Which geographic areas show the highest concentration of RMI route monitoring?
-    *   [View SQL](queries/urban_planner/up3_monitoring_density.sql)
-3.  **Weekend vs. Weekday Trends**: How does average travel time in the afternoon (2-5 PM) differ between weekdays and weekends?
-    *   [View SQL](queries/urban_planner/up4_weekend_vs_weekday.sql)
-4.  **Before-and-After Impact Analysis**: Has the average travel time on routes passing through a recent construction zone improved?
-    *   [View SQL](queries/urban_planner/up2_impact_analysis.sql)
-5.  **Geofenced Congestion**: Within a specific downtown polygon, which routes are currently seeing travel times more than 50% above baseline?
-    *   [View SQL](queries/urban_planner/up5_geofenced_congestion.sql)
+### 4. [RMI Planner](queries/rmi_planner/)
+*Capacity planning, ROI analysis, corridor prioritization, and geographical coverage.*
+* **rmip1**: [Route Registration Usage Projection](queries/rmi_planner/rmip1_usage_projection.sql) — SelectedRoute quota projections.
+* **rmip2**: [Customer Value & FinOps ROI](queries/rmi_planner/rmip2_customer_roi.sql) — Value metric calculations.
+* **rmip3**: [Corridor Segment Breakdown](queries/rmi_planner/rmip3_segment_estimation.sql) — Traversed road segment estimates.
+* **rmip4**: [Area Coverage Bounding Box](queries/rmi_planner/rmip4_area_boundary.sql) — Spatial envelope calculation.
+* 📓 **Notebook**: [RMI Planner Samples](notebooks/RMI_Planner_Samples.ipynb)
 
-### Data Scientist
-*Statistical analysis and predictive modeling.*
+### 5. [Traffic Operations Manager](queries/traffic_operations_manager/)
+*Real-time monitoring, incident detection, and congestion mitigation.*
+* **tom1**: [Peak Hour Delay Analysis](queries/traffic_operations_manager/tom1_peak_hour_delay.sql) — Morning/evening peak delay rankings.
+* **tom2**: [Persistent Bottlenecks](queries/traffic_operations_manager/tom2_persistent_bottlenecks.sql) — Road segments in persistent congestion states.
+* **tom3**: [Operational Health Check](queries/traffic_operations_manager/tom3_operational_health.sql) — Validation error monitoring (`LOW_ROAD_USAGE`).
+* **tom4**: [Data Collection Latency](queries/traffic_operations_manager/tom4_data_latency.sql) — Telemetry silence detection.
+* **tom5**: [Significant Event Detection](queries/traffic_operations_manager/tom5_significant_event_detection.sql) — Severe delay spikes relative to static baselines.
+* **tom6**: [Dynamic Detour & Routing Anomaly Detection](queries/traffic_operations_manager/tom6_dynamic_detour_detection.sql) — Detect network detours from baseline geometry.
+* 📓 **Notebook**: [Traffic Operations Manager Samples](notebooks/Traffic_Operations_Manager_Samples.ipynb)
 
-1.  **Outlier Detection (IQR)**: Identify travel time records that are statistical outliers for a specific route.
-    *   [View SQL](queries/data_scientist/ds1_outlier_detection.sql)
-2.  **Route Integrity Audit**: Which routes have a captured geometry that deviates significantly from the intended length?
-    *   [View SQL](queries/data_scientist/ds4_route_integrity_audit.sql)
-3.  **Persistent Unreliability Audit**: Group consecutive travel time spikes into failure windows (streaks).
-    *   [View SQL](queries/data_scientist/ds5_reliability_ranking.sql)
-4.  **Route Similarity Clustering**: Group routes based on their diurnal morning, midday, and evening delay profiles.
-    *   [View SQL](queries/data_scientist/ds2_similarity_clustering.sql)
-5.  **Predictive Feature Engineering**: Generate a high-quality, gap-aware feature set with regularized hourly grids.
-    *   [View SQL](queries/data_scientist/ds3_feature_engineering.sql)
-6.  **Travel Time Forecasting (ARIMA)**: Train and backtest a predictive model for future travel times.
-    *   [View SQL](queries/data_scientist/ds6_travel_time_forecasting.sql)
-7.  **Zero-Shot Forecasting (TimesFM)**: Forecast next-day traffic for multiple routes simultaneously without training.
-    *   [View SQL](queries/data_scientist/ds7_zero_shot_forecasting.sql)
+### 6. [Urban Planner](queries/urban_planner/)
+*Infrastructure impact, long-term policy trends, and regional mobility.*
+* **up1**: [Long-Term Corridor Performance Trend](queries/urban_planner/up1_corridor_trend.sql) — Week-over-week delay trends.
+* **up2**: [Before-and-After Construction Impact](queries/urban_planner/up2_impact_analysis.sql) — Spatial before/after intervention analysis.
+* **up3**: [Traffic Monitoring Density Analysis](queries/urban_planner/up3_monitoring_density.sql) — Heatmap concentration of monitoring.
+* **up4**: [Weekend vs. Weekday Trends](queries/urban_planner/up4_weekend_vs_weekday.sql) — Comparative temporal analysis.
+* **up5**: [Geofenced Downtown Congestion](queries/urban_planner/up5_geofenced_congestion.sql) — Spatial polygon filtering on congestion.
+* 📓 **Notebook**: [Urban Planner Samples](notebooks/Urban_Planner_Samples.ipynb)
 
-### RMI Planner
-*Business value and monitoring scale.*
+---
 
-1.  **Usage Growth Projection**: Forecast data volume and compute spend for larger route fleets.
-    *   [View SQL](queries/rmi_planner/rmip1_usage_projection.sql)
-2.  **Customer ROI (Value at Risk)**: Quantify the total hours of delay across critical corridors.
-    *   [View SQL](queries/rmi_planner/rmip2_customer_roi.sql)
-3.  **Road Segment Estimation**: Estimate physical scale of the addressable monitoring network.
-    *   [View SQL](queries/rmi_planner/rmip3_segment_estimation.sql)
-4.  **Administrative Geofencing**: Create reusable city boundaries for localized reporting.
-    *   [View SQL](queries/rmi_planner/rmip4_area_boundary.sql)
+## 🛠️ Usage Guidelines
 
-### Data Engineer
-*Data pipelines and analysis-ready datasets.*
-
-1.  **Create Materialized Subset**: Create filtered, high-performance materialized views.
-    *   [View SQL](queries/data_engineer/de1_materialized_view.sql)
-2.  **Data Cleaning**: Produce a typed, cleaned version of route metadata.
-    *   [View SQL](queries/data_engineer/de2_data_cleaning.sql)
-3.  **SRI Flattening**: Transform nested arrays into flattened spatial records with distance metrics.
-    *   [View SQL](queries/data_engineer/de3_sri_flattening.sql)
-4.  **Attribute Extraction**: Pivot JSON attributes into distinct, typed columns.
-    *   [View SQL](queries/data_engineer/de4_attribute_extraction.sql)
-5.  **Data Freshness Audit**: Monitor latest arrival times across active routes.
-    *   [View SQL](queries/data_engineer/de5_freshness_audit.sql)
-6.  **Automated Status History**: Capture daily snapshots of route status using scheduled queries.
-    *   [View SQL](queries/data_engineer/de7_routes_status_snapshot.sql)
-
-### BigQuery Admin
-*Platform health, cost governance, and performance optimization.*
-
-1.  **Metadata Inventory**: Zero-cost check of row count and storage size for RMI tables.
-    *   [View SQL](queries/bigquery_admin/bqa0_metadata_inventory.sql)
-2.  **Scan Volume Monitoring**: Identify users or service accounts generating high scan volume.
-    *   [View SQL](queries/bigquery_admin/bqa1_scan_volume.sql)
-3.  **Cost Attribution Audit**: Identify jobs missing the mandatory naming prefix in their job IDs.
-    *   [View SQL](queries/bigquery_admin/bqa2_cost_attribution.sql)
-4.  **Identify Derived Resources**: Audit tables or views derived from the core RMI dataset.
-    *   [View SQL](queries/bigquery_admin/bqa3_derived_resources.sql)
-5.  **Repeated Query Patterns**: Detect frequent patterns (joins, JSON extraction) for pro-active optimization.
-    *   [View SQL](queries/bigquery_admin/bqa4_query_patterns.sql)
-6.  **Partition Pruning Audit**: Identify queries performing expensive full table scans instead of using partition filters.
-    *   [View SQL](queries/bigquery_admin/bqa5_partition_pruning.sql)
-7.  **Data Complexity Audit**: Audit spatial complexity (vertex count) and metadata size of actual records.
-    *   [View SQL](queries/bigquery_admin/bqa6_data_complexity_audit.sql)
-
-
-## 📄 License
-
-Copyright 2026 Google LLC. Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at [https://www.apache.org/licenses/LICENSE-2.0](https://www.apache.org/licenses/LICENSE-2.0).
+* **Parameterization**: All queries use `LINKED_DATASET_NAME` as the dataset placeholder. Replace with your actual BigQuery linked dataset name (e.g. `ah_rmi_boston` or `my_rmi_dataset`).
+* **Partition Pruning**: Queries filtering `historical_travel_time` include date bounds on `record_time` to ensure minimal scan bytes.
+* **Job ID Traceability**: All query headers follow the canonical `-- Job ID: rmisqlfactory_<persona>_YYYYMMDDHHMMSS` format.

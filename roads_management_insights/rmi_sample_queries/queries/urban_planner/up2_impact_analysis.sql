@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_up2_YYYYMMDDHHMMSS
+-- Persona: urban_planner
+-- Purpose: RMI BigQuery Analytical Query (up2)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,17 +33,21 @@
 -- Study Area: Downtown Boston Intersection
 DECLARE study_area GEOGRAPHY DEFAULT ST_GEOGFROMTEXT('POLYGON((-71.06 42.35, -71.05 42.35, -71.05 42.34, -71.06 42.34, -71.06 42.35))');
 -- Project Milestone: Date when construction was completed
-DECLARE completion_date DATE DEFAULT '2025-10-15';
+DECLARE completion_date DATE DEFAULT '2026-07-15';
 
 WITH impact_data AS (
   SELECT
     -- Split records into 'Before' and 'After' buckets
-    record_time >= completion_date AS is_after_completion,
+    DATE(record_time) >= completion_date AS is_after_completion,
     SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds) AS delay_ratio
-  FROM `boston_oct_2025_sample_data.historical_travel_time`
-  -- Filter for routes that physically pass through the study zone
+  FROM `LINKED_DATASET_NAME.historical_travel_time`
+  -- S2 SPATIAL INDEXING NOTE:
+  -- BigQuery leverages native S2 cell indexing for ST_INTERSECTS, performing
+  -- sub-second bounding box pruning across millions of polyline records.
   WHERE ST_INTERSECTS(route_geometry, study_area)
-    AND record_time BETWEEN '2025-10-01' AND '2025-11-01'
+    AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
+    AND duration_in_seconds IS NOT NULL
+    AND static_duration_in_seconds > 0
 )
 SELECT
   is_after_completion,

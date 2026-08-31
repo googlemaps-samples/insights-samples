@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_up1_YYYYMMDDHHMMSS
+-- Persona: urban_planner
+-- Purpose: RMI BigQuery Analytical Query (up1)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,10 +35,12 @@ WITH weekly_trends AS (
     TIMESTAMP_TRUNC(record_time, WEEK) AS week,
     -- Calculate average delay (Actual / Free-flow baseline)
     AVG(SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds)) AS avg_delay_ratio
-  FROM `boston_oct_2025_sample_data.historical_travel_time`
+  FROM `LINKED_DATASET_NAME.historical_travel_time`
   -- Filter for a specific corridor of interest (e.g., Storrow Drive)
-  WHERE selected_route_id = 'route-4202493217'
-    AND record_time BETWEEN '2025-10-01' AND '2025-11-01'
+  WHERE selected_route_id = 'boston-v2--2rwshKeDrs'
+    AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
+    AND duration_in_seconds IS NOT NULL
+    AND static_duration_in_seconds > 0
   GROUP BY 1, 2
 )
 SELECT

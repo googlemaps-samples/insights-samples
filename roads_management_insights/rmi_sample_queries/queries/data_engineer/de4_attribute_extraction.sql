@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_de4_YYYYMMDDHHMMSS
+-- Persona: data_engineer
+-- Purpose: RMI BigQuery Analytical Query (de4)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,23 +24,22 @@
 
 CREATE OR REPLACE VIEW `your-project.your-dataset.routes_enriched_attributes`
 (
-  selected_route_id OPTIONS(description="Unique identifier for the SelectedRoute resource."),
-  region OPTIONS(description="The geographical business region extracted from routeAttributes."),
-  tier OPTIONS(description="The service tier (e.g. priority, standard) extracted from routeAttributes."),
-  priority OPTIONS(description="The operational priority level assigned during registration."),
-  route_length_meters OPTIONS(description="The intended physical length of the route in meters, cast to FLOAT64 from routeAttributes.")
+  selected_route_id OPTIONS(description="Unique identifier for the SelectedRoute resource. Primary correlation key across RMI telemetry datasets."),
+  region OPTIONS(description="The geographical business region extracted from custom route_attributes.region."),
+  tier OPTIONS(description="The service tier (e.g. priority, standard) extracted from custom route_attributes.tier."),
+  priority OPTIONS(description="The operational monitoring priority level extracted from custom route_attributes.priority."),
+  route_length_meters OPTIONS(description="The intended physical length of the route in meters, cast to FLOAT64 from custom route_attributes.route_length.")
 )
 OPTIONS(
-  description="A denormalized view of SelectedRoute metadata, promoting custom JSON attributes into typed top-level columns."
-)
-AS
+  description="A denormalized view of SelectedRoute metadata, promoting custom JSON route_attributes into typed top-level columns with inherited RMI definitions."
+) AS
 SELECT
   selected_route_id,
-  JSON_EXTRACT_SCALAR(route_attributes, '$.region') as region,
-  JSON_EXTRACT_SCALAR(route_attributes, '$.tier') as tier,
-  JSON_EXTRACT_SCALAR(route_attributes, '$.priority') as priority,
+  JSON_VALUE(route_attributes, '$.region') as region,
+  COALESCE(JSON_VALUE(route_attributes, '$.tier'), JSON_VALUE(route_attributes, '$.priority'), 'STANDARD_TIER') as tier,
+  JSON_VALUE(route_attributes, '$.priority') as priority,
   -- route_attributes values are always strings. Casting to FLOAT64 for numerical analysis.
-  CAST(JSON_EXTRACT_SCALAR(route_attributes, '$.route_length') AS FLOAT64) as route_length_meters
-FROM `boston_oct_2025_sample_data.routes_status`
+  SAFE_CAST(COALESCE(JSON_VALUE(route_attributes, '$.route_length_meters'), JSON_VALUE(route_attributes, '$.route_length')) AS FLOAT64) as route_length_meters
+FROM `LINKED_DATASET_NAME.routes_status`
 -- Example: Filtering by priority attribute
--- WHERE JSON_EXTRACT_SCALAR(route_attributes, '$.priority') = 'high';
+-- WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND JSON_VALUE(route_attributes, '$.priority') = 'high';

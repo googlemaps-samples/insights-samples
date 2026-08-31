@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_bqa4_YYYYMMDDHHMMSS
+-- Persona: bigquery_admin
+-- Purpose: RMI BigQuery Analytical Query (bqa4)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,7 +34,8 @@ WITH job_history AS (
     query,
     total_bytes_processed
   FROM `region-us`.INFORMATION_SCHEMA.JOBS
-  WHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+  -- Fast interactive audit default (7 days). Expand to INTERVAL 30 DAY for monthly governance reviews.
+  WHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
     AND job_type = 'QUERY'
     AND statement_type = 'SELECT'
     -- Heuristic: Focus on RMI-related queries
@@ -44,7 +49,7 @@ patterns AS (
   SELECT
     query,
     -- Regex: Identify specific JSON attributes being extracted from 'route_attributes'
-    REGEXP_EXTRACT_ALL(query, r"JSON_EXTRACT_SCALAR\(route_attributes, '([^']+)'\)") as extracted_attributes,
+    REGEXP_EXTRACT_ALL(query, r"(?:JSON_EXTRACT_SCALAR|JSON_VALUE)\(route_attributes, '([^']+)'\)") as extracted_attributes,
     -- Regex: Detect if the query performs SRI flattening (expensive unnest)
     REGEXP_CONTAINS(query, r"UNNEST\(speed_reading_intervals\)") as uses_sri_unnest,
     -- Regex: Detect common join patterns

@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_up3_YYYYMMDDHHMMSS
+-- Persona: urban_planner
+-- Purpose: RMI BigQuery Analytical Query (up3)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,8 +34,8 @@ WITH route_centroids AS (
     selected_route_id,
     -- Use the centroid to represent the general location of the route polyline
     ST_CENTROID(route_geometry) as centroid
-  FROM `boston_oct_2025_sample_data.historical_travel_time`
-  WHERE record_time BETWEEN '2025-10-01' AND '2025-11-01'
+  FROM `LINKED_DATASET_NAME.historical_travel_time`
+  WHERE record_time BETWEEN '2026-07-01' AND '2026-07-30'
 )
 SELECT
   -- Grid the coordinates to a precision of ~1.1km

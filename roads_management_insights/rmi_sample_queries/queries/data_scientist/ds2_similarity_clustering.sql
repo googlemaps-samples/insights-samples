@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_ds2_YYYYMMDDHHMMSS
+-- Persona: data_scientist
+-- Purpose: RMI BigQuery Analytical Query (ds2)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,19 +34,25 @@
 */
 
 -- Step 1: Create the K-Means model.
--- NOTE: The source dataset (e.g., `boston_oct_2025_sample_data`) is a read-only subscription.
+-- NOTE: The source dataset (e.g., `LINKED_DATASET_NAME`) is a read-only subscription.
 -- This model MUST be created in a separate, writable dataset within your project.
 -- Replace `your-project.your-dataset` with your target location.
 
+-- Model Description: K-Means clustering model grouping SelectedRoutes by diurnal traffic delay profiles across AM peak, midday, and PM peak windows.
 CREATE OR REPLACE MODEL `your-project.your-dataset.route_clusters`
-OPTIONS(model_type='kmeans', num_clusters=5) AS
+OPTIONS(
+  model_type='kmeans',
+  num_clusters=5
+) AS
 SELECT
   -- K-Means works with numerical features. We will use the delay ratios as features.
   COALESCE(AVG(CASE WHEN EXTRACT(HOUR FROM DATETIME(record_time, 'America/New_York')) BETWEEN 7 AND 9 THEN SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds) END), 1.0) AS avg_am_delay,
   COALESCE(AVG(CASE WHEN EXTRACT(HOUR FROM DATETIME(record_time, 'America/New_York')) BETWEEN 12 AND 14 THEN SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds) END), 1.0) AS avg_midday_delay,
   COALESCE(AVG(CASE WHEN EXTRACT(HOUR FROM DATETIME(record_time, 'America/New_York')) BETWEEN 16 AND 18 THEN SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds) END), 1.0) AS avg_pm_delay
-FROM `boston_oct_2025_sample_data.historical_travel_time`
-WHERE record_time BETWEEN '2025-10-01' AND '2025-11-01'
+FROM `LINKED_DATASET_NAME.historical_travel_time`
+WHERE record_time BETWEEN '2026-07-01' AND '2026-07-30'
+  AND duration_in_seconds IS NOT NULL
+  AND static_duration_in_seconds > 0
 GROUP BY selected_route_id;
 
 -- Step 2: Predict the cluster for each route using the trained model.
@@ -53,8 +63,8 @@ WITH route_features AS (
     COALESCE(AVG(CASE WHEN EXTRACT(HOUR FROM DATETIME(record_time, 'America/New_York')) BETWEEN 7 AND 9 THEN SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds) END), 1.0) AS avg_am_delay,
     COALESCE(AVG(CASE WHEN EXTRACT(HOUR FROM DATETIME(record_time, 'America/New_York')) BETWEEN 12 AND 14 THEN SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds) END), 1.0) AS avg_midday_delay,
     COALESCE(AVG(CASE WHEN EXTRACT(HOUR FROM DATETIME(record_time, 'America/New_York')) BETWEEN 16 AND 18 THEN SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds) END), 1.0) AS avg_pm_delay
-  FROM `boston_oct_2025_sample_data.historical_travel_time`
-  WHERE record_time BETWEEN '2025-10-01' AND '2025-11-01'
+  FROM `LINKED_DATASET_NAME.historical_travel_time`
+  WHERE record_time BETWEEN '2026-07-01' AND '2026-07-30'
   GROUP BY 1, 2
 )
 SELECT

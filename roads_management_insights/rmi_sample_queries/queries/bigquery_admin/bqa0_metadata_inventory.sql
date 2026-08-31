@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_bqa0_YYYYMMDDHHMMSS
+-- Persona: bigquery_admin
+-- Purpose: RMI BigQuery Analytical Query (bqa0)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,8 +35,7 @@ SELECT
   END as partition_id,
   total_rows,
   ROUND(total_logical_bytes / POW(1024, 2), 2) as size_mb,
-  last_modified_time
-FROM `boston_oct_2025_sample_data.INFORMATION_SCHEMA.PARTITIONS`
+FROM `LINKED_DATASET_NAME.INFORMATION_SCHEMA.PARTITIONS`
 WHERE table_name IN ('historical_travel_time', 'recent_roads_data', 'routes_status')
   AND partition_id != '__NULL__'
 ORDER BY table_name, partition_id DESC;

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 #
 # This script provides a client for the Routes API v2.
 # It is not meant to be used directly, but rather to be sourced by other scripts.

@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_de5_YYYYMMDDHHMMSS
+-- Persona: data_engineer
+-- Purpose: RMI BigQuery Analytical Query (de5)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,31 +30,30 @@
 
 CREATE OR REPLACE VIEW `your-project.your-dataset.route_freshness_audit`
 (
-  selected_route_id OPTIONS(description="Unique identifier for the SelectedRoute resource."),
-  display_name OPTIONS(description="Human-readable name of the route."),
-  last_updated OPTIONS(description="The timestamp of the most recent record found in historical_travel_time."),
-  hours_since_last_update OPTIONS(description="The age of the data in hours relative to the audit timestamp.")
+  selected_route_id OPTIONS(description="Unique identifier for the SelectedRoute resource. Primary correlation key across RMI telemetry datasets."),
+  display_name OPTIONS(description="User-provided descriptive name for the route. Intended for human readability in reports and UI dashboards."),
+  last_updated OPTIONS(description="The UTC timestamp of the most recent telemetry record found in historical_travel_time."),
+  hours_since_last_update OPTIONS(description="The age of the telemetry data in hours relative to the reference audit timestamp.")
 )
 OPTIONS(
-  description="Operational audit view to identify active routes with missing or stale travel time data."
-)
-AS
+  description="Operational audit view identifying active routes with missing or stale travel time telemetry data."
+) AS
 WITH freshness AS (
   SELECT
     selected_route_id,
     MAX(record_time) as last_updated
-  FROM `boston_oct_2025_sample_data.historical_travel_time`
+  FROM `LINKED_DATASET_NAME.historical_travel_time`
   -- Scans the full sample month to find the latest record for every route
-  WHERE record_time BETWEEN '2025-10-01' AND '2025-11-01'
+  WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
   GROUP BY 1
 )
 SELECT
   s.selected_route_id,
   s.display_name,
   f.last_updated,
-  -- Using '2025-11-01' as the reference 'Now' for this static sample dataset
-  TIMESTAMP_DIFF(TIMESTAMP('2025-11-01'), f.last_updated, HOUR) AS hours_since_last_update
-FROM `boston_oct_2025_sample_data.routes_status` s
+  -- Using '2026-07-30' as the reference 'Now' for this static sample dataset
+  TIMESTAMP_DIFF(TIMESTAMP('2026-07-30'), f.last_updated, HOUR) AS hours_since_last_update
+FROM `LINKED_DATASET_NAME.routes_status` s
 LEFT JOIN freshness f USING(selected_route_id)
 -- Focus on routes that SHOULD be providing data
 WHERE s.status = 'STATUS_RUNNING'

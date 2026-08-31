@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_bqa6_YYYYMMDDHHMMSS
+-- Persona: bigquery_admin
+-- Purpose: RMI BigQuery Analytical Query (bqa6)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,9 +34,9 @@ SELECT
   AVG(BYTE_LENGTH(ST_ASBINARY(route_geometry))) as avg_geom_bytes,
   AVG(ST_LENGTH(route_geometry) / 1000) as avg_route_length_km,
   AVG(ST_NUMPOINTS(route_geometry)) as avg_num_points,
-  CAST(NULL AS FLOAT64) as avg_attr_bytes
-FROM `boston_oct_2025_sample_data.historical_travel_time`
-WHERE record_time BETWEEN '2025-10-01' AND '2025-11-01'
+  SAFE_CAST(NULL AS FLOAT64) as avg_attr_bytes
+FROM `LINKED_DATASET_NAME.historical_travel_time`
+WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
 
 UNION ALL
 
@@ -43,9 +47,9 @@ SELECT
   AVG(BYTE_LENGTH(ST_ASBINARY(route_geometry))) as avg_geom_bytes,
   AVG(ST_LENGTH(route_geometry) / 1000) as avg_route_length_km,
   AVG(ST_NUMPOINTS(route_geometry)) as avg_num_points,
-  CAST(NULL AS FLOAT64) as avg_attr_bytes
-FROM `boston_oct_2025_sample_data.recent_roads_data`
-WHERE record_time BETWEEN '2025-10-01' AND '2025-11-01'
+  SAFE_CAST(NULL AS FLOAT64) as avg_attr_bytes
+FROM `LINKED_DATASET_NAME.recent_roads_data`
+WHERE record_time BETWEEN '2026-07-01' AND '2026-07-30'
 
 UNION ALL
 
@@ -53,8 +57,8 @@ UNION ALL
 SELECT
   'routes_status' as table_name,
   COUNT(DISTINCT selected_route_id) as unique_routes,
-  CAST(NULL AS FLOAT64) as avg_geom_bytes,
-  CAST(NULL AS FLOAT64) as avg_route_length_km,
-  CAST(NULL AS FLOAT64) as avg_num_points,
+  SAFE_CAST(NULL AS FLOAT64) as avg_geom_bytes,
+  SAFE_CAST(NULL AS FLOAT64) as avg_route_length_km,
+  SAFE_CAST(NULL AS FLOAT64) as avg_num_points,
   AVG(BYTE_LENGTH(route_attributes)) as avg_attr_bytes
-FROM `boston_oct_2025_sample_data.routes_status`;
+FROM `LINKED_DATASET_NAME.routes_status`;

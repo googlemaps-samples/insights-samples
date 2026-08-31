@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_tom4_YYYYMMDDHHMMSS
+-- Persona: traffic_operations_manager
+-- Purpose: RMI BigQuery Analytical Query (tom4)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,21 +33,21 @@ WITH last_data_arrival AS (
     selected_route_id,
     -- Get the latest record timestamp for every route in the dataset
     MAX(record_time) AS last_arrival
-  FROM `boston_oct_2025_sample_data.historical_travel_time`
+  FROM `LINKED_DATASET_NAME.historical_travel_time`
   -- Focused partition scan for the full sample month
-  WHERE record_time BETWEEN '2025-10-01' AND '2025-11-01'
+  WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
   GROUP BY 1
 )
 SELECT
   s.selected_route_id,
   s.display_name,
   l.last_arrival,
-  -- Measured relative to the very end of the sample dataset ('2025-11-01')
-  TIMESTAMP_DIFF(TIMESTAMP('2025-11-01 00:00:00'), l.last_arrival, MINUTE) as minutes_of_silence
-FROM `boston_oct_2025_sample_data.routes_status` s
+  -- Measured relative to the end of the sample period
+  TIMESTAMP_DIFF(TIMESTAMP('2026-07-30 00:00:00'), l.last_arrival, MINUTE) as minutes_of_silence
+FROM `LINKED_DATASET_NAME.routes_status` s
 LEFT JOIN last_data_arrival l USING (selected_route_id)
 -- Focus on routes that are supposed to be producing data
 WHERE s.status = 'STATUS_RUNNING'
-  -- Threshold: Highlight routes that haven't sent a record in the last 2 minutes of the dataset
-  AND l.last_arrival < TIMESTAMP('2025-10-31 23:58:00')
+  -- Threshold: Highlight routes that haven't sent a record in the last few hours of the dataset
+  AND l.last_arrival < TIMESTAMP('2026-07-29 21:55:00')
 ORDER BY minutes_of_silence DESC;

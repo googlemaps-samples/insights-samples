@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_ds4_YYYYMMDDHHMMSS
+-- Persona: data_scientist
+-- Purpose: RMI BigQuery Analytical Query (ds4)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,11 +46,11 @@ WITH base_comparison AS (
     h.display_name,
     h.record_time,
     ST_LENGTH(h.route_geometry) AS actual_length,
-    CAST(JSON_VALUE(s.route_attributes, '$.route_length') AS FLOAT64) AS intended_length
-  FROM `boston_oct_2025_sample_data.historical_travel_time` h
-  JOIN `boston_oct_2025_sample_data.routes_status` s USING (selected_route_id)
+    SAFE_CAST(COALESCE(JSON_VALUE(s.route_attributes, '$.route_length_meters'), JSON_VALUE(s.route_attributes, '$.route_length')) AS FLOAT64) AS intended_length
+  FROM `LINKED_DATASET_NAME.historical_travel_time` h
+  JOIN `LINKED_DATASET_NAME.routes_status` s USING (selected_route_id)
   WHERE s.status = 'STATUS_RUNNING'
-    AND h.record_time BETWEEN '2025-10-01' AND '2025-11-01'
+    AND h.record_time BETWEEN '2026-07-01' AND '2026-07-30'
     -- Quality filter: Exclude non-continuous geometries
     AND ST_GEOMETRYTYPE(h.route_geometry) = 'ST_LineString'
 ),

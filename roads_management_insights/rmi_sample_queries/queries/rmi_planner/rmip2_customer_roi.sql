@@ -1,3 +1,7 @@
+-- Job ID: rmisqlfactory_rmip2_YYYYMMDDHHMMSS
+-- Persona: rmi_planner
+-- Purpose: RMI BigQuery Analytical Query (rmip2)
+
 -- Copyright 2026 Google LLC
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,17 +23,19 @@
 -- Estimated Bytes Processed: < 1 MB (Standard SQL on RMI Tables)
 
 SELECT
-  JSON_EXTRACT_SCALAR(route_attributes, '$.tier') as service_tier,
+  COALESCE(JSON_VALUE(route_attributes, '$.tier'), JSON_VALUE(route_attributes, '$.priority'), 'STANDARD_TIER') as service_tier,
   -- Aggregate total lost time (Actual - Free-flow) converted to hours
   ROUND(SUM(duration_in_seconds - static_duration_in_seconds) / 3600, 1) as total_delay_hours,
   COUNT(DISTINCT h.selected_route_id) as monitored_routes,
   -- Average performance multiplier
   ROUND(AVG(SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds)), 2) as avg_delay_index
-FROM `boston_oct_2025_sample_data.historical_travel_time` h
-JOIN `boston_oct_2025_sample_data.routes_status` s ON h.selected_route_id = s.selected_route_id
-WHERE h.record_time BETWEEN '2025-10-01' AND '2025-11-01'
+FROM `LINKED_DATASET_NAME.historical_travel_time` h
+JOIN `LINKED_DATASET_NAME.routes_status` s ON h.selected_route_id = s.selected_route_id
+WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND h.record_time BETWEEN '2026-07-01' AND '2026-07-30'
   -- Filter for records where actual was slower than free-flow
   AND (duration_in_seconds - static_duration_in_seconds) > 0
+  AND duration_in_seconds IS NOT NULL
+  AND static_duration_in_seconds > 0
 GROUP BY 1
 HAVING service_tier IS NOT NULL
 ORDER BY total_delay_hours DESC;
