@@ -61,6 +61,12 @@ This catalog maps business questions, analytical use cases, and persona objectiv
    * [View SQL](../queries/data_scientist/ds6_travel_time_forecasting.sql)
 7. **Zero-Shot Multi-Route Forecasting (TimesFM)**: How do I forecast next-day traffic for multiple routes simultaneously using Google's TimesFM foundation model without per-route training?
    * [View SQL](../queries/data_scientist/ds7_zero_shot_forecasting.sql)
+8. **Corridor Structural Shift Detection (ML.DETECT_CHANGE_POINTS)**: When did baseline corridor travel times undergo structural regime shifts or level changes without training custom models?
+   * [View SQL](../queries/data_scientist/ds8_change_point_detection.sql)
+9. **Corridor Secular Trend Decomposition & Forward Projection (ML.TREND)**: What is the underlying directional growth trajectory of corridor travel times once seasonal noise is removed, and where is it heading?
+   * [View SQL](../queries/data_scientist/ds9_corridor_trend_decomposition.sql)
+10. **Corridor Seasonality Decomposition & Diurnal Wave Extraction (ML.SEASONALITY)**: What are the exact additive hour-of-day and day-of-week recurring congestion penalties across monitored corridors?
+   * [View SQL](../queries/data_scientist/ds10_corridor_seasonality_decomposition.sql)
 
 ---
 
@@ -91,6 +97,8 @@ This catalog maps business questions, analytical use cases, and persona objectiv
    * [View SQL](../queries/traffic_operations_manager/tom4_data_latency.sql)
 5. **Significant Event Alerts**: Which routes experienced a travel time more than double their free-flow baseline?
    * [View SQL](../queries/traffic_operations_manager/tom5_significant_event_detection.sql)
+6. **Dynamic Detour & Path Variation Detection**: Which routes exhibit alternate detour trajectories and high delay penalties based on `road_segment_ids`Place ID sequences?
+   * [View SQL](../queries/traffic_operations_manager/tom6_dynamic_detour_detection.sql)
 
 ---
 

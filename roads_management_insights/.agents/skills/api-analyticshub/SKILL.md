@@ -11,7 +11,7 @@ Analytics Hub enables zero-copy data sharing between organizations via linked da
 
 ## 1. Resource Management (CRUD Operations)
 
-Since `gcloud` and `gmp-cli` do not natively support all Analytics Hub management APIs, use the provided POSIX bash client or direct API calls.
+Since BigQuery Analytics Hub does **not** have a native `gcloud` CLI command family (`gcloud analyticshub` does not exist), all programmatic operations must use the provided POSIX bash client (`scripts/analyticshub_v1.sh`), Terraform, or direct REST API calls.
 
 ### Core Client & Utilities
 * **Client Script**: `scripts/analyticshub_v1.sh` (sources `api-common.sh` and `analyticshub_v1_helpers.sh`).
