@@ -158,7 +158,7 @@ GROUP BY selected_route_id;
     ```
 - **Standard Logical Views**: If live query pass-through is required without data duplication, `CREATE OR REPLACE VIEW` is fully supported on linked datasets.
 
-## 7. Predictive Traffic Modeling: BQML ARIMA_PLUS vs. Foundation Model AI.FORECAST
+## 7. Predictive Traffic Modeling: BQML ARIMA_PLUS vs. Foundation Model AI.FORECAST vs. ML.DETECT_CHANGE_POINTS vs. ML.TREND vs. ML.SEASONALITY
 
 ### Time-Series Anomaly Smoothing (`ds6_travel_time_forecasting.sql`)
 - When training per-route `ARIMA_PLUS` models on high-frequency traffic history, severe one-off road disruptions (e.g., multi-lane highway accidents, extreme storms) can heavily distort recurring weekly/daily diurnal seasonality.
@@ -167,6 +167,21 @@ GROUP BY selected_route_id;
 ### Zero-Shot Multi-Route Forecasting (`ds7_zero_shot_forecasting.sql`)
 - Rather than maintaining thousands of per-route `CREATE MODEL` pipelines, utilize Google Cloud's Time Series Foundation Model via `AI.FORECAST(..., model => 'TimesFM 2.0')`.
 - TimesFM operates zero-shot (no prior training required), processing arbitrary 3-to-7 day context windows across thousands of independent corridors concurrently (`id_cols => ['selected_route_id']`) to generate robust 24-hour predictive horizons with prediction intervals in seconds.
+
+### Multi-Corridor Structural Shift Detection (`ds8_change_point_detection.sql`)
+- **Point Anomalies vs. Structural Breaks**: While IQR (`ds1`) and `ML.DETECT_ANOMALIES` isolate isolated 1-2 hour spikes, **`ML.DETECT_CHANGE_POINTS`** uncovers gradual and sustained regime shifts (e.g., construction phases, signal timing retiming, permanent bottleneck emergence).
+- **Zero-Model Operation**: Evaluates time-series step changes directly on table expressions without model management (`TABLE daily_corridor_metrics`).
+- **Multi-Route Analysis**: Passes `id_cols => ['selected_route_id']` to identify the exact transition windows (`begin_timestamp`, `end_timestamp`) and post-shift baseline statistics (`metrics.avg`, `metrics.stddev`) across the entire monitoring fleet simultaneously.
+
+### Secular Trend Decomposition & Forward Projection (`ds9_corridor_trend_decomposition.sql`)
+- **Directional Trajectory vs. Oscillations**: While forecasting models predict daily rush hour peak/valley cycles, **`ML.TREND`** uses `ARIMA_PLUS`'s in-database STL decomposition algorithm to isolate the pure, smoothed directional growth trajectory (`trend`), stripping away diurnal and weekend noise.
+- **Forward Horizon Trend Projection**: Setting `horizon => 7` (or up to 30) projects the underlying secular trend into future weeks to forecast macroeconomic traffic drift without overfitting to short-term fluctuations.
+
+### Diurnal & Day-of-Week Seasonality Decomposition (`ds10_corridor_seasonality_decomposition.sql`)
+- **Additive Periodic Components**: While `ML.TREND` isolates the secular baseline, **`ML.SEASONALITY`** extracts the exact additive cyclic periodicities:
+  - `daily`: Diurnal hour-of-day peak penalty or off-peak relief (in seconds relative to the baseline).
+  - `weekly`: Day-of-week weekend vs. weekday traffic swing (in seconds).
+- **Signal Timing & Logistics Calibration**: Enables traffic engineers to calibrate TOD (Time-of-Day) signal timing plans and logistics dispatch windows using grounded empirical diurnal swings without training or storing full models.
 
 ## 8. Automated Notebook Synchronization Tooling (`scripts/sync_notebooks.py`)
 
@@ -187,6 +202,9 @@ When creating derived tables, views, or snapshots from upstream RMI datasets:
 - [SAMPLE_DATASET_METRICS.md](references/standards/SAMPLE_DATASET_METRICS.md): Baseline summary metrics and route distributions.
 - [COLUMN_DESCRIPTIONS.md](references/standards/COLUMN_DESCRIPTIONS.md): Canonical column dictionary and metadata inheritance standards.
 - [queries/](assets/queries/): Curated SQL library grouped by persona.
+- [BigQuery ML.DETECT_CHANGE_POINTS](https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/bigqueryml-syntax-detect-change-points): Google Cloud reference documentation for time-series change point detection.
+- [BigQuery ML.TREND](https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/bigqueryml-syntax-trend): Google Cloud reference documentation for time-series trend component decomposition and forecasting.
+- [BigQuery ML.SEASONALITY](https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/bigqueryml-syntax-seasonality): Google Cloud reference documentation for time-series seasonality component decomposition.
 
 ## Related Skills
 - **[`rmi-personas`](../rmi-personas/SKILL.md)**: Business workflows and personas (Urban Planner, Data Scientist, Operations).

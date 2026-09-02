@@ -22,7 +22,7 @@ graph TD
   subgraph tier_analytics ["4. Analytics & Visualization"]
     RMI_DATAAGENT_HELPER["rmi-dataagent-helper<br/><i>Use this skill to configure, opt...</i>"]
     RMI_DATAVIZ["rmi-dataviz<br/><i>Kepler.gl, Looker Studio & CARTO Viz</i>"]
-    RMI_SQL["rmi-sql<br/><i>36 Multi-Persona Queries & Notebooks</i>"]
+    RMI_SQL["rmi-sql<br/><i>39 Multi-Persona Queries & Notebooks</i>"]
   end
 
   subgraph tier_operations ["3. Route Setting & Datasets"]

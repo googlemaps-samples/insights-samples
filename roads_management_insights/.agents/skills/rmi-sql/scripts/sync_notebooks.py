@@ -2,8 +2,10 @@ import os
 import json
 import re
 
-queries_dir = os.path.abspath("src/rmi-sql/assets/queries")
-nb_dir = os.path.abspath("src/rmi-sql/assets/notebooks")
+script_dir = os.path.dirname(os.path.abspath(__file__))
+skill_dir = os.path.dirname(script_dir)
+queries_dir = os.path.join(skill_dir, "assets", "queries")
+nb_dir = os.path.join(skill_dir, "assets", "notebooks")
 
 def extract_sql_metadata_and_body(fpath):
     with open(fpath, "r", encoding="utf-8") as f:
