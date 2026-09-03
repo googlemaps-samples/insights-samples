@@ -11,96 +11,15 @@
   "basePath": "",
   "baseUrl": "https://roads.googleapis.com/",
   "batchPath": "batch",
-  "description": "UNOFFICIAL: The Roads Selection API allows you to create and manage selected routes for periodic cache retrieval. This definition is manually maintained and not an official Google publication.",
+  "description": "The Roads Selection API allows you to create, manage, update, and batch-operate SelectedRoutes for periodic traffic telemetry cache retrieval in Roads Management Insights (RMI).",
   "discoveryVersion": "v1",
   "documentationLink": "https://developers.google.com/maps/documentation/roads-management-insights/reference/rest",
   "fullyEncodeReservedExpansion": true,
-  "icons": {
-    "x16": "http://www.google.com/images/icons/product/search-16.gif",
-    "x32": "http://www.google.com/images/icons/product/search-32.gif"
-  },
   "id": "roadsselection:v1",
   "kind": "discovery#restDescription",
   "name": "roadsselection",
   "ownerDomain": "google.com",
   "ownerName": "Google",
-  "parameters": {
-    "$.xgafv": {
-      "description": "V1 error format.",
-      "enum": [
-        "1",
-        "2"
-      ],
-      "enumDescriptions": [
-        "v1 error format",
-        "v2 error format"
-      ],
-      "location": "query",
-      "type": "string"
-    },
-    "access_token": {
-      "description": "OAuth access token.",
-      "location": "query",
-      "type": "string"
-    },
-    "alt": {
-      "default": "json",
-      "description": "Data format for response.",
-      "enum": [
-        "json",
-        "media",
-        "proto"
-      ],
-      "enumDescriptions": [
-        "Responses with Content-Type of application/json",
-        "Media download with context-dependent Content-Type",
-        "Responses with Content-Type of application/x-protobuf"
-      ],
-      "location": "query",
-      "type": "string"
-    },
-    "callback": {
-      "description": "JSONP",
-      "location": "query",
-      "type": "string"
-    },
-    "fields": {
-      "description": "Selector specifying which fields to include in a partial response.",
-      "location": "query",
-      "type": "string"
-    },
-    "key": {
-      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
-      "location": "query",
-      "type": "string"
-    },
-    "oauth_token": {
-      "description": "OAuth 2.0 token for the current user.",
-      "location": "query",
-      "type": "string"
-    },
-    "prettyPrint": {
-      "default": "true",
-      "description": "Returns response with indentations and line breaks.",
-      "location": "query",
-      "type": "boolean"
-    },
-    "quotaUser": {
-      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
-      "location": "query",
-      "type": "string"
-    },
-    "uploadType": {
-      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
-      "location": "query",
-      "type": "string"
-    },
-    "upload_protocol": {
-      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
-      "location": "query",
-      "type": "string"
-    }
-  },
   "protocol": "rest",
   "resources": {
     "projects": {
@@ -108,16 +27,14 @@
         "selectedRoutes": {
           "methods": {
             "batchCreate": {
-              "description": "Creates multiple SelectedRoutes and starts a schedule to periodically retrieve cache information for each of the routes.",
+              "description": "Creates multiple SelectedRoute resources and starts a schedule to periodically retrieve cache information for each of the routes (up to 1,000 routes).",
               "flatPath": "selection/v1/projects/{projectsId}/selectedRoutes:batchCreate",
               "httpMethod": "POST",
               "id": "roadsselection.projects.selectedRoutes.batchCreate",
-              "parameterOrder": [
-                "parent"
-              ],
+              "parameterOrder": ["parent"],
               "parameters": {
                 "parent": {
-                  "description": "Optional. The project resource shared by all selected routes. Format: projects/{project}. If this is set, the parent field in the CreateSelectedRouteRequest messages must either be empty or match this field.",
+                  "description": "Required. The project resource shared by all selected routes in the batch (projects/{project}).",
                   "location": "path",
                   "pattern": "^projects/[^/]+$",
                   "required": true,
@@ -130,29 +47,70 @@
               },
               "response": {
                 "$ref": "BatchCreateSelectedRoutesResponse"
+              }
+            },
+            "batchDelete": {
+              "description": "Deletes multiple SelectedRoute resources for the specified project (up to 1,000 routes).",
+              "flatPath": "selection/v1/projects/{projectsId}/selectedRoutes:batchDelete",
+              "httpMethod": "POST",
+              "id": "roadsselection.projects.selectedRoutes.batchDelete",
+              "parameterOrder": ["parent"],
+              "parameters": {
+                "parent": {
+                  "description": "Required. The project resource shared by all selected routes to delete (projects/{project}).",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
               },
-              "scopes": [
-                "https://www.googleapis.com/auth/cloud-platform"
-              ]
+              "path": "selection/v1/{+parent}/selectedRoutes:batchDelete",
+              "request": {
+                "$ref": "BatchDeleteSelectedRoutesRequest"
+              },
+              "response": {
+                "$ref": "Empty"
+              }
+            },
+            "batchUpdate": {
+              "description": "Updates multiple SelectedRoute resources as specified by their names (up to 1,000 routes).",
+              "flatPath": "selection/v1/projects/{projectsId}/selectedRoutes:batchUpdate",
+              "httpMethod": "POST",
+              "id": "roadsselection.projects.selectedRoutes.batchUpdate",
+              "parameterOrder": ["parent"],
+              "parameters": {
+                "parent": {
+                  "description": "Required. The project resource shared by all selected routes in the batch (projects/{project}).",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "selection/v1/{+parent}/selectedRoutes:batchUpdate",
+              "request": {
+                "$ref": "BatchUpdateSelectedRoutesRequest"
+              },
+              "response": {
+                "$ref": "BatchUpdateSelectedRoutesResponse"
+              }
             },
             "create": {
               "description": "Creates a SelectedRoute and starts a schedule to periodically retrieve cache information for the route.",
               "flatPath": "selection/v1/projects/{projectsId}/selectedRoutes",
               "httpMethod": "POST",
               "id": "roadsselection.projects.selectedRoutes.create",
-              "parameterOrder": [
-                "parent"
-              ],
+              "parameterOrder": ["parent"],
               "parameters": {
                 "parent": {
-                  "description": "Required. The project that the SelectedRoute will be created under. Format: projects/{project}",
+                  "description": "Required. The project that the SelectedRoute will be created under (projects/{project}).",
                   "location": "path",
                   "pattern": "^projects/[^/]+$",
                   "required": true,
                   "type": "string"
                 },
                 "selectedRouteId": {
-                  "description": "Optional. The ID to use for the SelectedRoute, which will become the final component of the SelectedRoute's resource name. This value should be 4-63 characters, and valid characters are: \"a-z\", \"A-Z\", \"0-9\" or \"-\". If it is not provided or empty, a UUID will be generated after resource creation.",
+                  "description": "Optional. The ID to use for the SelectedRoute (4-63 chars, a-z, A-Z, 0-9, or '-').",
                   "location": "query",
                   "type": "string"
                 }
@@ -163,22 +121,17 @@
               },
               "response": {
                 "$ref": "SelectedRoute"
-              },
-              "scopes": [
-                "https://www.googleapis.com/auth/cloud-platform"
-              ]
+              }
             },
             "delete": {
-              "description": "Deletes the specified SelectedRoute.",
+              "description": "Deletes the specified SelectedRoute for the specified project.",
               "flatPath": "selection/v1/projects/{projectsId}/selectedRoutes/{selectedRoutesId}",
               "httpMethod": "DELETE",
               "id": "roadsselection.projects.selectedRoutes.delete",
-              "parameterOrder": [
-                "name"
-              ],
+              "parameterOrder": ["name"],
               "parameters": {
                 "name": {
-                  "description": "Required. The name of the SelectedRoute to delete. Format: projects/{project}/selectedRoutes/{selected_route}",
+                  "description": "Required. The name of the SelectedRoute to delete (projects/{project}/selectedRoutes/{selected_route}).",
                   "location": "path",
                   "pattern": "^projects/[^/]+/selectedRoutes/[^/]+$",
                   "required": true,
@@ -188,22 +141,17 @@
               "path": "selection/v1/{+name}",
               "response": {
                 "$ref": "Empty"
-              },
-              "scopes": [
-                "https://www.googleapis.com/auth/cloud-platform"
-              ]
+              }
             },
             "get": {
-              "description": "Gets a SelectedRoute.",
+              "description": "Gets a SelectedRoute as specified by its name.",
               "flatPath": "selection/v1/projects/{projectsId}/selectedRoutes/{selectedRoutesId}",
               "httpMethod": "GET",
               "id": "roadsselection.projects.selectedRoutes.get",
-              "parameterOrder": [
-                "name"
-              ],
+              "parameterOrder": ["name"],
               "parameters": {
                 "name": {
-                  "description": "Required. The name of the SelectedRoute to retrieve. Format: projects/{project}/selectedRoutes/{selected_route}",
+                  "description": "Required. The name of the SelectedRoute to retrieve (projects/{project}/selectedRoutes/{selected_route}).",
                   "location": "path",
                   "pattern": "^projects/[^/]+/selectedRoutes/[^/]+$",
                   "required": true,
@@ -213,33 +161,28 @@
               "path": "selection/v1/{+name}",
               "response": {
                 "$ref": "SelectedRoute"
-              },
-              "scopes": [
-                "https://www.googleapis.com/auth/cloud-platform"
-              ]
+              }
             },
             "list": {
-              "description": "Lists all SelectedRoutes for the specified project.",
+              "description": "Lists all SelectedRoute resources for the specified project with pagination and optional filter.",
               "flatPath": "selection/v1/projects/{projectsId}/selectedRoutes",
               "httpMethod": "GET",
               "id": "roadsselection.projects.selectedRoutes.list",
-              "parameterOrder": [
-                "parent"
-              ],
+              "parameterOrder": ["parent"],
               "parameters": {
                 "pageSize": {
-                  "description": "Optional. The number of results that should be returned for a given page. If not set the default value is 100. When a value of 0 is given the value will be set to the default. The max value is 5000, any value above 5000 will be set to 5000.",
+                  "description": "Optional. The number of results to return (max 5,000, default 100).",
                   "format": "int32",
                   "location": "query",
                   "type": "integer"
                 },
                 "pageToken": {
-                  "description": "Optional. A page token, received from a previous selectedRoutes.list call.",
+                  "description": "Optional. A page token received from a previous ListSelectedRoutes call.",
                   "location": "query",
                   "type": "string"
                 },
                 "parent": {
-                  "description": "Required. The parent, which is the project that all SelectedRoutes will be queried from. Format: projects/{project}/selectedRoutes",
+                  "description": "Required. The project parent (projects/{project}).",
                   "location": "path",
                   "pattern": "^projects/[^/]+$",
                   "required": true,
@@ -249,25 +192,53 @@
               "path": "selection/v1/{+parent}/selectedRoutes",
               "response": {
                 "$ref": "ListSelectedRoutesResponse"
+              }
+            },
+            "patch": {
+              "description": "Updates a SelectedRoute as specified by its name.",
+              "flatPath": "selection/v1/projects/{projectsId}/selectedRoutes/{selectedRoutesId}",
+              "httpMethod": "PATCH",
+              "id": "roadsselection.projects.selectedRoutes.patch",
+              "parameterOrder": ["name"],
+              "parameters": {
+                "name": {
+                  "description": "Required. Resource name of the SelectedRoute (projects/{project}/selectedRoutes/{selected_route}).",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+/selectedRoutes/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                },
+                "updateMask": {
+                  "description": "Optional. Field mask specifying fields to update (e.g. 'display_name,route_attributes,dynamic_route').",
+                  "location": "query",
+                  "type": "string"
+                }
               },
-              "scopes": [
-                "https://www.googleapis.com/auth/cloud-platform"
-              ]
+              "path": "selection/v1/{+name}",
+              "request": {
+                "$ref": "SelectedRoute"
+              },
+              "response": {
+                "$ref": "SelectedRoute"
+              }
             }
           }
         }
       }
     }
   },
-  "revision": "20260204",
+  "revision": "20260830",
   "rootUrl": "https://roads.googleapis.com/",
   "schemas": {
     "BatchCreateSelectedRoutesRequest": {
-      "description": "Request message for BatchCreateSelectedRoutes.",
       "id": "BatchCreateSelectedRoutesRequest",
       "properties": {
+        "parent": {
+          "description": "Required. The project resource shared by all selected routes in the batch (projects/{project}).",
+          "type": "string"
+        },
         "requests": {
-          "description": "Required. The request message specifying the resources to create. A maximum of 1000 selected routes can be created in a batch.",
+          "description": "Required. The request message specifying the selected routes to create (max 1000).",
           "items": {
             "$ref": "CreateSelectedRouteRequest"
           },
@@ -277,11 +248,61 @@
       "type": "object"
     },
     "BatchCreateSelectedRoutesResponse": {
-      "description": "Response message for BatchCreateSelectedRoutes.",
       "id": "BatchCreateSelectedRoutesResponse",
       "properties": {
         "selectedRoutes": {
-          "description": "SelectedRoutes created.",
+          "description": "SelectedRoute resources created.",
+          "items": {
+            "$ref": "SelectedRoute"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "BatchDeleteSelectedRoutesRequest": {
+      "id": "BatchDeleteSelectedRoutesRequest",
+      "properties": {
+        "names": {
+          "description": "Required. The names of the selected routes to delete (max 1000).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "parent": {
+          "description": "Required. The project resource shared by all selected routes to delete (projects/{project}).",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BatchUpdateSelectedRoutesRequest": {
+      "id": "BatchUpdateSelectedRoutesRequest",
+      "properties": {
+        "parent": {
+          "description": "Required. The project resource shared by all selected routes in the batch (projects/{project}).",
+          "type": "string"
+        },
+        "requests": {
+          "description": "Required. The request message specifying the selected routes to update (max 1000).",
+          "items": {
+            "$ref": "UpdateSelectedRouteRequest"
+          },
+          "type": "array"
+        },
+        "updateMask": {
+          "description": "Optional. The list of fields to update shared by all child requests in the batch.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BatchUpdateSelectedRoutesResponse": {
+      "id": "BatchUpdateSelectedRoutesResponse",
+      "properties": {
+        "selectedRoutes": {
+          "description": "SelectedRoute resources updated.",
           "items": {
             "$ref": "SelectedRoute"
           },
@@ -291,11 +312,10 @@
       "type": "object"
     },
     "CreateSelectedRouteRequest": {
-      "description": "Request message for CreateSelectedRoute.",
       "id": "CreateSelectedRouteRequest",
       "properties": {
         "parent": {
-          "description": "Required. The project that the SelectedRoute will be created under. Format: projects/{project}",
+          "description": "Required. The project that the SelectedRoute will be created under (projects/{project}).",
           "type": "string"
         },
         "selectedRoute": {
@@ -303,14 +323,13 @@
           "description": "Required. The SelectedRoute to create."
         },
         "selectedRouteId": {
-          "description": "Optional. The ID to use for the SelectedRoute, which will become the final component of the SelectedRoute's resource name. This value should be 4-63 characters, and valid characters are: \"a-z\", \"A-Z\", \"0-9\" or \"-\". If it is not provided or empty, a UUID will be generated after resource creation.",
+          "description": "Optional. The ID to use for the SelectedRoute (4-63 chars, [a-zA-Z0-9-]*).",
           "type": "string"
         }
       },
       "type": "object"
     },
     "DynamicRoute": {
-      "description": "This represents a route with waypoints (origin, destination and intermediates). The actual route is guaranteed to pass all the waypoints, but it could change from time to time due to varying traffic condition.",
       "id": "DynamicRoute",
       "properties": {
         "destination": {
@@ -318,7 +337,7 @@
           "description": "Required. Ending location of the route."
         },
         "intermediates": {
-          "description": "Optional. A set of intermediate waypoints along the route (excluding terminal points). They are always passing-by points. Up to 25 intermediate waypoints are supported. Adding them properly can reduce the variation of actual route from time to time.",
+          "description": "Optional. A set of intermediate waypoints along the route (max 25).",
           "items": {
             "$ref": "LatLng"
           },
@@ -332,22 +351,20 @@
       "type": "object"
     },
     "Empty": {
-      "description": "A generic empty message that you can re-use to avoid defining duplicated empty messages in your APIs. A typical example is to use it as the request or the response type of an API method. For instance: service Foo { rpc Bar(google.protobuf.Empty) returns (google.protobuf.Empty); }",
       "id": "Empty",
       "properties": {},
       "type": "object"
     },
     "LatLng": {
-      "description": "An object that represents a latitude/longitude pair. This is expressed as a pair of doubles to represent degrees latitude and degrees longitude. Unless specified otherwise, this object must conform to the WGS84 standard. Values must be within normalized ranges.",
       "id": "LatLng",
       "properties": {
         "latitude": {
-          "description": "The latitude in degrees. It must be in the range [-90.0, +90.0].",
+          "description": "The latitude in degrees (-90 to 90).",
           "format": "double",
           "type": "number"
         },
         "longitude": {
-          "description": "The longitude in degrees. It must be in the range [-180.0, +180.0].",
+          "description": "The longitude in degrees (-180 to 180).",
           "format": "double",
           "type": "number"
         }
@@ -355,15 +372,14 @@
       "type": "object"
     },
     "ListSelectedRoutesResponse": {
-      "description": "Response message for ListSelectedRoutes.",
       "id": "ListSelectedRoutesResponse",
       "properties": {
         "nextPageToken": {
-          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "description": "Token that can be sent as pageToken to retrieve the next page.",
           "type": "string"
         },
         "selectedRoutes": {
-          "description": "The SelectedRoutes from the specified project.",
+          "description": "A page of SelectedRoute resources stored in the project.",
           "items": {
             "$ref": "SelectedRoute"
           },
@@ -373,31 +389,30 @@
       "type": "object"
     },
     "SelectedRoute": {
-      "description": "A SelectedRoute represents a specific route that a customer wants to periodically retrieve information (e.g. duration) for contracted use cases.",
       "id": "SelectedRoute",
       "properties": {
         "createTime": {
-          "description": "Output only. Time when the selected route was first created. Uses RFC 3339, where generated output will always be Z-normalized and uses 0, 3, 6 or 9 fractional digits. Offsets other than \"Z\" are also accepted. Examples: \"2014-10-02T15:01:23Z\", \"2014-10-02T15:01:23.045123456Z\" or \"2014-10-02T15:01:23+05:30\".",
+          "description": "Output only. Time when the selected route was first created.",
           "format": "google-datetime",
           "type": "string"
         },
         "displayName": {
-          "description": "Optional. Display name of the route. This is an optional field that can be used by the customer. It does not have to be unique.",
+          "description": "Optional. Display name of the route (max 100 characters).",
           "type": "string"
         },
         "dynamicRoute": {
           "$ref": "DynamicRoute",
-          "description": "The SelectedRoute is a dynamic route."
+          "description": "Required. The dynamic route definition."
         },
         "name": {
-          "description": "Identifier. Resource name of the SelectedRoute. Format: projects/{project}/selectedRoutes/{selectedRoute}",
+          "description": "Output only. Resource name formatted as projects/{project}/selectedRoutes/{selected_route}.",
           "type": "string"
         },
         "routeAttributes": {
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Optional. The custom attributes for the selected route. Adding them allows filtering / grouping of the routes when retrieving historical and real-time routes information. Up to 10 attributes are supported per route. Each key and value should be a non empty string and can have up to 100 characters. The keys must not start with \"goog\".",
+          "description": "Optional. Up to 10 key-value pairs (1-100 chars, keys must not start with 'goog').",
           "type": "object"
         },
         "state": {
@@ -411,7 +426,7 @@
             "STATE_INVALID"
           ],
           "enumDescriptions": [
-            "The state is unspecified.",
+            "The state of this route is not set.",
             "The route has been created and is being scheduled.",
             "The route has been created and has an active schedule.",
             "The route has been marked for deletion.",
@@ -421,7 +436,7 @@
           "type": "string"
         },
         "validationError": {
-          "description": "Output only. The validation error for the selected route when the state is STATE_INVALID.",
+          "description": "Output only. The validation error when the state is STATE_INVALID.",
           "enum": [
             "VALIDATION_ERROR_UNSPECIFIED",
             "VALIDATION_ERROR_ROUTE_OUTSIDE_JURISDICTION",
@@ -436,10 +451,23 @@
         }
       },
       "type": "object"
+    },
+    "UpdateSelectedRouteRequest": {
+      "id": "UpdateSelectedRouteRequest",
+      "properties": {
+        "selectedRoute": {
+          "$ref": "SelectedRoute",
+          "description": "Required. The SelectedRoute to update. The name field identifies the route."
+        },
+        "updateMask": {
+          "description": "Optional. The list of fields to update (e.g. 'display_name,route_attributes,dynamic_route').",
+          "type": "string"
+        }
+      },
+      "type": "object"
     }
   },
   "servicePath": "",
-  "title": "Roads Selection API (Unofficial Definition)",
-  "version": "v1",
-  "version_module": true
+  "title": "Roads Selection API",
+  "version": "v1"
 }

@@ -108,18 +108,23 @@ For custom integrations, use the bundled building blocks in the `clients/` direc
 
 ### Core Clients (Wraps raw API 1-to-1)
 *   **`analyticshub_v1.sh`**: Data Exchanges and Listings.
-*   **`roadsselection_v1.sh`**: Roads Selection API.
+*   **`roadsselection_v1.sh`**: Roads Selection API v1 (all 8 RPC methods).
+*   **`roadsselection_v1_helpers.sh`**: Payload builders and proto validator rules.
 *   **`routes_v2.sh`**: Directions and Distance Matrix.
 
-### Utility Clients (Pagination helpers)
+### Utility Clients (High-level workflows)
 *   **`analyticshub_v1_util.sh`**
 *   **`roadsselection_v1_util.sh`**
+
+### Polyglot Reference Clients
+*   **`roadsselection_v1.py`**: Python reference client (`RoadsSelectionClient`).
+*   **`roadsselection_v1.ts`**: TypeScript reference client (`RoadsSelectionClient`).
 
 *Example (Sourcing a Utility):*
 ```bash
 source clients/roadsselection_v1_util.sh
 # List all routes in your project
-roadsselection_v1_projects_selectedRoutes_list_all "$PROJECT_RMI_ID" "100"
+roadsselection_v1_selectedroute_list_all "$PROJECT_RMI_ID"
 ```
 
 ## License
