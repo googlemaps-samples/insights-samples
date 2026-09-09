@@ -1,0 +1,3 @@
+google-cloud-bigquery ~= 3.42
+google-genai ~= 2.16
+pillow ~= 12.3

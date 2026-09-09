@@ -64,15 +64,15 @@ step_backup_routes() {
 
     echo "Backing up SelectedRoutes for project $project_id to $output_file..."
     
-    if ! command -v roadsselection_v1_projects_selectedRoutes_list_all &> /dev/null; then
-        echo "Error: Roads Selection utility not found. Run bundle.sh first."
+    if ! command -v roadsselection_v1_selectedroute_list_all &> /dev/null; then
+        echo "Error: Roads Selection utility not found."
         return 1
     fi
 
-    roadsselection_v1_projects_selectedRoutes_list_all "$project_id" "1000" ""
+    roadsselection_v1_selectedroute_list_all "$project_id" > "$output_file"
     
     local count
-    count=$(wc -l < "$output_file")
+    count=$(jq '. | length' "$output_file" 2>/dev/null || wc -l < "$output_file")
     echo "Backup complete. $count routes saved to $output_file"
 }
 

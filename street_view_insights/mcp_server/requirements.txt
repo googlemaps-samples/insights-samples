@@ -1,0 +1,8 @@
+mcp
+google-genai
+google-cloud-bigquery
+google-cloud-storage
+pillow
+numpy
+uvicorn
+fastapi

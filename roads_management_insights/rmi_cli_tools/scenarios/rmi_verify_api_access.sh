@@ -70,18 +70,13 @@ ROUTE_NAME=""
 # Prepares the necessary data structures (LatLng, Route) for the test.
 step_prepare_data() {
     echo "--- Step 1: Preparing Data ---"
-    # Tokyo Tower
-    ORIGIN=$(create_lat_lng 35.658581 139.745433)
-    # Roppongi Hills
-    DESTINATION=$(create_lat_lng 35.660456 139.729067)
-    # Simple Route
-    DYNAMIC_ROUTE=$(create_dynamic_route "$ORIGIN" "$DESTINATION")
+    # Tokyo Tower to Roppongi Hills
+    DYNAMIC_ROUTE=$(roadsselection_v1_dynamicroute_json 35.658581 139.745433 35.660456 139.729067 '[]')
     DISPLAY_NAME="CRUD Test Route $(date +%s)"
-    SELECTED_ROUTE=$(create_selected_route "$DYNAMIC_ROUTE" "$DISPLAY_NAME")
+    SELECTED_ROUTE=$(roadsselection_v1_selectedroute_json "$DISPLAY_NAME" "$DYNAMIC_ROUTE")
 
-    echo "Origin: $ORIGIN"
-    echo "Destination: $DESTINATION"
     echo "Display Name: $DISPLAY_NAME"
+    echo "Dynamic Route: $DYNAMIC_ROUTE"
 }
 
 # Creates a new selected route in the specified project.
@@ -92,7 +87,7 @@ step_create_route() {
 
     echo "--- Step 2: Create Selected Route in $project_id ---"
     local response_create
-    response_create=$(roadsselection_v1_projects_selectedRoutes_create "$project_id" "$SELECTED_ROUTE")
+    response_create=$(roadsselection_v1_selectedroute_create "$project_id" "$SELECTED_ROUTE")
 
     # Check for errors
     if echo "$response_create" | jq -e '.error' >/dev/null; then
@@ -111,12 +106,9 @@ step_get_route() {
     local route_name="${2:-$ROUTE_NAME}"
     if [[ -z "$project_id" || -z "$route_name" ]]; then echo "Usage: step_get_route <PROJECT_ID> <ROUTE_NAME>"; exit 1; fi
 
-    local route_id
-    route_id=$(echo "$route_name" | sed 's|.*/selectedRoutes/||')
-
-    echo "--- Step 3: Get Selected Route $route_id ---"
+    echo "--- Step 3: Get Selected Route $route_name ---"
     local response_get
-    response_get=$(roadsselection_v1_projects_selectedRoutes_get "$project_id" "$route_id")
+    response_get=$(roadsselection_v1_selectedroute_get "$route_name" "$project_id")
 
     if echo "$response_get" | jq -e '.error' >/dev/null; then
         echo "Error Getting Route:"
@@ -137,7 +129,7 @@ step_list_routes() {
 
     echo "--- Step 4: List Selected Routes in $project_id ---"
     local response_list
-    response_list=$(roadsselection_v1_projects_selectedRoutes_list "$project_id" "100")
+    response_list=$(roadsselection_v1_selectedroute_list "$project_id" "100")
 
     if echo "$response_list" | jq -e '.error' >/dev/null; then
         echo "Error Listing Routes:"
@@ -162,12 +154,9 @@ step_delete_route() {
     local route_name="${2:-$ROUTE_NAME}"
     if [[ -z "$project_id" || -z "$route_name" ]]; then echo "Usage: step_delete_route <PROJECT_ID> <ROUTE_NAME>"; exit 1; fi
 
-    local route_id
-    route_id=$(echo "$route_name" | sed 's|.*/selectedRoutes/||')
-
-    echo "--- Step 5: Delete Selected Route $route_id ---"
+    echo "--- Step 5: Delete Selected Route $route_name ---"
     local response_delete
-    response_delete=$(roadsselection_v1_projects_selectedRoutes_delete "$project_id" "$route_id")
+    response_delete=$(roadsselection_v1_selectedroute_delete "$route_name" "$project_id")
 
     if echo "$response_delete" | jq -e '.error' >/dev/null; then
         echo "Error Deleting Route:"
@@ -184,12 +173,9 @@ step_verify_deletion() {
     local route_name="${2:-$ROUTE_NAME}"
     if [[ -z "$project_id" || -z "$route_name" ]]; then echo "Usage: step_verify_deletion <PROJECT_ID> <ROUTE_NAME>"; exit 1; fi
 
-    local route_id
-    route_id=$(echo "$route_name" | sed 's|.*/selectedRoutes/||')
-
-    echo "--- Step 6: Verify Deletion of $route_id ---"
+    echo "--- Step 6: Verify Deletion of $route_name ---"
     local response_get_again
-    response_get_again=$(roadsselection_v1_projects_selectedRoutes_get "$project_id" "$route_id")
+    response_get_again=$(roadsselection_v1_selectedroute_get "$route_name" "$project_id" 2>&1 || true)
 
     if echo "$response_get_again" | jq -e '.error.code == 404' >/dev/null; then
         echo "PASS: Route successfully deleted (Received 404 as expected)."
@@ -223,13 +209,13 @@ if [[ $# -eq 0 ]]; then
     exit 0
 fi
 
-case "" in
+case "$1" in
     all)
         shift
         run_all "$@"
         ;;
     step_*)
-        cmd=""
+        cmd="$1"
         shift
         "$cmd" "$@"
         ;;
