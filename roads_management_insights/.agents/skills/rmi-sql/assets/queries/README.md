@@ -1,6 +1,6 @@
 # Roads Management Insights (RMI) - SQL Query Library
 
-This directory contains a curated library of hand-written, verified SQL queries tailored for **Roads Management Insights (RMI)** datasets in Google Cloud BigQuery.
+This directory contains a curated library of hand-written, verified SQL queries tailored for **Roads Management Insights (RMI)** datasets in Google BigQuery.
 
 ---
 

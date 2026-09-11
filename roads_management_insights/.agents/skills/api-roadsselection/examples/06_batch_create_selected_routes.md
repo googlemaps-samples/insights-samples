@@ -9,6 +9,7 @@ This guide demonstrates how to create up to **1,000 SelectedRoutes** in a single
 When setting up monitoring for large regional networks (e.g. hundreds of highway sectors across a state), issuing individual `CreateSelectedRoute` calls incurs sequential latency and risk of partial timeouts.
 
 **`BatchCreateSelectedRoutes`** enables:
+
 * **High-Throughput Ingestion**: Provision up to **1,000 routes** in a single HTTP payload.
 * **Autonomous Scheduling**: Initiates background validation and caching schedules in parallel for all created routes.
 * **Deterministic Resource IDs**: Specify custom `selectedRouteId` values for every route in the batch.
@@ -20,11 +21,11 @@ When setting up monitoring for large regional networks (e.g. hundreds of highway
 * **HTTP Method**: `POST`
 * **URL**: `https://roads.googleapis.com/selection/v1/projects/{project}/selectedRoutes:batchCreate`
 * **Request Body (`BatchCreateSelectedRoutesRequest`)**:
-  - `parent`: `projects/{project}`
-  - `requests`: Array of `CreateSelectedRouteRequest` objects (max 1,000), each specifying:
-    - `parent`: `projects/{project}`
-    - `selectedRoute`: Full `SelectedRoute` object (`displayName`, `dynamicRoute`, `routeAttributes`).
-    - `selectedRouteId`: (Optional) Unique 4-63 character route identifier.
+  * `parent`: `projects/{project}`
+  * `requests`: Array of `CreateSelectedRouteRequest` objects (max 1,000), each specifying:
+    * `parent`: `projects/{project}`
+    * `selectedRoute`: Full `SelectedRoute` object (`displayName`, `dynamicRoute`, `routeAttributes`).
+    * `selectedRouteId`: (Optional) Unique 4-63 character route identifier.
 
 ---
 

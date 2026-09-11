@@ -39,10 +39,6 @@ RMI maintains 10 localized, pre-subscribed sample datasets on Google Cloud Analy
 | 9 | **`sydney_ga`** | **Sydney (Australia)** | `ah_rmi_sydney` | Metropolitan highways (`CONTROLLED_ACCESS`, `LIMITED_ACCESS`) | Spring/Summer 2026 |
 | 10 | **`tokyo_ga`** | **Tokyo (Japan)** | `ah_rmi_tokyo` | Major priority roads across Tokyo 23 Wards | Spring/Summer 2026 |
 
-
-
-
-
 ---
 
 ## 2. Automated Discovery Tooling (`scripts/list_sample_datasets.sh`)
@@ -79,8 +75,10 @@ analyticshub_projects_locations_dataExchanges_listings_subscribe \
 ## 3. Key Principles for Sample Dataset Usage
 
 ### 1. The Static Temporal Anchor Mandate
+
 Because public sample datasets are historical snapshots, any queries utilizing `CURRENT_TIMESTAMP()`, `CURRENT_DATE()`, or relative offsets (e.g. `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)`) will return **zero rows**.
-* **Mandatory Pattern**: You **must** replace all relative time filters with static datetime literals matching the snapshot's active timeframe (e.g. June 2026).
+
+- **Mandatory Pattern**: You **must** replace all relative time filters with static datetime literals matching the snapshot's active timeframe (e.g. June 2026).
 
 ```sql
 -- INCORRECT (Returns 0 rows on static sample datasets)
@@ -91,14 +89,17 @@ WHERE record_time BETWEEN '2026-06-01' AND '2026-07-01'
 ```
 
 ### 2. The `road_segment_ids` Schema Threshold (June 19, 2026)
+
 The `road_segment_ids` column was introduced on **June 19, 2026**. Telemetry snapshots captured prior to this date contain empty arrays (`[]`). Always guard segment unnesting queries:
+
 ```sql
 WHERE record_time >= '2026-06-19'
   AND ARRAY_LENGTH(road_segment_ids) > 0
 ```
 
 ### 3. Route Attributes Metadata & Mandatory Type Casting
-Routes in `routes_status` include a JSON string column `route_attributes` containing automatically populated contextual metadata. 
+
+Routes in `routes_status` include a JSON string column `route_attributes` containing automatically populated contextual metadata.
 
 > [!IMPORTANT]
 > **Strict String Key-Value Representation**: RMI route attributes are defined as a strict `map<string, string>`. Consequently, **all values are stored as string literals**, even inherently numeric properties (e.g., `route_length_meters` is stored as `"128.088"` rather than a float, and `num_of_roads` is stored as `"3"` rather than an integer). You **must explicitly typecast** these values using `SAFE_CAST()` in BigQuery SQL when performing arithmetic, aggregations, or numeric range filtering (e.g., `SAFE_CAST(JSON_VALUE(route_attributes, '$.route_length_meters') AS FLOAT64) >= 500.0`) to avoid lexicographical string comparison errors.
@@ -116,6 +117,7 @@ Routes in `routes_status` include a JSON string column `route_attributes` contai
 | **`create_time`** / **`origin`** / **`destination`** | `STRING` | Timestamp / Coordinates | Registration timestamp and coordinate strings for fixed OD pairs (e.g. Manhattan, Rome). | `"2025-10-15T01:10:45.490Z"` |
 
 #### BigQuery Extraction & Casting Pattern
+
 ```sql
 SELECT 
   selected_route_id,
@@ -133,6 +135,7 @@ WHERE
 ```
 
 ### 4. Multi-Tiered Cost and Fleet Scaling Projections
+
 The sample datasets are lightweight and highly partitioned, making interactive validation queries inexpensive (< $0.01 per scan). Use the scaling multipliers below to project production costs:
 
 | Fleet Tier | Monitored Routes | Multiplier vs. Sample Base | Monthly Bytes (Approx.) | Scan Cost Category |
@@ -143,6 +146,7 @@ The sample datasets are lightweight and highly partitioned, making interactive v
 | **Mega Fleet (Nationwide)** | ~500,000 Routes | ~270x | ~430 GB / month | Strategic (~$2.15) |
 
 ### 5. Complexity Classes
+
 - **O(T) - Time-Dependent (Linear Growth)**: Multi-month longitudinal trend queries. Storage scan sizes grow linearly with time.
 - **O(1) - Time-Invariant (Flat Cost)**: Operational queries with bounded partition pruning (`record_time BETWEEN ...`).
 - **O(R) - Route-Dependent (Metadata Growth)**: Administrative queries filtering on `routes_status`.
@@ -162,17 +166,18 @@ The sample datasets are lightweight and highly partitioned, making interactive v
 
 ## 5. References & Linked Artifacts
 
-* [Analytics Hub Data Exchange: `rmi_sampledata_v2_ga_prod`](https://console.cloud.google.com/bigquery/analytics-hub/exchanges/projects/1024202510105/locations/us/dataExchanges/rmi_sampledata_v2_ga_prod)
-* [RMI Multipliers & Ingestion Costs](references/metrics.md)
-* [Discovery Script: `list_sample_datasets.sh`](scripts/list_sample_datasets.sh)
-
+- [Analytics Hub Data Exchange: `rmi_sampledata_v2_ga_prod`](https://console.cloud.google.com/bigquery/analytics-hub/exchanges/projects/1024202510105/locations/us/dataExchanges/rmi_sampledata_v2_ga_prod)
+- [RMI Multipliers & Ingestion Costs](references/metrics.md)
+- [Discovery Script: `list_sample_datasets.sh`](scripts/list_sample_datasets.sh)
 
 ---
 
 ## 6. Examples
 
 ### Example 1: Morning Commute Peak Performance Audit (Local Timezone Aware)
+
 Analyze average speed drops during morning rush hour (7:00 AM – 9:00 AM local Boston time / EDT) across the Boston network for June 2026:
+
 ```sql
 SELECT 
   h.selected_route_id,
@@ -207,7 +212,9 @@ LIMIT 20;
 ```
 
 ### Example 2: Operational Route Status & Attribute Mapping
+
 Count active routes and list validation states grouped by custom road priority tiers defined in route metadata:
+
 ```sql
 SELECT 
   JSON_VALUE(route_attributes, '$.priority') AS priority_tier,
@@ -223,4 +230,3 @@ GROUP BY
 ORDER BY 
   route_count DESC;
 ```
-

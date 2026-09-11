@@ -1,6 +1,6 @@
 ---
 name: api-roadsselection
-description: Developer guide, reference client implementations (Python, TypeScript, POSIX Bash), and examples for the Google Maps Platform Roads Selection API (Roads Management Insights), managing SelectedRoute resources via roads.googleapis.com/selection/v1. Use this skill whenever creating, registering, updating, patching, listing, or deleting SelectedRoutes, performing BatchCreate (up to 1,000 routes), BatchUpdate, BatchDelete, applying FieldMasks (updateMask), managing custom routeAttributes for BigQuery clustering and Pub/Sub filtering, inspecting lifecycle states (STATE_RUNNING, STATE_INVALID), or troubleshooting RMI route validation errors.
+description: "Use this skill for developer guide, reference client implementations (Python, TypeScript, POSIX Bash), and examples for the Google Maps Platform Roads Selection API (Roads Management Insights), managing SelectedRoute resources via roads.googleapis.com/selection/v1. Use this skill whenever creating, registering, updating, patching, listing, or deleting SelectedRoutes, performing BatchCreate (up to 1,000 routes), BatchUpdate, BatchDelete, applying FieldMasks (updateMask), managing custom routeAttributes for BigQuery clustering and Pub/Sub filtering, inspecting lifecycle states (STATE_RUNNING, STATE_INVALID), or troubleshooting RMI route validation errors."
 ---
 
 # Roads Selection API Skill
@@ -87,12 +87,13 @@ Comprehensive guides and polyglot sample code (Shell, cURL, Python, TypeScript) 
 
 ## 4. IAM Roles & Authentication
 
-### Required Roles:
-* **Roads Selection Admin (`roles/roads.roadsSelectionAdmin`)**: Full read/write access to create, update, batch-modify, and delete routes.
-* **Roads Selection Viewer (`roles/roads.roadsSelectionViewer`)**: Read-only access to get and list routes.
-* **Service Usage Consumer (`roles/serviceusage.serviceUsageConsumer`)**: Required on the quota project for `X-Goog-User-Project`.
+### Required Roles
 
-### Sample `gcloud` Assignment Commands:
+- **Roads Selection Admin (`roles/roads.roadsSelectionAdmin`)**: Full read/write access to create, update, batch-modify, and delete routes.
+- **Roads Selection Viewer (`roles/roads.roadsSelectionViewer`)**: Read-only access to get and list routes.
+- **Service Usage Consumer (`roles/serviceusage.serviceUsageConsumer`)**: Required on the quota project for `X-Goog-User-Project`.
+
+### Sample `gcloud` Assignment Commands
 
 ```bash
 # 1. Assign to an Individual Developer (Admin Access)
@@ -127,7 +128,7 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --role="roles/serviceusage.serviceUsageConsumer"
 ```
 
-### Sample `gcloud` Role Verification Commands:
+### Sample `gcloud` Role Verification Commands
 
 ```bash
 # Verify all assigned roles for a principal (User, Group, or Service Account):
@@ -165,8 +166,5 @@ All client scripts adhere to pure POSIX Bash + `jq` conventions, single-word dis
 
 ## 6. References
 
-* **Release Notes**: [Roads Management Insights Release Notes](https://developers.google.com/maps/documentation/roads-management-insights/release-notes)
-* **Google Cloud IAM & Authentication**: [Google Cloud Service Account Authentication Guide](https://cloud.google.com/docs/authentication)
-
-
-
+- **Release Notes**: [Roads Management Insights Release Notes](https://developers.google.com/maps/documentation/roads-management-insights/release-notes)
+- **Google Cloud IAM & Authentication**: [Google Cloud Service Account Authentication Guide](https://cloud.google.com/docs/authentication)

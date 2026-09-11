@@ -1,10 +1,6 @@
 ---
 name: api-geminidataanalytics
-description:
-  Expert guidance, tools, and clients for the Google Cloud Gemini Data Analytics API
-  (GA v1, with v1beta and v1alpha support). Use to perform conversational data analysis,
-  translate natural language into executable SQL, manage multi-turn conversation states,
-  and configure Data Agents with BigQuery data sources.
+description: "Expert guidance, tools, and clients for the Google Cloud Gemini Data Analytics API (GA v1, with v1beta and v1alpha support). Use to perform conversational data analysis, translate natural language into executable SQL, manage multi-turn conversation states, and configure Data Agents with BigQuery data sources."
 ---
 
 # Google Gemini Data Analytics API (geminidataanalytics)
@@ -53,27 +49,39 @@ graph TD
 The Gemini Data Analytics API exposes the following operations across GA `v1` (with beta/alpha extensions):
 
 ### 1. Conversational Chat (`projects.locations.chat`)
+
 Processes conversational queries with optional thinking modes (`FAST`, `THINKING`) and foundation model selection.
+
 - **Endpoint**: `POST https://geminidataanalytics.googleapis.com/v1/{parent}:chat` (where parent is `projects/*/locations/*`)
 
 ### 2. Managed Conversations (`projects.locations.conversations`)
+
 Creates, retrieves, lists, and deletes conversation states to retain multi-turn context across sessions.
+
 - **Endpoint**: `POST/GET/DELETE https://geminidataanalytics.googleapis.com/v1/{parent}/conversations`
 
 ### 3. Data Agents Management (`projects.locations.dataAgents`)
+
 Configures autonomous Data Agents grounded in BigQuery tables, including asynchronous (`create`, `patch`, `delete`) and synchronous operations (`createSync`, `updateSync`, `deleteSync`).
+
 - **Endpoint**: `POST/GET/PATCH/DELETE https://geminidataanalytics.googleapis.com/v1/{parent}/dataAgents`
 
 ### 4. Long-Running Operations (`projects.locations.operations`)
+
 Polls, cancels, and audits long-running agent deployment and update operations.
+
 - **Endpoint**: `GET/POST/DELETE https://geminidataanalytics.googleapis.com/v1/{parent}/operations/*`
 
 ### 5. Agent-to-Agent (A2A) Messaging (`a2a.projects.locations.dataAgents.v1`)
+
 Enables direct inter-agent messaging and card exchange between Data Agents.
+
 - **Endpoint**: `POST/GET https://geminidataanalytics.googleapis.com/v1/a2a/{tenant}/v1/...`
 
 ### 6. Query Translation (`projects.locations.queryData` - v1beta)
+
 Translates natural language questions directly into database queries (BigQuery SQL, AlloyDB, Spanner, Looker).
+
 - **Endpoint**: `POST https://geminidataanalytics.googleapis.com/v1beta/{parent}:queryData`
 
 ---
@@ -146,7 +154,9 @@ echo "${response}" | jq '.executedQueryResult'
 ## 5. Execution Strategy & Determinism Protocol
 
 ### Tier 1: Deterministic Client Scripts (Primary / Recommended)
+
 Whenever POSIX shell execution is available, agents **MUST** prioritize using the pre-tested helper and client scripts located in `scripts/`:
+
 - Sourcing GA v1 client: `source scripts/geminidataanalytics_v1.sh`
 - Sourcing v1beta client: `source scripts/geminidataanalytics_v1beta.sh`
 - Sourcing v1alpha client: `source scripts/geminidataanalytics_v1alpha.sh`
@@ -155,7 +165,9 @@ Whenever POSIX shell execution is available, agents **MUST** prioritize using th
 *Why:* Eliminates code hallucination risks, guarantees exact ChatRequest and DataAgent payload schemas, manages OAuth2 tokens and `X-Goog-User-Project` quota headers, and automatically routes regional calls (`https://${LOCATION}-geminidataanalytics.googleapis.com`).
 
 ### Tier 2: Direct REST / Discovery Contract (Polyglot Fallback)
+
 If executing in environments without shell access (e.g., pure Python/Node.js runtimes, notebooks, or backend microservices):
+
 - Refer directly to the canonical Discovery Documents in `references/discoveryDocs/` (`geminidataanalytics_v1_20260815.json`, `geminidataanalytics_v1beta_20260815.json`, `geminidataanalytics_v1alpha_20260815.json`) for parameter schemas, data types, and HTTP methods.
 - Issue requests directly via your runtime's native HTTP client without inventing ungrounded parameters.
 
@@ -170,4 +182,3 @@ If executing in environments without shell access (e.g., pure Python/Node.js run
 - [Public API Discovery Document (GA v1)](https://geminidataanalytics.googleapis.com/$discovery/rest?version=v1)
 - [Public API Discovery Document (v1beta)](https://geminidataanalytics.googleapis.com/$discovery/rest?version=v1beta)
 - [Public API Discovery Document (v1alpha)](https://geminidataanalytics.googleapis.com/$discovery/rest?version=v1alpha)
-

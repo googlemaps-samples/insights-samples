@@ -5,6 +5,7 @@ This catalog maps business questions, analytical use cases, and persona objectiv
 ---
 
 ## 1. BigQuery Admin
+
 *Operational health, resource contention, security, slot allocations, and query cost auditing.*
 
 1. **Metadata Inventory and Partition Overview**: How can I quickly check the row count and storage size of all RMI tables using zero-cost metadata queries?
@@ -25,6 +26,7 @@ This catalog maps business questions, analytical use cases, and persona objectiv
 ---
 
 ## 2. Data Engineer
+
 *Data pipelines, geometry integrity checks, SRI array flattening, and analysis-ready datasets.*
 
 1. **Create Materialized Subset**: How do I generate a filtered, high-performance 7-day materialized view of `historical_travel_time` for a specific corridor?
@@ -45,6 +47,7 @@ This catalog maps business questions, analytical use cases, and persona objectiv
 ---
 
 ## 3. Data Scientist
+
 *Statistical analysis, anomaly detection, time-series forecasting, and route behavioral clustering.*
 
 1. **Outlier Detection (Z-Score & IQR)**: How do I identify travel time records that are statistical outliers for a specific route?
@@ -66,11 +69,13 @@ This catalog maps business questions, analytical use cases, and persona objectiv
 9. **Corridor Secular Trend Decomposition & Forward Projection (ML.TREND)**: What is the underlying directional growth trajectory of corridor travel times once seasonal noise is removed, and where is it heading?
    * [View SQL](../queries/data_scientist/ds9_corridor_trend_decomposition.sql)
 10. **Corridor Seasonality Decomposition & Diurnal Wave Extraction (ML.SEASONALITY)**: What are the exact additive hour-of-day and day-of-week recurring congestion penalties across monitored corridors?
-   * [View SQL](../queries/data_scientist/ds10_corridor_seasonality_decomposition.sql)
+
+* [View SQL](../queries/data_scientist/ds10_corridor_seasonality_decomposition.sql)
 
 ---
 
 ## 4. RMI Planner
+
 *Commercial ROI, value at risk, service tier analysis, and addressable monitoring scale.*
 
 1. **Usage Growth Projection**: How do I forecast data volume and BigQuery compute spend as the monitored fleet scales?
@@ -85,6 +90,7 @@ This catalog maps business questions, analytical use cases, and persona objectiv
 ---
 
 ## 5. Traffic Operations Manager
+
 *Real-time corridor monitoring, severe incident alerts, and signal intervention auditing.*
 
 1. **Peak Hour Delay Analysis**: What is the average travel time delay during morning peak hours (7-9 AM) for the top congested routes?
@@ -103,6 +109,7 @@ This catalog maps business questions, analytical use cases, and persona objectiv
 ---
 
 ## 6. Urban Planner
+
 *Long-term performance trends, before-and-after project impact, and transit policy validation.*
 
 1. **Long-Term Corridor Performance**: What is the week-over-week trend in the average delay ratio for a specific corridor?

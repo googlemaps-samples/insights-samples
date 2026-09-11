@@ -7,6 +7,7 @@ This document defines the canonical descriptions for foundational RMI tables, co
 ## 1. Description Inheritance Tenet
 
 When creating derived tables, summary views, or materialized extracts in BigQuery from upstream RMI datasets:
+
 1. **Always Supply Table/View Descriptions**: Every `CREATE TABLE`, `CREATE VIEW`, or `CREATE MODEL` statement must include an `OPTIONS(description = "...")` block providing clear business context, timeframe/scope, and lineage.
 2. **Inherit Column Metadata for Core Fields**: If a column originates directly from an RMI source table (e.g. `selected_route_id`, `display_name`, `record_time`, `duration_in_seconds`, `static_duration_in_seconds`, `route_geometry`, `status`, `validation_error`), its column-level description (`OPTIONS(description = "...")`) must inherit the canonical definitions defined below.
 3. **Explicitly Document Derived & Transformed Fields**: Computed metrics (such as `delay_ratio`, `hours_since_last_update`, `route_length_meters`, `snapshot_time`, `cluster_id`) must have explicit, unambiguous descriptions documenting the formula or transformation logic.
@@ -66,6 +67,7 @@ When creating derived tables, summary views, or materialized extracts in BigQuer
 ## 3. Implementation Patterns
 
 ### Pattern 1: Materialized Clustered Table with Inherited Descriptions
+
 ```sql
 CREATE OR REPLACE TABLE `my_project.writable_dataset.corridor_travel_time`
 (
@@ -87,6 +89,7 @@ WHERE record_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY);
 ```
 
 ### Pattern 2: Cleaned Transformation View
+
 ```sql
 CREATE OR REPLACE VIEW `my_project.writable_dataset.routes_status_cleaned`
 (

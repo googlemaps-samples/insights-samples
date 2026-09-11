@@ -9,6 +9,7 @@ This guide demonstrates how to update up to **1,000 SelectedRoutes** in a single
 When managing large fleets of monitored corridors (e.g. 5,000+ regional roads across a state or country), updating metadata individually creates rate-limit exhaustion and excessive network latency.
 
 **`BatchUpdateSelectedRoutes`** allows:
+
 * **Atomic Batching**: Update up to **1,000 routes** in a single HTTP request.
 * **Shared or Granular FieldMasks**: Apply a single `updateMask` across all items or specify custom per-item masks.
 * **Metadata Re-indexing**: Bulk-update custom attributes (e.g. updating `jurisdiction`, `maintenance_window`, or `priority` tags).
@@ -20,9 +21,9 @@ When managing large fleets of monitored corridors (e.g. 5,000+ regional roads ac
 * **HTTP Method**: `POST`
 * **URL**: `https://roads.googleapis.com/selection/v1/projects/{project}/selectedRoutes:batchUpdate`
 * **Request Body (`BatchUpdateSelectedRoutesRequest`)**:
-  - `parent`: `projects/{project}` (must match child resource parents).
-  - `requests`: Array of `UpdateSelectedRouteRequest` objects (max 1,000).
-  - `updateMask`: (Optional) Shared field mask applied to all items in the batch.
+  * `parent`: `projects/{project}` (must match child resource parents).
+  * `requests`: Array of `UpdateSelectedRouteRequest` objects (max 1,000).
+  * `updateMask`: (Optional) Shared field mask applied to all items in the batch.
 
 ---
 

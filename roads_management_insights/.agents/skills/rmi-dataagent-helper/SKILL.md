@@ -1,6 +1,6 @@
 ---
 name: rmi-dataagent-helper
-description: Use this skill to configure, optimize, and ground BigQuery Conversational Data Agents for RMI. When invoked, helps users select a persona profile (TOM, Urban Planner, BQ Admin, Data Engineer, Data Scientist, or RMI Planner) to receive tailored grounding mantras, glossary definitions, and verified golden queries.
+description: "Use this skill for use this skill to configure, optimize, and ground BigQuery Conversational Data Agents for RMI. When invoked, helps users select a persona profile (TOM, Urban Planner, BQ Admin, Data Engineer, Data Scientist, or RMI Planner) to receive tailored grounding mantras, glossary definitions, and verified golden queries."
 dependencies:
   - api-geminidataanalytics
   - rmi-sql
@@ -11,7 +11,8 @@ dependencies:
 
 > [!NOTE]
 > **Conceptual Layer vs. NLP Implementation Layer**:
-> - **[`rmi-personas`](../rmi-personas/SKILL.md)** serves as the **Conceptual Layer**, defining high-level business challenges, quantitative SLAs, and cross-persona lifecycles.
+>
+> - **`rmi-personas`** serves as the **Conceptual Layer**, defining high-level business challenges, quantitative SLAs, and cross-persona lifecycles.
 > - **`rmi-dataagent-helper`** serves as the **NLP Implementation Layer**. It translates those conceptual personas into machine-readable prompts, grounding indices, glossary terms, and verified golden queries (**[`rmi-sql`](../rmi-sql/SKILL.md)**) to optimize BigQuery Conversational Data Agents.
 
 This skill provides expert guidance and tooling to configure, ground, and programmatically manage BigQuery Conversational Data Agents for Roads Management Insights.
@@ -21,6 +22,7 @@ This skill provides expert guidance and tooling to configure, ground, and progra
 ## 1. Persona-Driven Activation Workflow
 
 When assisting a user with configuring a BigQuery Data Agent:
+
 1. **Identify Target Persona**: Determine which of the 6 GA personas (or preview roles) the agent is being configured for:
    - **Traffic Operations Manager (TOM)**: Real-time incidents, bottlenecks, detour detection.
    - **Urban Planner (UP)**: Infrastructure ROI, before-and-after studies, TTI/PTI indices.
@@ -38,7 +40,9 @@ When assisting a user with configuring a BigQuery Data Agent:
 Regardless of persona, all RMI Conversational Data Agents require strong metadata grounding:
 
 ### 2.1 Metadata-Enriched Views
+
 Annotate views and underlying physical tables using `ALTER VIEW ... SET OPTIONS` so the LLM semantic parser accurately interprets column semantics:
+
 ```sql
 ALTER VIEW `my_project.rmi.cleaned_routes`
 SET OPTIONS (
@@ -51,7 +55,9 @@ ON `my_project.rmi.cleaned_routes`;
 ```
 
 ### 2.2 Standard Job ID Headers
+
 Instruct the Data Agent to prepend standardized `rmica_` Job IDs to all generated SQL:
+
 ```sql
 -- Job ID: rmica_<persona>_YYYYMMDD_HHMMSS
 ```
@@ -72,7 +78,6 @@ To prevent hallucinated column names and unpartitioned scans, ground the convers
 | **RMI Planner** | TAM Network Coverage, Tier Delay SLAs | `rmip1_usage_projection.sql`, `rmip2_customer_roi.sql`, `rmip3_segment_estimation.sql` | [RMIP Guide](references/persona_setup_guides.md#6-rmi-planner-commercial-tam--capacity-strategist) |
 
 ---
-
 
 ## 4. Multi-Persona Provisioning & Execution (`scripts/provision_data_agent.sh`)
 
@@ -118,9 +123,6 @@ chat_with_rmi_agent \
   "my-project"
 ```
 
-
-
-
 ---
 
 ## 5. Tooling & Reasoning Safety Patterns
@@ -141,6 +143,6 @@ chat_with_rmi_agent \
 
 ## Related Skills
 
-- **[`rmi-personas`](../rmi-personas/SKILL.md)**: Conceptual definitions, business challenges, and SLAs for RMI personas.
+- **`rmi-personas`**: Conceptual definitions, business challenges, and SLAs for RMI personas.
 - **[`rmi-sql`](../rmi-sql/SKILL.md)**: Production SQL asset library and golden queries.
 - **[`bigquery-practices`](../bigquery-practices/SKILL.md)**: Foundational BigQuery performance, security, and governance best practices.

@@ -2,10 +2,17 @@ import sys
 import os
 import json
 
-# Append the shared library path to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../lib/python')))
+current_dir = os.path.dirname(os.path.abspath(__file__))
+skill_dir = os.path.abspath(os.path.join(current_dir, ".."))
+lib_dir = os.path.abspath(os.path.join(skill_dir, "../../lib/python"))
+if lib_dir not in sys.path:
+    sys.path.append(lib_dir)
 
-from common_utils import get_workspace_header
+try:
+    from common_utils import get_workspace_header
+except ImportError:
+    def get_workspace_header():
+        return "=================================================================\nAgentic Skills Monorepo Development Toolkit\n================================================================="
 
 def simulate_pubsub_stream():
     print(get_workspace_header())

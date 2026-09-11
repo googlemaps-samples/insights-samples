@@ -1,11 +1,21 @@
 #!/bin/bash
+#
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 set -euo pipefail
-#
-# This script provides a client for the Analytics Hub API.
-# It is not meant to be used directly, but rather to be sourced by other scripts.
-#
-# For more information, see the official documentation:
-# https://cloud.google.com/bigquery/docs/analytics-hub-introduction
+
 
 # Source the internal helper script
 # shellcheck source=/dev/null
@@ -112,6 +122,38 @@ analyticshub_projects_locations_dataExchanges_list() {
   _call_api "GET" "${url}" "" "${pid}"
 }
 
+# Gets the IAM policy for a data exchange.
+#
+# @param string project_id Required. The project ID.
+# @param string location Required. The location ID.
+# @param string data_exchange_id Required. The ID of the data exchange.
+# @param string request_body Optional. JSON string for GetIamPolicyRequest.
+# @see https://cloud.google.com/bigquery/docs/reference/rest/v1/projects.locations.dataExchanges/getIamPolicy
+analyticshub_projects_locations_dataExchanges_getIamPolicy() {
+  local pid="$1"
+  local location="$2"
+  local dxid="$3"
+  local request_body="${4:-{}}"
+  local url="${ANALYTICSHub_V1_BASE_URL}/projects/${pid}/locations/${location}/dataExchanges/${dxid}:getIamPolicy"
+  _call_api "POST" "${url}" "${request_body}" "${pid}"
+}
+
+# Tests permissions against a data exchange.
+#
+# @param string project_id Required. The project ID.
+# @param string location Required. The location ID.
+# @param string data_exchange_id Required. The ID of the data exchange.
+# @param string request_body Required. JSON string for TestIamPermissionsRequest (e.g. {"permissions":[...]}).
+# @see https://cloud.google.com/bigquery/docs/reference/rest/v1/projects.locations.dataExchanges/testIamPermissions
+analyticshub_projects_locations_dataExchanges_testIamPermissions() {
+  local pid="$1"
+  local location="$2"
+  local dxid="$3"
+  local request_body="$4"
+  local url="${ANALYTICSHub_V1_BASE_URL}/projects/${pid}/locations/${location}/dataExchanges/${dxid}:testIamPermissions"
+  _call_api "POST" "${url}" "${request_body}" "${pid}"
+}
+
 # --- Projects.Locations.DataExchanges.Listings ---
 
 # Creates a new listing.
@@ -156,6 +198,30 @@ analyticshub_projects_locations_dataExchanges_listings_delete() {
 
   local url="${ANALYTICSHub_V1_BASE_URL}/projects/${pid}/locations/${location}/dataExchanges/${dxid}/listings/${listing_id}${query_params}"
   _call_api "DELETE" "${url}" "" "${pid}"
+}
+
+# Updates an existing listing.
+#
+# @param string project_id Required.
+# @param string location Required.
+# @param string data_exchange_id Required.
+# @param string listing_id Required.
+# @param string request_body Required. The request body as a JSON string (Listing).
+# @param string update_mask Required. Field mask specifying the fields to update (e.g. displayName,description,primaryContact).
+# @see https://cloud.google.com/bigquery/docs/reference/rest/v1/projects.locations.dataExchanges.listings/patch
+analyticshub_projects_locations_dataExchanges_listings_patch() {
+  local pid="$1"
+  local location="$2"
+  local dxid="$3"
+  local listing_id="$4"
+  local request_body="$5"
+  local update_mask="$6"
+
+  local query_params
+  query_params=$(_build_query_params "updateMask=${update_mask}")
+
+  local url="${ANALYTICSHub_V1_BASE_URL}/projects/${pid}/locations/${location}/dataExchanges/${dxid}/listings/${listing_id}${query_params}"
+  _call_api "PATCH" "${url}" "${request_body}" "${pid}"
 }
 
 # Gets the details of a listing.
@@ -212,6 +278,42 @@ analyticshub_projects_locations_dataExchanges_listings_subscribe() {
   local request_body="$5"
 
   local url="${ANALYTICSHub_V1_BASE_URL}/projects/${pid}/locations/${location}/dataExchanges/${dxid}/listings/${listing_id}:subscribe"
+  _call_api "POST" "${url}" "${request_body}" "${pid}"
+}
+
+# Gets the IAM policy for a listing.
+#
+# @param string project_id Required.
+# @param string location Required.
+# @param string data_exchange_id Required.
+# @param string listing_id Required.
+# @param string request_body Optional. JSON string for GetIamPolicyRequest.
+# @see https://cloud.google.com/bigquery/docs/reference/rest/v1/projects.locations.dataExchanges.listings/getIamPolicy
+analyticshub_projects_locations_dataExchanges_listings_getIamPolicy() {
+  local pid="$1"
+  local location="$2"
+  local dxid="$3"
+  local listing_id="$4"
+  local request_body="${5:-{}}"
+  local url="${ANALYTICSHub_V1_BASE_URL}/projects/${pid}/locations/${location}/dataExchanges/${dxid}/listings/${listing_id}:getIamPolicy"
+  _call_api "POST" "${url}" "${request_body}" "${pid}"
+}
+
+# Tests permissions against a listing.
+#
+# @param string project_id Required.
+# @param string location Required.
+# @param string data_exchange_id Required.
+# @param string listing_id Required.
+# @param string request_body Required. JSON string for TestIamPermissionsRequest (e.g. {"permissions":[...]}).
+# @see https://cloud.google.com/bigquery/docs/reference/rest/v1/projects.locations.dataExchanges.listings/testIamPermissions
+analyticshub_projects_locations_dataExchanges_listings_testIamPermissions() {
+  local pid="$1"
+  local location="$2"
+  local dxid="$3"
+  local listing_id="$4"
+  local request_body="$5"
+  local url="${ANALYTICSHub_V1_BASE_URL}/projects/${pid}/locations/${location}/dataExchanges/${dxid}/listings/${listing_id}:testIamPermissions"
   _call_api "POST" "${url}" "${request_body}" "${pid}"
 }
 
