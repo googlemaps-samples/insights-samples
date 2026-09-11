@@ -14,12 +14,16 @@ This skill provides expert guidance and specialized tools for working with the G
 The Routes API (v2) is a fast, robust engine for calculating travel routes and spatial distances. It features two primary endpoints:
 
 ### 1. Compute Routes
+
 Get primary and alternate routes between an origin and destination, with up to 25 intermediate waypoints.
+
 - **Endpoint**: `POST https://routes.googleapis.com/v1/computeRoutes`
 - **Supported Modes**: `DRIVE`, `BICYCLE`, `WALK`, and `TWO_WHEELER`.
 
 ### 2. Compute Route Matrix
+
 Get distance and duration for a set of origins and destinations (many-to-many matrix).
+
 - **Endpoint**: `POST https://routes.googleapis.com/v1/computeRouteMatrix`
 
 ---
@@ -27,6 +31,7 @@ Get distance and duration for a set of origins and destinations (many-to-many ma
 ## 2. API Schema and JSON Layouts
 
 ### Compute Routes Request Body
+
 The JSON body requires a structured origin, destination, and travel options:
 
 ```json
@@ -60,6 +65,7 @@ The JSON body requires a structured origin, destination, and travel options:
 ```
 
 ### Route Modifiers & Advanced Road Structures
+
 - **Route Modifiers**: Use `routeModifiers` to customize routing constraints:
   - `avoidTolls`: Avoid toll roads.
   - `avoidHighways`: Avoid highways.
@@ -76,6 +82,7 @@ The JSON body requires a structured origin, destination, and travel options:
 ## 3. The Crucial Field Mask Requirement
 
 The Routes API v2 **strictly requires** a Field Mask header (`X-Goog-FieldMask`). If this header is missing or incorrect, the API returns a `400 Bad Request`.
+
 - **For full details**: Use `*` (not recommended for high-performance production as it inflates response payload size).
 - **For optimized routing**: Use explicit fields, e.g. `routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline`.
 
@@ -94,6 +101,7 @@ The Routes API v2 **strictly requires** a Field Mask header (`X-Goog-FieldMask`)
 ## 5. Execution Examples (Bash & cURL)
 
 ### Basic Directions Calculation
+
 Calculate driving time and return distance:
 
 ```bash
@@ -116,14 +124,18 @@ curl -s -X POST \
 ## 6. Execution Strategy & Determinism Protocol
 
 ### Tier 1: Deterministic Client Scripts (Primary / Recommended)
+
 Whenever POSIX shell execution is available, agents **MUST** prioritize using the pre-tested helper and client scripts located in `scripts/`:
+
 - Sourcing client: `source scripts/routes_v2.sh`
 - Sourcing helpers: `source scripts/routes_v2_helpers.sh`
 
 *Why:* Eliminates code hallucination risks, guarantees exact ComputeRoutesRequest JSON payloads and FieldMask headers (`X-Goog-FieldMask`), manages OAuth2 tokens and `X-Goog-User-Project` quota headers, and routes correctly to `https://routes.googleapis.com/v2`.
 
 ### Tier 2: Direct REST / Discovery Contract (Polyglot Fallback)
+
 If executing in environments without shell access (e.g., pure Python/Node.js runtimes, notebooks, or backend microservices):
+
 - Refer directly to the canonical Discovery Document in `references/discoveryDocs/routes_v2_20260819.json` for parameter schemas, data types, and HTTP methods.
 - Issue requests directly via your runtime's native HTTP client without inventing ungrounded parameters.
 
@@ -134,5 +146,3 @@ If executing in environments without shell access (e.g., pure Python/Node.js run
 - [Google Maps Platform Routes API Overview](https://developers.google.com/maps/documentation/routes)
 - [Discovery Documents](references/discoveryDocs/)
 - [Public API Discovery Document (v2)](https://routes.googleapis.com/$discovery/rest?version=v2)
-
-

@@ -9,6 +9,7 @@ This guide demonstrates how to delete up to **1,000 SelectedRoutes** in a single
 When retiring old road networks, decommissioning expired detour corridors, or re-aligning regional boundaries, deleting routes one-by-one with `DeleteSelectedRoute` causes long runtimes.
 
 **`BatchDeleteSelectedRoutes`** allows:
+
 * **High-Throughput Cleanup**: Deletes up to **1,000 routes** in a single API call.
 * **Simple Resource Name Targeting**: Specify an array of full resource names (`projects/{project}/selectedRoutes/{id}`).
 * **Zero Payload Overhead**: Returns an empty response (`{}`) on success.
@@ -20,8 +21,8 @@ When retiring old road networks, decommissioning expired detour corridors, or re
 * **HTTP Method**: `POST`
 * **URL**: `https://roads.googleapis.com/selection/v1/projects/{project}/selectedRoutes:batchDelete`
 * **Request Body (`BatchDeleteSelectedRoutesRequest`)**:
-  - `parent`: `projects/{project}`
-  - `names`: Array of strings (`projects/{project}/selectedRoutes/{id}`), maximum 1,000 items.
+  * `parent`: `projects/{project}`
+  * `names`: Array of strings (`projects/{project}/selectedRoutes/{id}`), maximum 1,000 items.
 
 > [!IMPORTANT]
 > **Parent Project Matching**: Every route name in the `names` array must strictly match the `parent` project identifier specified in the request. If there is a mismatch (e.g. using project name in `parent` but project number in `names`), the API returns `400 INVALID_ARGUMENT: SelectedRoute project does not match the parent project`.
@@ -166,6 +167,7 @@ export { batchDeleteSelectedRoutes };
 ## 4. Expected API Response
 
 On success, the API returns an empty JSON object:
+
 ```json
 {}
 ```

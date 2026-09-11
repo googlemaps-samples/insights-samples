@@ -9,6 +9,7 @@ This guide demonstrates how to mutate existing **`SelectedRoute`** definitions i
 Historically, updating an RMI SelectedRoute required deleting the route and creating a new one, which broke continuous telemetry series, reset historical telemetry anchors, and triggered asynchronous re-validation schedules.
 
 With native **`PATCH` / `UpdateSelectedRoute`**:
+
 * **In-Place Mutation**: Directly modify `displayName`, `routeAttributes`, and/or `dynamicRoute` (waypoints) without deleting the route entity.
 * **Granular FieldMasks**: Specify exactly which fields to overwrite via the `updateMask` query parameter.
 * **Zero Telemetry Interruption**: Preserves the route's creation timestamp and continuous monitoring state.
@@ -20,10 +21,10 @@ With native **`PATCH` / `UpdateSelectedRoute`**:
 * **HTTP Method**: `PATCH`
 * **URL**: `https://roads.googleapis.com/selection/v1/projects/{project}/selectedRoutes/{selectedRouteId}?updateMask={fieldPaths}`
 * **Updatable Fields**:
-  - `displayName`: Route human-readable label (max 100 characters).
-  - `routeAttributes`: Key-value string map (max 10 pairs).
-  - `dynamicRoute`: Geometry including `origin`, `destination`, and `intermediates`.
-  - `*`: Full replacement of all updatable fields.
+  * `displayName`: Route human-readable label (max 100 characters).
+  * `routeAttributes`: Key-value string map (max 10 pairs).
+  * `dynamicRoute`: Geometry including `origin`, `destination`, and `intermediates`.
+  * `*`: Full replacement of all updatable fields.
 
 > [!NOTE]
 > If `updateMask` is omitted from the request, all fields populated in the request payload are implied to be updated.

@@ -7,6 +7,7 @@ This guide details enterprise-grade architectural patterns and operational runbo
 ## 1. Location & Hierarchy Governance
 
 The Gemini Data Analytics API (`geminidataanalytics.googleapis.com`) enforces a **global location hierarchy**:
+
 ```text
 projects/<PROJECT_ID>/locations/global/dataAgents/<AGENT_ID>
 ```
@@ -68,9 +69,11 @@ To eliminate SQL hallucinations, unpartitioned full scans, and syntax errors, in
 ## 5. Traceability Job ID Standard
 
 Enforce standardized `rmisqlfactory_` job ID prefixes in the agent's system instructions:
+
 ```sql
 -- Job ID: rmisqlfactory_<persona><N>_YYYYMMDD_HHMMSS
 ```
+
 This enables BigQuery Administrators (`bqa`) to attribute scan bytes, query concurrency, and compute costs directly to specific agent personas via `INFORMATION_SCHEMA.JOBS`.
 
 ---

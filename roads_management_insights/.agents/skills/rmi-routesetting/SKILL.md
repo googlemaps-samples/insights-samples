@@ -1,6 +1,6 @@
 ---
 name: rmi-routesetting
-description: Use this skill when discussing, explaining, or implementing RMI route setting, route setting strategies, selected route setting strategies, route registration strategies, or route selection. It provides foundational strategies (SINGLE_ROUTE_UNIFORM_INTERMEDIATES, SIMPLE_ORIGIN_DESTINATION, MATCH_AND_SPLIT_BY_ROAD, BUS_ROUTE_MONITORING, BYO_POLYLINE) for transforming geographical intent into monitored SelectedRoute objects using GA-stage Routes API, Roads API (v1), and Roads Selection API.
+description: Use this skill when discussing, explaining, or implementing RMI route setting, route setting strategies, selected route setting strategies, route registration strategies, or route selection. It provides foundational strategies (SINGLE_ROUTE_UNIFORM_INTERMEDIATES, SIMPLE_ORIGIN_DESTINATION, MATCH_AND_SPLIT_BY_ROAD, BUS_ROUTE_MONITORING, BYO_POLYLINE) for transforming geographical intent into monitored SelectedRoute objects using GA-stage Routes API, Roads API (v1), and Roads Selection API. Do not use for Road Network API v2 or topology-aware graph partitioning (use rmi-routesetting-preview instead).
 dependencies:
   - api-roads-v1
   - api-routes
@@ -62,13 +62,13 @@ The end-to-end route creation workflow coordinates three GA-stage services:
   1. **Compute Baseline Route Metrics**: Call Routes API v2 `ComputeRoutes` (`routes_computeRoutes`) with `travelMode: "DRIVE"` and `routingPreference: "TRAFFIC_UNAWARE"` to extract reference un-congested distance (`routes[0].distanceMeters`) and baseline duration (`routes[0].duration`).
   2. **Assemble SelectedRoute Dynamic Payload**: Construct the `dynamicRoute` JSON object specifying strictly the `origin` and `destination` coordinates (`latitude`, `longitude`). Leave `intermediates` empty or omitted.
   3. **Populate Contextual Metadata (`routeAttributes`)**: Attach optional downstream metadata tags (aligned with sample dataset conventions):
-     - `strategy`: `"SIMPLE_ORIGIN_DESTINATION"`
-     - `route_length_meters`: baseline distance string
-     - `base_duration`: baseline duration string
-     - `origin`: origin coordinates string (`"lat,lng"`)
-     - `destination`: destination coordinates string (`"lat,lng"`)
-     - `create_time`: registration timestamp string
-     - `creator`: provenance tag
+     * `strategy`: `"SIMPLE_ORIGIN_DESTINATION"`
+     * `route_length_meters`: baseline distance string
+     * `base_duration`: baseline duration string
+     * `origin`: origin coordinates string (`"lat,lng"`)
+     * `destination`: destination coordinates string (`"lat,lng"`)
+     * `create_time`: registration timestamp string
+     * `creator`: provenance tag
   4. **Register SelectedRoute**: Write payload to `${PREFIX}_selected_route.json` and submit via Roads Selection API (`createSelectedRoute`).
 * **Reference Implementation Script**: [`scripts/strategy_simple_origin_destination.sh`](scripts/strategy_simple_origin_destination.sh)
 
@@ -82,18 +82,18 @@ The end-to-end route creation workflow coordinates three GA-stage services:
 * **Implementation Steps**:
   1. **Retrieve High-Quality Linestring**: Invoke Routes API v2 `ComputeRoutes` with `routingPreference: "TRAFFIC_UNAWARE"`, requesting `polylineQuality: "HIGH_QUALITY"` and `polylineEncoding: "GEO_JSON_LINESTRING"` to obtain dense coordinates grounded directly on Google's road network.
   2. **Execute Distance-Aware Existing Vertex Subsampling (Zero Synthetic Interpolation)**:
-     - Compute the cumulative geodesic length $L$ along the returned coordinate sequence.
-     - **Adaptive Waypoint Count**: Determine target count $N = \min(25, \lfloor L / \text{minSpacing} \rfloor)$ with a sensible spacing threshold ($\text{minSpacing} \ge 200\text{m}$) to prevent over-granular waypoints on short corridors. If $L < \text{minSpacing}$, omit intermediates ($N=0$).
-     - **Sparse Vertex Retention**: If the total internal coordinate count $(M - 2) \le N$, retain all authentic internal vertices directly without downsampling.
-     - **Authentic Vertex Selection**: When downsampling is required, calculate equidistant milestones $d_k = k \times \frac{L}{N+1}$ and select the **actual existing polyline vertex** closest to each milestone. Never synthesize fractional points between vertices, ensuring 100% road graph alignment.
+     * Compute the cumulative geodesic length $L$ along the returned coordinate sequence.
+     * **Adaptive Waypoint Count**: Determine target count $N = \min(25, \lfloor L / \text{minSpacing} \rfloor)$ with a sensible spacing threshold ($\text{minSpacing} \ge 200\text{m}$) to prevent over-granular waypoints on short corridors. If $L < \text{minSpacing}$, omit intermediates ($N=0$).
+     * **Sparse Vertex Retention**: If the total internal coordinate count $(M - 2) \le N$, retain all authentic internal vertices directly without downsampling.
+     * **Authentic Vertex Selection**: When downsampling is required, calculate equidistant milestones $d_k = k \times \frac{L}{N+1}$ and select the **actual existing polyline vertex** closest to each milestone. Never synthesize fractional points between vertices, ensuring 100% road graph alignment.
   3. **Construct SelectedRoute Payload**: Assemble `dynamicRoute` with `origin`, the ordered array of up to 25 authentic `intermediates` (`{ latitude, longitude }`), and `destination`.
   4. **Enrich Metadata**: Tag optional `routeAttributes` with:
-     - `strategy`: `"SINGLE_ROUTE_UNIFORM_INTERMEDIATES"`
-     - `intermediate_count`: count of generated waypoints
-     - `logic`: `"sample route vertices"`
-     - `route_length_meters`: baseline length
-     - `base_duration`: baseline duration
-     - `create_time`: timestamp
+     * `strategy`: `"SINGLE_ROUTE_UNIFORM_INTERMEDIATES"`
+     * `intermediate_count`: count of generated waypoints
+     * `logic`: `"sample route vertices"`
+     * `route_length_meters`: baseline length
+     * `base_duration`: baseline duration
+     * `create_time`: timestamp
   5. **Register & Validate**: Write payload to `${PREFIX}_selected_route.json` and verify alignment in `geospatial-viz`.
 * **Reference Implementation Script**: [`scripts/strategy_single_route_uniform_intermediates.sh`](scripts/strategy_single_route_uniform_intermediates.sh)
 
@@ -109,16 +109,16 @@ The end-to-end route creation workflow coordinates three GA-stage services:
   2. **Snap Coordinates via Roads API v1**: Format polyline points as a pipe-separated string (`lat,lng|lat,lng|...`) and call `roads_v1_snapToRoads` with `interpolate=true`.
   3. **Group Contiguous Points by `placeId`**: Parse the returned `snappedPoints` array and group adjacent points sharing the same `placeId` into distinct road segment clusters.
   4. **Extract Segment Middle Vertices**:
-     - For each intermediate road segment (excluding origin and destination terminal segments), pick its middle vertex (`segment.points[length / 2]`).
-     - **Adaptive 25-Waypoint Limit**: If the total count of traversed internal road segments $K \le 25$, retain all $K$ segment midpoints. Only when $K > 25$, stride-subsample the segment midpoints down to 25 to respect the `SelectedRoute` quota.
+     * For each intermediate road segment (excluding origin and destination terminal segments), pick its middle vertex (`segment.points[length / 2]`).
+     * **Adaptive 25-Waypoint Limit**: If the total count of traversed internal road segments $K \le 25$, retain all $K$ segment midpoints. Only when $K > 25$, stride-subsample the segment midpoints down to 25 to respect the `SelectedRoute` quota.
   5. **Assemble SelectedRoute Payload**: Construct `dynamicRoute` with `origin`, the ordered segment midpoint `intermediates`, and `destination`.
   6. **Enrich Metadata**: Tag optional `routeAttributes` with:
-     - `strategy`: `"MATCH_AND_SPLIT_BY_ROAD"`
-     - `total_road_segments`: total count of traversed Google road segments
-     - `intermediate_count`: count of midpoint waypoints
-     - `logic`: `"road segment middle vertices"`
-     - `route_length_meters` and `base_duration`: baseline metrics
-     - `create_time`: timestamp
+     * `strategy`: `"MATCH_AND_SPLIT_BY_ROAD"`
+     * `total_road_segments`: total count of traversed Google road segments
+     * `intermediate_count`: count of midpoint waypoints
+     * `logic`: `"road segment middle vertices"`
+     * `route_length_meters` and `base_duration`: baseline metrics
+     * `create_time`: timestamp
   7. **Register & Validate**: Write payload to `${PREFIX}_selected_route.json` and submit via Roads Selection API.
 * **Reference Implementation Script**: [`scripts/strategy_match_and_split_by_road.sh`](scripts/strategy_match_and_split_by_road.sh)
 
@@ -138,10 +138,10 @@ The end-to-end route creation workflow coordinates three GA-stage services:
   2. **Iterate Consecutive Stop Pairs**: For each index $i \in [1, K-1]$, define a pair from $Stop_i$ to $Stop_{i+1}$.
   3. **Optional Turn Verification**: If transit vehicles take a dedicated turn/loop between stops, query Routes API v2 between $(Stop_i, Stop_{i+1})$ to identify intermediate guidance points.
   4. **Generate SelectedRoute Object**:
-     - `origin`: coordinates of $Stop_i$
-     - `destination`: coordinates of $Stop_{i+1}$
-     - `displayName`: `Bus Route {route_id}: {Stop_i} -> {Stop_{i+1}}`
-     - `routeAttributes`: `route_id`, `trip_id`, `from_stop_id`, `to_stop_id`, `stop_sequence`
+     * `origin`: coordinates of $Stop_i$
+     * `destination`: coordinates of $Stop_{i+1}$
+     * `displayName`: `Bus Route {route_id}: {Stop_i} -> {Stop_{i+1}}`
+     * `routeAttributes`: `route_id`, `trip_id`, `from_stop_id`, `to_stop_id`, `stop_sequence`
   5. **BigQuery Interval Analytics**: In BigQuery, analyze travel time progression between stops using SQL window functions (`LAG()`).
 
 ---
@@ -157,8 +157,8 @@ The end-to-end route creation workflow coordinates three GA-stage services:
 * **Prerequisite Assessment (Source Data Feasibility & Alignment Check)**:
   > [!IMPORTANT]
   > **Early Geometric Overlay Assessment**: Always run an initial feasibility assessment on a representative sample of source polylines against Google Maps road network before undertaking batch ingestion.
-  > - **Alignment Risk**: If the source GIS layer is derived from divergent, outdated, or low-precision coordinate geometry, automated `snapToRoads` calls can snap coordinates to adjacent parallel service roads, overpasses, or fail.
-  > - **Intent-Based Recreation Alternative**: If the source network fails the alignment assessment (low geometric overlay), **do not force-snap defective polylines**. Instead, understand the original operational intent (e.g., from *Origin Zone A* to *Destination Zone B* via *Corridor C*) and recreate the route directly on Google's native road graph using Routes API v2 `ComputeRoutes` (`TRAFFIC_UNAWARE`) with strategy `SINGLE_ROUTE_UNIFORM_INTERMEDIATES` or `MATCH_AND_SPLIT_BY_ROAD`.
+  > * **Alignment Risk**: If the source GIS layer is derived from divergent, outdated, or low-precision coordinate geometry, automated `snapToRoads` calls can snap coordinates to adjacent parallel service roads, overpasses, or fail.
+  > * **Intent-Based Recreation Alternative**: If the source network fails the alignment assessment (low geometric overlay), **do not force-snap defective polylines**. Instead, understand the original operational intent (e.g., from *Origin Zone A* to *Destination Zone B* via *Corridor C*) and recreate the route directly on Google's native road graph using Routes API v2 `ComputeRoutes` (`TRAFFIC_UNAWARE`) with strategy `SINGLE_ROUTE_UNIFORM_INTERMEDIATES` or `MATCH_AND_SPLIT_BY_ROAD`.
 * **Implementation Steps**:
   1. **Source Data Feasibility Assessment**: Check spatial overlay against Google Maps road network. If divergent, pivot to Intent-Based Recreation.
   2. **Parse Vector GIS Layer**: Extract coordinate vertices from the source GIS LineString or WKT geometry.
@@ -213,4 +213,3 @@ GROUP BY
   to_stop,
   route_attributes;
 ```
-

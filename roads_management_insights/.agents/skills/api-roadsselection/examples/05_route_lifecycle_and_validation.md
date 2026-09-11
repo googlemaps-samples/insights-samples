@@ -29,6 +29,7 @@ stateDiagram-v2
 ## 2. Enum Definitions & Error Reference
 
 ### `State` Enum Values (Output Only)
+
 * **`STATE_UNSPECIFIED (0)`**: State has not been assigned.
 * **`STATE_SCHEDULING (1)`**: Route passed validation; background telemetry workers are provisioning cache schedules.
 * **`STATE_RUNNING (2)`**: Route has an active, continuous schedule emitting data to BigQuery and Pub/Sub.
@@ -37,12 +38,13 @@ stateDiagram-v2
 * **`STATE_INVALID (5)`**: Route failed validation criteria (inspection of `validationError` is required).
 
 ### `ValidationError` Enum Values (Output Only when state is `STATE_INVALID`)
+
 * **`VALIDATION_ERROR_ROUTE_OUTSIDE_JURISDICTION (1)`**:
-  - *Cause*: One or more waypoints fall outside the territorial jurisdiction authorized for your GCP project.
-  - *Remediation*: Adjust origin/destination coordinates to lie within contract boundaries.
+  * *Cause*: One or more waypoints fall outside the territorial jurisdiction authorized for your GCP project.
+  * *Remediation*: Adjust origin/destination coordinates to lie within contract boundaries.
 * **`VALIDATION_ERROR_LOW_ROAD_USAGE (2)`**:
-  - *Cause*: The requested corridor has insufficient aggregate vehicle volume to satisfy Google Maps privacy thresholds.
-  - *Remediation*: Re-align route onto primary arterial or highway corridors.
+  * *Cause*: The requested corridor has insufficient aggregate vehicle volume to satisfy Google Maps privacy thresholds.
+  * *Remediation*: Re-align route onto primary arterial or highway corridors.
 
 ---
 

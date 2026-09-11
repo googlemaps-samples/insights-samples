@@ -1,5 +1,25 @@
 #!/bin/bash
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 set -euo pipefail
+# Sibling resolution
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "${DIR}/api-common.sh" ]]; then
+  source "${DIR}/api-common.sh"
+fi
+
 #
 # Consolidated helper functions for creating JSON request bodies and parameters
 # for the Google Cloud Gemini Data Analytics API (v1beta and v1alpha).
@@ -191,4 +211,19 @@ geminidataanalytics_v1beta_chat_request_json() {
   local messages="$2"
   jq -n -c --argjson cr "$conv_ref" --argjson msg "$messages" \
     '{conversationReference: $cr, messages: $msg}' | jq -c 'del(..|nulls)'
+}
+
+
+# --- Standard Option A Helper Aliases ---
+geminidataanalytics_v1_chat_request_json() {
+  create_chat_request_json "$@"
+}
+geminidataanalytics_v1_querydata_request_json() {
+  create_query_data_request_json "$@"
+}
+geminidataanalytics_v1_dataagent_json() {
+  create_data_agent_json "$@"
+}
+geminidataanalytics_v1_conversationreference_json() {
+  create_conversation_reference_json "$@"
 }

@@ -3,12 +3,13 @@
 This document tracks industry-standard transportation and logistics metrics, assessing their computability with the current RMI dataset and identifying any required dependencies or data gaps.
 
 ## Assessment Framework
+
 - **Name**: Common industry name of the metric.
 - **Definition**: Technical formula or business definition.
-- **Status**: 
-    - ✅ **Computable**: Can be realized with GA/Preview RMI data.
-    - ⚠️ **Conditional**: Requires external data (Weather, Incidents, etc.).
-    - ❌ **Gap**: Fundamental data (e.g., Volume/Flow) is currently missing.
+- **Status**:
+  - ✅ **Computable**: Can be realized with GA/Preview RMI data.
+  - ⚠️ **Conditional**: Requires external data (Weather, Incidents, etc.).
+  - ❌ **Gap**: Fundamental data (e.g., Volume/Flow) is currently missing.
 - **Implementation**: Link to sample SQL or technical capability.
 
 ---
@@ -49,6 +50,7 @@ This document tracks industry-standard transportation and logistics metrics, ass
 | **Incident Response Time** | Time between incident report and return to baseline flow. | ⚠️ Conditional | Requires an **External Incident Feed** (Waze, DOT) for correlation. |
 
 ## 5. Advanced Research-Driven Metrics (Experimental Context)
+
 *Note: These metrics are inspired by Google Research initiatives but may not represent current RMI product outputs.*
 
 | Metric Name | Concept / Paper Reference | Status | Assessment / Gaps |

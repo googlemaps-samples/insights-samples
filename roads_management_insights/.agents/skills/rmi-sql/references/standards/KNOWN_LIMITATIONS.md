@@ -3,6 +3,7 @@
 This document tracks technical limitations, data gaps, or metrics that are frequently requested by users but currently **cannot be realized** with the standard RMI export or surrounding infrastructure.
 
 ## Purpose
+
 This serves as a critical input for the **Feasibility Assessment** step of the AI agent workflow. If a request matches an item here, the agent can provide a precise explanation of the current limitation.
 
 **Note on Roadmap**: While certain limitations documented here are currently being addressed by the RMI product roadmap, these upcoming features are not fully documented in this project until they are ready for official Preview or GA release. **Early information and prototypes may be added under the `experimental/` stage** for internal project context, but will not be included in public-facing publications.

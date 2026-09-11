@@ -13,30 +13,35 @@ This skill provides comprehensive procedural and technical knowledge for working
 
 All RMI foundation analysis relies on two primary tables. The exact columns, data types, physical constraints, string enums, and logical nullability rules are declared in their respective schema JSON definition files, which act as the absolute source of truth. Refer directly to these definitions for field-level intelligence:
 
-*   **Table A: `routes_status`** — Static definitions, real-time lifecycle states, and custom administrative grouping metadata for all selected routes.
-    *   *Schema Source of Truth:* [routes_status.json](references/tables/routes_status.json)
-*   **Table B: `historical_travel_time`** — Long-term historical records of traffic-aware and static duration observations computed periodically.
-    *   *Schema Source of Truth:* [historical_travel_time.json](references/tables/historical_travel_time.json)
-    *   *Partitioning*: Partitioned by **`DAY`** on the `record_time` column. Default partitions hold up to 10 years of history.
-    *   *Clustering*: Clustered on the **`selected_route_id`** column (first position) and `record_time` (second position).
+* **Table A: `routes_status`** — Static definitions, real-time lifecycle states, and custom administrative grouping metadata for all selected routes.
+  * *Schema Source of Truth:* [routes_status.json](references/tables/routes_status.json)
+* **Table B: `historical_travel_time`** — Long-term historical records of traffic-aware and static duration observations computed periodically.
+  * *Schema Source of Truth:* [historical_travel_time.json](references/tables/historical_travel_time.json)
+  * *Partitioning*: Partitioned by **`DAY`** on the `record_time` column. Default partitions hold up to 10 years of history.
+  * *Clustering*: Clustered on the **`selected_route_id`** column (first position) and `record_time` (second position).
 
 > [!IMPORTANT]
-> **Road Segment IDs (`road_segment_ids`) Support & Historical Constraint**: 
-> *   The `road_segment_ids` field (an array of place IDs representing topological road segments) is available in **both** `recent_roads_data` (real-time) and `historical_travel_time` (historical).
-> *   **Temporal Constraint**: This field was added on **June 19, 2026** and is populated **only** for records generated on or after this date (`record_time >= '2026-06-19'`). Historical partitions prior to June 19, 2026 will have empty or null arrays for `road_segment_ids`.
-> *   **Query Safety Rule**: When querying or unnesting `road_segment_ids` in `historical_travel_time`, **always use `LEFT JOIN UNNEST(road_segment_ids)`** (or filter `WHERE record_time >= '2026-06-19' AND ARRAY_LENGTH(road_segment_ids) > 0`). Using a standard `CROSS JOIN UNNEST` or implicit comma join will silently filter out and exclude all older records where `road_segment_ids` is empty, leading to incomplete/corrupted historical analysis.
+> **Road Segment IDs (`road_segment_ids`) Support & Historical Constraint**:
+>
+> * The `road_segment_ids` field (an array of place IDs representing topological road segments) is available in **both** `recent_roads_data` (real-time) and `historical_travel_time` (historical).
+> * **Temporal Constraint**: This field was added on **June 19, 2026** and is populated **only** for records generated on or after this date (`record_time >= '2026-06-19'`). Historical partitions prior to June 19, 2026 will have empty or null arrays for `road_segment_ids`.
+> * **Query Safety Rule**: When querying or unnesting `road_segment_ids` in `historical_travel_time`, **always use `LEFT JOIN UNNEST(road_segment_ids)`** (or filter `WHERE record_time >= '2026-06-19' AND ARRAY_LENGTH(road_segment_ids) > 0`). Using a standard `CROSS JOIN UNNEST` or implicit comma join will silently filter out and exclude all older records where `road_segment_ids` is empty, leading to incomplete/corrupted historical analysis.
 
 ---
 
 ## 2. Query Optimization & Mapping Standards
 
 ### Partition Pruning & Cost Control
+
 The `historical_travel_time` table grows indefinitely as hourly snapshots accumulate. To prevent exorbitant query costs, **never perform full table scans**.
-*   **Mandatory Rule**: Always include a direct filter on the partition column `record_time` (e.g., `WHERE record_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)`).
-*   **Clustering Benefit**: Always filter on `selected_route_id` early in your queries. Because the table is clustered on this ID, BigQuery will bypass blocks that do not contain matching route data.
+
+* **Mandatory Rule**: Always include a direct filter on the partition column `record_time` (e.g., `WHERE record_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)`).
+* **Clustering Benefit**: Always filter on `selected_route_id` early in your queries. Because the table is clustered on this ID, BigQuery will bypass blocks that do not contain matching route data.
 
 ### Parsing Route Attributes (JSON Strings)
+
 Since `route_attributes` is stored as a serialized JSON string in `routes_status`, you must use BigQuery’s JSON extraction functions to filter or group by administrative metadata:
+
 ```sql
 SELECT 
   selected_route_id,
@@ -49,11 +54,13 @@ WHERE
 ```
 
 ### Mapping Key Performance Indices (KPIs)
+
 When analyzing traffic-aware speeds and corridor efficiency, translate technical attributes to standard transportation metrics:
-*   **Travel Time Index (TTI)**: Represents the ratio of travel time in peak traffic to ideal travel time.
+
+* **Travel Time Index (TTI)**: Represents the ratio of travel time in peak traffic to ideal travel time.
     $$\text{TTI} = \frac{\text{duration\_in\_seconds}}{\text{static\_duration\_in\_seconds}}$$
     *BigQuery Implementation*: `SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds)`
-*   **Congestion Delay**: Total seconds wasted due to traffic:
+* **Congestion Delay**: Total seconds wasted due to traffic:
     `duration_in_seconds - static_duration_in_seconds` (Clamped to a minimum of 0 using `GREATEST(0, ...)`).
 
 ---
@@ -71,6 +78,7 @@ When analyzing traffic-aware speeds and corridor efficiency, translate technical
 ---
 
 ## 4. References
+
 * [Google Maps Platform - Roads Management Insights Overview](https://developers.google.com/maps/documentation/roads-management-insights/overview)
 * [Google Maps Platform - RMI Guidelines & Governance](https://developers.google.com/maps/documentation/roads-management-insights/guidelines)
 * [Google Maps Platform - RMI Accumulated Data](https://developers.google.com/maps/documentation/roads-management-insights/accumulated-data)
@@ -80,7 +88,9 @@ When analyzing traffic-aware speeds and corridor efficiency, translate technical
 ## 5. Examples
 
 ### Example 1: Calculating Daily Congestion Profiles
+
 Retrieve hourly travel time indices grouped by hour of the day for a specific route over the past 30 days:
+
 ```sql
 SELECT 
   selected_route_id,
@@ -103,7 +113,9 @@ ORDER BY
 ```
 
 ### Example 2: Corridors with Severe Peak Bottlenecks
+
 Find the top 10 registered priority routes experiencing the highest peak delay ratios during the morning commute (7:00 AM - 9:00 AM):
+
 ```sql
 WITH route_metadata AS (
   SELECT 
@@ -143,6 +155,7 @@ LIMIT 10;
 ```
 
 ### Example 3: Safe Segment-level Analysis across Historical Records
+
 This query demonstrates how to count occurrences of specific road segment IDs across historical route snapshots. Using `LEFT JOIN UNNEST` ensures that older partitions where `road_segment_ids` is not yet populated are **not** silently discarded from other calculations or aggregates.
 
 ```sql
@@ -165,4 +178,3 @@ WHERE
 ORDER BY 
   t.record_time DESC;
 ```
-

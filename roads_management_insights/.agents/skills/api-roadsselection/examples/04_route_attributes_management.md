@@ -7,6 +7,7 @@ This guide demonstrates how to configure, structure, and govern custom metadata 
 ## 1. Overview & Business Value
 
 Custom `routeAttributes` attach arbitrary domain metadata to monitored corridors. These attributes flow directly into downstream telemetry pipelines:
+
 * **BigQuery Column Mapping**: Automatically populated into BigQuery tables (`routes_status`, `historical_travel_times`) for SQL partitioning and clustering.
 * **Pub/Sub Telemetry Filtering**: Emitted in real-time message metadata for streaming topic subscription filters.
 * **Regional & Multi-Country Governance**: Tag corridors by country (`country: "JP"`), district, maintenance tier, or speed limit.
