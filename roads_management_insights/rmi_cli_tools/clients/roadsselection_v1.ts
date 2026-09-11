@@ -34,6 +34,18 @@
  */
 
 /**
+ * Ambient declarations for Node.js runtime globals when running in
+ * standalone TypeScript environments without @types/node installed.
+ */
+declare const process: {
+  env: Record<string, string | undefined>;
+};
+
+declare const Buffer: {
+  byteLength(string: string, encoding?: string): number;
+};
+
+/**
  * Geographic coordinates in decimal degrees (WGS84).
  */
 export interface LatLng {
