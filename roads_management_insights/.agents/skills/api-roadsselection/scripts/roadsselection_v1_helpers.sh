@@ -62,13 +62,13 @@ roadsselection_v1_selectedroute_validate() {
       return 1
     fi
 
-    # 4. Check Route Attributes (Max 10, keys 1-100 bytes, values <= 100 bytes, keys cannot start with 'goog')
+    # 4. Check Route Attributes (Max 25, keys 1-100 bytes, values <= 100 bytes, keys cannot start with 'goog')
     local attr_keys
     attr_keys=$(echo "$route_json" | jq -r '.routeAttributes | keys[]?' 2>/dev/null || echo "")
     local attr_count
     attr_count=$(echo "$route_json" | jq '.routeAttributes | length' 2>/dev/null || echo "0")
-    if [[ "$attr_count" -gt 10 ]]; then
-      echo "CRITICAL VALIDATION ERROR: routeAttributes count ($attr_count) exceeds maximum limit of 10." >&2
+    if [[ "$attr_count" -gt 25 ]]; then
+      echo "CRITICAL VALIDATION ERROR: routeAttributes count ($attr_count) exceeds maximum limit of 25." >&2
       return 1
     fi
     for k in ${attr_keys}; do
@@ -145,7 +145,7 @@ roadsselection_v1_dynamicroute_json() {
 #
 # @param string display_name Optional. Display name for the route (max 100 bytes UTF-8).
 # @param string dynamic_route_json Required. JSON object representing a DynamicRoute.
-# @param string route_attributes_json Optional. JSON object for custom attributes (max 10 pairs).
+# @param string route_attributes_json Optional. JSON object for custom attributes (max 25 pairs).
 # @param string name Optional. Resource name for update/patch operations.
 # @return string The JSON SelectedRoute object.
 roadsselection_v1_selectedroute_json() {

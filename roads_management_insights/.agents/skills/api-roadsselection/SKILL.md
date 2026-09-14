@@ -47,7 +47,7 @@ Validation rules:
    - Maximum **25 intermediate waypoints** (`len($) <= 25`).
    - Coordinate boundaries: Latitude $[-90, 90]$, Longitude $[-180, 180]$.
 4. **`route_attributes` (`map<string, string>`)**:
-   - Maximum **10 key-value pairs** per route (`len($) <= 10`).
+   - Maximum **25 key-value pairs** per route (`len($) <= 25`).
    - Keys & Values: **1 to 100 bytes** each in UTF-8 encoding (not raw character count). Multi-byte UTF-8 characters consume 2 to 4 bytes per character.
    - Keys **must NOT start with `goog`** (`not matches($.key, '^goog.*')`).
 5. **Lifecycle `State` Enum (Output Only)**:
