@@ -33,6 +33,6 @@
         "name": "route_attributes",
         "type": "STRING",
         "mode": "NULLABLE",
-        "description": "JSON-formatted flat string of custom key-value metadata attributes (e.g., '{\"region\": \"north\", \"tier\": \"priority\"}'). Constraints: Flat structure (no nested JSON arrays or objects), maximum of 10 key-value pairs allowed. Both keys and values must be STRING types. Keys/values are restricted to a maximum of 100 characters each. Keys are case-insensitive and cannot start with the prefix 'goog' (reserved for system metadata). Used for filtering and grouping in downstream BI dashboards and analysis."
+        "description": "JSON-formatted flat string of custom key-value metadata attributes (e.g., '{\"region\": \"north\", \"tier\": \"priority\"}'). Constraints: Flat structure (no nested JSON arrays or objects), maximum of 25 key-value pairs allowed. Both keys and values must be STRING types. Keys/values are restricted to a maximum of 100 characters each. Keys are case-insensitive and cannot start with the prefix 'goog' (reserved for system metadata). Used for filtering and grouping in downstream BI dashboards and analysis."
     }
 ]

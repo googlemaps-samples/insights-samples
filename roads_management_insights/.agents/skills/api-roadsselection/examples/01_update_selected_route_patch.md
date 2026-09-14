@@ -22,7 +22,7 @@ With native **`PATCH` / `UpdateSelectedRoute`**:
 * **URL**: `https://roads.googleapis.com/selection/v1/projects/{project}/selectedRoutes/{selectedRouteId}?updateMask={fieldPaths}`
 * **Updatable Fields**:
   * `displayName`: Route human-readable label (max 100 characters).
-  * `routeAttributes`: Key-value string map (max 10 pairs).
+  * `routeAttributes`: Key-value string map (max 25 pairs).
   * `dynamicRoute`: Geometry including `origin`, `destination`, and `intermediates`.
   * `*`: Full replacement of all updatable fields.
 

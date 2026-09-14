@@ -20,7 +20,7 @@ According to the canonical Protobuf service definition:
 
 | Rule | Constraint | Failure Consequence |
 | :--- | :--- | :--- |
-| **Max Attribute Pairs** | Up to **10 key-value pairs** per route (`len($) <= 10`). | `400 INVALID_ARGUMENT: Route attributes must be 10 or less.` |
+| **Max Attribute Pairs** | Up to **25 key-value pairs** per route (`len($) <= 25`). | `400 INVALID_ARGUMENT: Route attributes must be 25 or less.` |
 | **Key & Value Length** | **1 to 100 bytes** each in UTF-8 (`len(key.encode('utf-8')) <= 100`). Multi-byte characters (e.g. CJK 3 bytes/char) reduce effective character count. | `400 INVALID_ARGUMENT: Route attribute key/value must be between 1 and 100 bytes.` |
 | **Prohibited Prefix** | Keys **must NOT start with `goog`** (`not matches(key, '^goog.*')`). | `400 INVALID_ARGUMENT: Route attribute key must not start with 'goog'.` |
 | **Type Constraint** | Values must strictly be **strings** (numeric values like speed limits must be stringified, e.g. `"65"`). | JSON type deserialization error. |
@@ -44,7 +44,7 @@ ROUTE_ID="us-ca-baybridge-wb"
 # 1. Define geometry
 DYN_JSON=$(roadsselection_v1_dynamicroute_json 37.8270 -122.3780 37.7950 -122.3930 '[]')
 
-# 2. Define custom attributes map (Max 10 pairs, stringified values, no 'goog' prefix)
+# 2. Define custom attributes map (Max 25 pairs, stringified values, no 'goog' prefix)
 ROUTE_JSON=$(roadsselection_v1_selectedroute_json \
   "I-80 Bay Bridge Westbound Express" \
   "${DYN_JSON}" \
@@ -110,8 +110,8 @@ import requests
 
 def validate_route_attributes(attributes: dict):
     """Validates attributes against Proto constraints before API dispatch."""
-    if len(attributes) > 10:
-        raise ValueError(f"Too many attributes: {len(attributes)} (max 10 allowed)")
+    if len(attributes) > 25:
+        raise ValueError(f"Too many attributes: {len(attributes)} (max 25 allowed)")
     
     for k, v in attributes.items():
         if not (1 <= len(k) <= 100):
@@ -195,8 +195,8 @@ function validateRouteAttributes(attributes?: RouteAttributes): void {
   if (!attributes) return;
 
   const entries = Object.entries(attributes);
-  if (entries.length > 10) {
-    throw new Error(`routeAttributes cannot exceed 10 entries (got ${entries.length})`);
+  if (entries.length > 25) {
+    throw new Error(`routeAttributes cannot exceed 25 entries (got ${entries.length})`);
   }
 
   for (const [key, value] of entries) {

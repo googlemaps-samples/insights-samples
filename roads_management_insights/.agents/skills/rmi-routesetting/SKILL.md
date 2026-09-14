@@ -175,7 +175,7 @@ The end-to-end route creation workflow coordinates three GA-stage services:
 | **Max Intermediates** | **25 waypoints** per `SelectedRoute` | Hard API limit for `dynamicRoute.intermediates`. Always apply decimation when processing dense paths. |
 | **Routing Preference** | `TRAFFIC_UNAWARE` for baseline pathing | Ensures static, reproducible route geometries without temporary incident warping. |
 | **Identifier Format** | Hyphens only (`[a-zA-Z0-9-]`) | Selected Route IDs must match regex constraints (4–63 chars, no underscores). |
-| **Attribute Format** | `map<string, string>` (Max 10 pairs) | All attribute values must be strings (max 100 chars); numeric attributes require `SAFE_CAST()` in SQL. |
+| **Attribute Format** | `map<string, string>` (Max 25 pairs) | All attribute values must be strings (max 100 chars); numeric attributes require `SAFE_CAST()` in SQL. |
 
 ---
 

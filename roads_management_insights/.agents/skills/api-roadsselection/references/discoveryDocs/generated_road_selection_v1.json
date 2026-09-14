@@ -412,7 +412,7 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Optional. Up to 10 key-value pairs (1-100 chars, keys must not start with 'goog').",
+          "description": "Optional. Up to 25 key-value pairs (1-100 chars, keys must not start with 'goog').",
           "type": "object"
         },
         "state": {

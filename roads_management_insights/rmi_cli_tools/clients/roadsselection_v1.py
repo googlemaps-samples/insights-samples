@@ -54,7 +54,7 @@ def validate_route_attributes(attributes: Dict[str, str]) -> None:
     """Validates routeAttributes dictionary according to the proto specification.
 
     Constraints enforced:
-      - Maximum 10 key-value pairs (len <= 10).
+      - Maximum 25 key-value pairs (len <= 25).
       - Keys and values must be strings between 1 and 100 bytes (UTF-8 encoded).
       - Keys must not start with the reserved prefix 'goog' (case-sensitive).
 
@@ -67,8 +67,8 @@ def validate_route_attributes(attributes: Dict[str, str]) -> None:
     """
     if not isinstance(attributes, dict):
         raise TypeError(f"route_attributes must be a dictionary, got {type(attributes).__name__}")
-    if len(attributes) > 10:
-        raise ValueError(f"route_attributes cannot exceed 10 entries (got {len(attributes)})")
+    if len(attributes) > 25:
+        raise ValueError(f"route_attributes cannot exceed 25 entries (got {len(attributes)})")
     for k, v in attributes.items():
         if not isinstance(k, str) or not isinstance(v, str):
             raise TypeError(f"Attribute key and value must be strings: {k!r}={v!r}")
@@ -164,7 +164,7 @@ class RoadsSelectionClient:
             origin: (latitude, longitude) tuple for the corridor starting point.
             destination: (latitude, longitude) tuple for the corridor ending point.
             intermediates: Optional list of up to 25 (latitude, longitude) waypoint tuples.
-            route_attributes: Optional dictionary of up to 10 metadata key-value pairs.
+            route_attributes: Optional dictionary of up to 25 metadata key-value pairs.
 
         Returns:
             Dictionary representing the created SelectedRoute resource from Google Cloud.

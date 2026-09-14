@@ -77,7 +77,7 @@ export interface SelectedRoute {
   displayName?: string;
   /** Dynamic waypoint geometry defining the corridor. */
   dynamicRoute?: DynamicRoute;
-  /** Key-value metadata pairs used for BigQuery clustering and stream filtering (max 10). */
+  /** Key-value metadata pairs used for BigQuery clustering and stream filtering (max 25). */
   routeAttributes?: Record<string, string>;
   /** Output-only lifecycle state (e.g. 'STATE_RUNNING', 'STATE_VALIDATING', 'STATE_INVALID'). */
   state?: string;
@@ -129,7 +129,7 @@ export interface CreateRouteInput {
   destination: LatLng;
   /** Optional intermediate waypoints (max 25). */
   intermediates?: LatLng[];
-  /** Optional metadata tags (max 10 pairs, keys must not start with 'goog'). */
+  /** Optional metadata tags (max 25 pairs, keys must not start with 'goog'). */
   attributes?: Record<string, string>;
 }
 
@@ -168,15 +168,15 @@ export interface RoadsSelectionClientOptions {
  *
  * @param attributes Key-value string map representing route metadata.
  * @throws {TypeError} If attributes is not an object or contains non-string values.
- * @throws {Error} If key count exceeds 10, byte lengths exceed 100 bytes UTF-8, or key starts with 'goog'.
+ * @throws {Error} If key count exceeds 25, byte lengths exceed 100 bytes UTF-8, or key starts with 'goog'.
  */
 export function validateRouteAttributes(attributes: Record<string, string>): void {
   if (typeof attributes !== 'object' || attributes === null) {
     throw new TypeError('routeAttributes must be an object');
   }
   const keys = Object.keys(attributes);
-  if (keys.length > 10) {
-    throw new Error(`routeAttributes cannot exceed 10 entries (got ${keys.length})`);
+  if (keys.length > 25) {
+    throw new Error(`routeAttributes cannot exceed 25 entries (got ${keys.length})`);
   }
   for (const k of keys) {
     const v = attributes[k];
