@@ -43,7 +43,9 @@ The notebooks read only
   heading/pitch/roll). **No intrinsics are provided.** `svi_geo` ships a
   fitted Kannala–Brandt (KB4) fisheye model in
   `svi_geo/svi_geo/intrinsics/rosette_kb4_v1.json`, and all views sent to
-  Gemini are rendered from it.
+  Gemini are rendered from it. See
+  [`intrinsic-calculation.md`](intrinsic-calculation.md) for the mathematical
+  formulation and step-by-step instructions to reproduce the self-calibration.
 - **`capture_id` identifies a single panorama, not a drive.** Drive sequences
   are rebuilt within each `snapshot_id` by ordering panoramas by
   `capture_time` and splitting at time/distance gaps (see
@@ -69,6 +71,9 @@ them unset.
 
 ## Calibration and evaluation
 
-See [`svi_geo/README.md`](svi_geo/README.md) for the calibration metrics,
-synthetic evaluation and real-data self-consistency results, and for how to
-reproduce them.
+- **[`intrinsic-calculation.md`](intrinsic-calculation.md)**: detailed guide on
+  how the 7-camera rosette intrinsics (`rosette_kb4_v1.json`) were
+  self-calibrated from multi-view panoramic imagery and how to reproduce the
+  calibration test yourself.
+- **[`svi_geo/README.md`](svi_geo/README.md)**: package overview, calibration
+  metrics, synthetic evaluation, and real-data self-consistency results.
