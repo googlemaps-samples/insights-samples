@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "svi-geo"
+version = "0.1.0"
+description = "Geometry, sequencing, dedup and Gemini helpers for Street View Insights panoramic (rosette) imagery."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = [
+  "numpy",
+  "scipy",
+  "opencv-python-headless>=4.8",
+  "scikit-learn",
+  "shapely",
+  "pydantic>=2",
+  "google-genai",
+  "google-cloud-bigquery",
+  "google-cloud-storage",
+  "db-dtypes",
+  "pandas",
+  "pyarrow",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff"]
+notebooks = ["folium", "matplotlib", "nbformat", "nbconvert"]
+
+[tool.setuptools]
+packages = ["svi_geo"]
+
+[tool.setuptools.package-data]
+svi_geo = ["intrinsics/*.json"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]

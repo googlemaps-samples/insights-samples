@@ -1,0 +1,77 @@
+{
+  "cam_rot_delta_deg": {
+    "0": [
+      1.7501579126383553,
+      0.872723930871263,
+      -0.6795236272608156
+    ],
+    "1": [
+      -0.3092619427691198,
+      0.6706157117907162,
+      0.2294349163799823
+    ],
+    "2": [
+      -0.5295671369336564,
+      0.7706022806926729,
+      0.31444718114892606
+    ],
+    "3": [
+      0.9940841155535755,
+      0.308614328693356,
+      0.8953497681006637
+    ],
+    "4": [
+      -2.259143578415632,
+      -0.3051805757216209,
+      0.07200678097013627
+    ],
+    "5": [
+      0.331989432484369,
+      -0.10455730281875279,
+      -0.5868465118654157
+    ]
+  },
+  "cx": 1903.921213565442,
+  "cy": 2721.075171848483,
+  "fitted": true,
+  "fx": 2847.132359698659,
+  "fy": 2847.132359698659,
+  "height": 5472,
+  "k1": 0.03221775876720253,
+  "k2": -0.0368138737113626,
+  "k3": -0.028217753970878473,
+  "k4": 0.0,
+  "max_theta_deg": 58.18957640701745,
+  "metrics": {
+    "gates": {
+      "1_intra_median_lt_0.5deg_stretch": false,
+      "1_intra_median_lt_1deg": true,
+      "1_intra_p90_lt_2deg": false,
+      "2_seam_vertical_lt_3px": true,
+      "2b_secondary_seam_vertical_lt_0.27deg": true,
+      "3_verticality_median_lt_0.5deg": false,
+      "4_3x_better_than_default_metric1": true,
+      "4_3x_better_than_default_metric2": false
+    },
+    "heldout_consecutive_median_deg": 0.04289629259217796,
+    "heldout_intra_median_deg": 0.7028853409917155,
+    "heldout_intra_p90_deg": 2.01166344213225,
+    "heldout_seam_vertical_px_median": 2.699493408203125,
+    "heldout_verticality_median_deg": 0.7052236752478712,
+    "n_heldout_panos": 20,
+    "n_train_panos": 82
+  },
+  "notes": "KB4 fisheye shared by cameras 0-5, fitted by scripts/fit_intrinsics.py on 82 pano_observations_latest panos (16 consecutive pairs) from 5 AOIs; per-camera rotation deltas; rosette radius measured from camera_pose positions (not fitted). max_theta_deg = max(99.5th pct of used feature angles + 2, frame-edge midpoint angle + 1) (the edge rule was applied after the fit run; it does not change the fitted parameters). Gate 4_metric2 is false because the placeholder model yields no seam matches at all (NaN).",
+  "pose_convention": [
+    1,
+    1
+  ],
+  "rosette_radius_m": 0.08438098229661596,
+  "source_snapshots": [
+    "21d75cd4-5841-436a-a7c1-7722959141e1",
+    "6beee298-7926-4d22-b80c-6a889aa85e32",
+    "7518c96b-497d-4b65-bd05-7bf930bc72ae",
+    "a58dfde4-d9fa-464e-9af5-86bacf7f040b"
+  ],
+  "width": 3648
+}

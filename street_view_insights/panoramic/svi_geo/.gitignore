@@ -1,0 +1,6 @@
+data/
+.cache/
+*.parquet
+*.jpg
+*.egg-info/
+build/

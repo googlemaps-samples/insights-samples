@@ -1,0 +1,158 @@
+import math
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from svi_geo import geo, sequence
+
+T0 = pd.Timestamp("2024-06-01T10:00:00Z")
+
+
+def _track(
+    n, spacing_m, dt_s, bearing_deg=90.0, start_enu=(0.0, 0.0), t0=T0, snap="s1", prefix="p"
+):
+    rows = []
+    b = math.radians(bearing_deg)
+    for i in range(n):
+        e = start_enu[0] + i * spacing_m * math.sin(b)
+        nn = start_enu[1] + i * spacing_m * math.cos(b)
+        lat, lng, _ = geo.enu_to_lla(e, nn, 0.0, 48.8, 2.37)
+        rows.append(
+            {
+                "pano_id": f"{prefix}{i:03d}",
+                "snapshot_id": snap,
+                "capture_time": t0 + pd.Timedelta(seconds=i * dt_s),
+                "lat": float(lat),
+                "lng": float(lng),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _n_seq(out):
+    return out["seq_id"].nunique()
+
+
+@pytest.mark.parametrize("spacing,dt", [(10.0, 1.2), (5.0, 0.6)])
+def test_single_track_is_one_ordered_sequence(spacing, dt):
+    df = _track(20, spacing, dt).sample(frac=1.0, random_state=0)  # shuffled input
+    out = sequence.build_sequences(df)
+    assert _n_seq(out) == 1
+    assert list(out.sort_values("seq_idx")["pano_id"]) == [f"p{i:03d}" for i in range(20)]
+    stats = sequence.spacing_stats(df)
+    assert stats["median_m"] == pytest.approx(spacing, rel=0.01)
+
+
+def test_long_time_gap_splits():
+    a = _track(10, 10.0, 1.2)
+    b = _track(
+        10,
+        10.0,
+        1.2,
+        start_enu=(100.0, 0.0),
+        t0=T0 + pd.Timedelta(seconds=11 * 1.2 + 40),
+        prefix="q",
+    )
+    out = sequence.build_sequences(pd.concat([a, b]))
+    assert _n_seq(out) == 2
+
+
+def test_spatial_jump_splits():
+    a = _track(10, 10.0, 1.2)
+    b = _track(
+        10, 10.0, 1.2, start_enu=(90.0 + 60.0, 0.0), t0=T0 + pd.Timedelta(seconds=12.0), prefix="q"
+    )
+    out = sequence.build_sequences(pd.concat([a, b]))
+    assert _n_seq(out) == 2
+
+
+def test_interleaved_vehicles_split():
+    a = _track(15, 10.0, 1.2)
+    b = _track(
+        15,
+        10.0,
+        1.2,
+        bearing_deg=0.0,
+        start_enu=(0.0, 300.0),
+        t0=T0 + pd.Timedelta(seconds=0.6),
+        prefix="q",
+    )
+    out = sequence.build_sequences(pd.concat([a, b]))
+    assert _n_seq(out) == 2
+    for _, g in out.groupby("seq_id"):
+        assert g["pano_id"].str[0].nunique() == 1
+
+
+def test_snapshots_are_partitioned():
+    a = _track(10, 10.0, 1.2, snap="s1")
+    b = _track(10, 10.0, 1.2, snap="s2", prefix="q")
+    out = sequence.build_sequences(pd.concat([a, b]))
+    assert _n_seq(out) == 2
+
+
+def test_travel_bearing_eastbound_and_ends_safe():
+    out = sequence.build_sequences(_track(10, 10.0, 1.2, bearing_deg=90.0))
+    tb = sequence.travel_bearing(out)
+    np.testing.assert_allclose(tb, 90.0, atol=0.01)
+    single = sequence.build_sequences(_track(1, 10.0, 1.2))
+    assert np.isnan(sequence.travel_bearing(single)).all()
+
+
+def test_neighbours():
+    out = sequence.build_sequences(_track(10, 10.0, 1.2))
+    nb = sequence.neighbours(out, "p005", k=2)
+    assert list(nb["pano_id"]) == ["p003", "p004", "p006", "p007"]
+    assert list(sequence.neighbours(out, "p000", k=2)["pano_id"]) == ["p001", "p002"]
+
+
+def test_camera_roles_eastbound():
+    headings = [55, 115, 175, -125, -65, -5]
+    frames = pd.DataFrame(
+        {
+            "observation_id": [f"o1:P_{k}:5001ee" for k in range(7)],
+            "camera_pose": [{"heading": h, "pitch": 0.0} for h in headings]
+            + [{"heading": 0.0, "pitch": 87.0}],
+        }
+    )
+    roles = sequence.camera_roles(frames, 90.0)
+    assert roles["front"]["camera_pose"]["heading"] == 115
+    assert roles["back"]["camera_pose"]["heading"] == -65
+    assert roles["right"]["camera_pose"]["heading"] == 175
+    assert roles["left"]["camera_pose"]["heading"] == -5
+    assert "sky" not in roles
+    assert "sky" in sequence.camera_roles(frames, 90.0, include_sky=True)
+
+
+@pytest.mark.live
+def test_spacing_paris_live():
+    from svi_geo import auth, data
+
+    runner = data.QueryRunner(
+        data.make_bigquery_client(credentials=auth.get_credentials()),
+        cache_dir=data.DEFAULT_QUERY_CACHE,
+    )
+    frames = runner.run(
+        data.PANO_META_SQL,
+        data.pano_meta_params(lat=48.81, lng=2.45, radius_m=500.0),
+    )
+    panos = data.panos_from_frames(frames)
+    stats = sequence.spacing_stats(panos)
+    print("Paris 500 m spacing stats:", stats)
+    assert 4.0 <= stats["median_m"] <= 12.0
+    seqs = sequence.build_sequences(panos)
+    assert seqs["seq_id"].nunique() >= 1
+
+
+def test_identical_capture_times_do_not_crash_or_merge_far_panos():
+    """Two panos sharing a timestamp (duplicate rows / two vehicles) are handled deterministically."""
+    a = _track(10, 10.0, 1.2)
+    b = _track(1, 10.0, 1.2, start_enu=(5.0, 0.0), prefix="dup")  # same time as a's first pano
+    far = _track(1, 10.0, 1.2, start_enu=(0.0, 5000.0), prefix="far")  # same time, 5 km away
+    out = sequence.build_sequences(pd.concat([a, b, far], ignore_index=True))
+    assert len(out) == 12
+    assert out["seq_id"].notna().all()
+    far_seq = out.loc[out["pano_id"] == "far000", "seq_id"].item()
+    assert (out["seq_id"] == far_seq).sum() == 1
+    ids = out.loc[out["seq_id"] == out.loc[out["pano_id"] == "p005", "seq_id"].item()]
+    assert ids["seq_idx"].is_unique

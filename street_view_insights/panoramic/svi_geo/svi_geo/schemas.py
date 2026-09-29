@@ -1,0 +1,265 @@
+"""Pydantic response schemas shared by the notebooks, the skill and the eval (Gemini-facing).
+
+Every Gemini call in this package asks for one of these models via `response_schema`, so the
+reply is parsed and validated in code. Geometry (boxes -> pixels -> bearings) is handled by
+`box_2d_to_pixels` + `rosette`/`PerspectiveView`, never by the model.
+
+Box convention (Gemini native): `box_2d = [ymin, xmin, ymax, xmax]`, integers in 0..1000,
+normalised to the image that was sent.
+"""
+
+from __future__ import annotations
+
+from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic.json_schema import SkipJsonSchema
+
+
+class AssetClass(str, Enum):
+    HOUSE = "HOUSE"
+    UTILITY_POLE = "UTILITY_POLE"
+    ROAD_SIGN = "ROAD_SIGN"
+    STREET_LIGHT = "STREET_LIGHT"
+    FIRE_HYDRANT = "FIRE_HYDRANT"
+    GATE = "GATE"
+
+
+class AssetMaterial(str, Enum):
+    """Vote-able material of a discrete asset (constrained decoding, no free text; QA F10)."""
+
+    WOOD = "WOOD"
+    CONCRETE = "CONCRETE"
+    METAL = "METAL"
+    COMPOSITE = "COMPOSITE"
+    BRICK = "BRICK"
+    STONE = "STONE"
+    PLASTIC = "PLASTIC"
+    OTHER = "OTHER"
+    UNKNOWN = "UNKNOWN"
+
+
+class ExteriorMaterial(str, Enum):
+    BRICK = "BRICK"
+    STONE = "STONE"
+    WOOD = "WOOD"
+    VINYL = "VINYL"
+    STUCCO = "STUCCO"
+    CONCRETE = "CONCRETE"
+    FIBER_CEMENT = "FIBER_CEMENT"
+    METAL = "METAL"
+    GLASS = "GLASS"
+    OTHER = "OTHER"
+    UNKNOWN = "UNKNOWN"
+
+
+class RoofType(str, Enum):
+    GABLE = "GABLE"
+    HIP = "HIP"
+    FLAT = "FLAT"
+    MANSARD = "MANSARD"
+    SHED = "SHED"
+    GAMBREL = "GAMBREL"
+    OTHER = "OTHER"
+    UNKNOWN = "UNKNOWN"
+
+
+def _check_box(v: list[int] | None) -> list[int] | None:
+    if v is None:
+        return v
+    if len(v) != 4:
+        raise ValueError("box_2d must have 4 values [ymin, xmin, ymax, xmax]")
+    if any(c < 0 or c > 1000 for c in v):
+        raise ValueError("box_2d values must be in 0..1000")
+    if v[0] >= v[2] or v[1] >= v[3]:
+        raise ValueError("box_2d must satisfy ymin < ymax and xmin < xmax")
+    return [int(c) for c in v]
+
+
+class Detection(BaseModel):
+    label: AssetClass
+    box_2d: list[int] = Field(description="[ymin, xmin, ymax, xmax] in 0..1000")
+    confidence: float = Field(ge=0.0, le=1.0)
+    material: AssetMaterial | None = None
+    notes: str | None = None
+
+    @field_validator("box_2d")
+    @classmethod
+    def _valid_box(cls, v):
+        return _check_box(v)
+
+
+def _repair_box(v: Any) -> Any:
+    """Clip to 0..1000 and order each axis; leaves anything unrepairable for validation."""
+    if not isinstance(v, list | tuple) or len(v) != 4:
+        return v
+    try:
+        y0, x0, y1, x1 = (min(1000, max(0, int(round(float(c))))) for c in v)
+    except (TypeError, ValueError):
+        return v
+    return [min(y0, y1), min(x0, x1), max(y0, y1), max(x0, x1)]
+
+
+class FrameDetections(BaseModel):
+    """Detections in one image. Individual malformed boxes are repaired (swapped corners,
+    slight overflow) or dropped and counted in `n_dropped`, so one bad box does not force a
+    paid re-ask of the whole reply (QA S14)."""
+
+    detections: list[Detection]
+    n_dropped: SkipJsonSchema[int] = 0
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_bad(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or not isinstance(data.get("detections"), list):
+            return data
+        good, dropped = [], 0
+        for d in data["detections"]:
+            if isinstance(d, dict) and "box_2d" in d:
+                d = {**d, "box_2d": _repair_box(d["box_2d"])}
+            try:
+                good.append(Detection.model_validate(d))
+            except ValidationError:
+                dropped += 1
+        return {**data, "detections": good, "n_dropped": int(data.get("n_dropped", 0)) + dropped}
+
+
+class SameObjectVerdict(BaseModel):
+    same_object: bool
+    confidence: float = Field(ge=0.0, le=1.0)
+    reason: str
+
+
+class SurfaceMaterial(str, Enum):
+    PAVED_ASPHALT = "Paved Asphalt"
+    CONCRETE = "Concrete"
+    BRICK_PAVERS = "Brick/Pavers"
+    COBBLESTONE = "Cobblestone"
+    GRAVEL = "Gravel"
+    DIRT = "Dirt"
+    MUD = "Mud"
+    TURF = "Turf"
+    UNPAVED = "Unpaved"
+    OTHER = "Other"
+
+
+class SurfaceCondition(str, Enum):
+    GOOD = "Good"
+    FAIR = "Fair"
+    DAMAGED = "Damaged/Potholes"
+    SEVERELY_DEGRADED = "Severely Degraded"
+
+
+class ContinuousAsset(str, Enum):
+    ROAD = "ROAD"
+    SIDEWALK = "SIDEWALK"
+    FENCE = "FENCE"
+    POWER_LINE = "POWER_LINE"
+
+
+class Side(str, Enum):
+    LEFT = "LEFT"
+    RIGHT = "RIGHT"
+    CENTER = "CENTER"
+
+
+class ContinuousAssetObservation(BaseModel):
+    asset: ContinuousAsset
+    side: Side
+    present: bool
+    material: SurfaceMaterial | None = None
+    condition: SurfaceCondition | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class WindowLabel(BaseModel):
+    """Labels for the centre pano of a 3-pano window (views rendered in code)."""
+
+    observations: list[ContinuousAssetObservation]
+
+
+class SurfaceMaterialResult(BaseModel):
+    """Single-image surface material answer (the skill's output)."""
+
+    primary_material: SurfaceMaterial
+    secondary_materials: list[SurfaceMaterial] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+    surface_condition: SurfaceCondition
+    visual_reasoning: str
+
+
+class Occlusion(str, Enum):
+    NONE = "NONE"
+    PARTIAL = "PARTIAL"
+    HEAVY = "HEAVY"
+
+
+class HouseView(BaseModel):
+    house_visible: bool
+    box_2d: list[int] | None = None
+    occlusion: Occlusion
+    facade_visible_fraction: float = Field(ge=0.0, le=1.0)
+    stories: int | None = Field(default=None, ge=1, le=10)
+    exterior_material: ExteriorMaterial | None = None
+    roof_type: RoofType | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("box_2d")
+    @classmethod
+    def _valid_box(cls, v):
+        return _check_box(v)
+
+
+class EdgeType(str, Enum):
+    RIDGE = "RIDGE"
+    EAVE = "EAVE"
+    HIP = "HIP"
+    VALLEY = "VALLEY"
+    RAKE = "RAKE"
+
+
+class RoofEdge(BaseModel):
+    edge_type: EdgeType
+    points: list[list[int]] = Field(description="polyline of [y, x] points in 0..1000")
+
+    @field_validator("edge_type", mode="before")
+    @classmethod
+    def _coerce_edge(cls, v):
+        return str(v).upper() if v else v
+
+    @field_validator("points", mode="before")
+    @classmethod
+    def _pts(cls, v):
+        if not v:
+            return []
+        v = [[int(round(float(c))) for c in p] for p in v]
+        if len(v) < 2:
+            raise ValueError("an edge needs >= 2 points")
+        for p in v:
+            if len(p) != 2 or any(c < 0 or c > 1000 for c in p):
+                raise ValueError("points must be [y, x] in 0..1000")
+        return v
+
+
+class RoofEdges(BaseModel):
+    roof_visible: bool
+    edges: list[RoofEdge] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class PresenceCheck(BaseModel):
+    present: bool
+    confidence: float = Field(ge=0.0, le=1.0)
+    box_2d: list[int] | None = None
+
+    @field_validator("box_2d")
+    @classmethod
+    def _valid_box(cls, v):
+        return _check_box(v)
+
+
+def box_2d_to_pixels(box_2d, width: int, height: int) -> tuple[float, float, float, float]:
+    """[ymin, xmin, ymax, xmax] (0..1000) -> (x0, y0, x1, y1) pixels in a width x height image."""
+    ymin, xmin, ymax, xmax = (float(c) for c in box_2d)
+    return (xmin / 1000 * width, ymin / 1000 * height, xmax / 1000 * width, ymax / 1000 * height)

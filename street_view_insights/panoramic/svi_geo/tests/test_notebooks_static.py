@@ -1,0 +1,90 @@
+"""T11: static checks for the panoramic notebooks (no execution, no network)."""
+
+import json
+import re
+from pathlib import Path
+
+import nbformat
+import pytest
+
+from svi_geo import data
+
+NOTEBOOKS = sorted((Path(__file__).resolve().parents[2] / "notebooks").glob("*.ipynb"))
+BANNED = ["from_uri", "file_uri", "urls_new", "all_observations", "all_assets", "sleep(15)"]
+BANNED_TABLES = re.compile(r"full_frame_observations|cropped_observations", re.I)
+FSTRING_SQL = re.compile(
+    r"\bf(\"\"\"|'''|\"|')\s*(SELECT|WITH)\b|\bf(\"\"\"|''').*?\bFROM\b", re.I | re.S
+)
+GCS_URI_SELECT = re.compile(r"SELECT\b[^;]*?\bgcs_uri\b", re.I | re.S)
+SQL_BLOCK = re.compile(r"(\"\"\"|''')(\s*(?:SELECT|WITH)\b.*?)\1", re.I | re.S)
+
+
+def _code(nb) -> str:
+    return "\n".join(c.source for c in nb.cells if c.cell_type == "code")
+
+
+def _all(nb) -> str:
+    return "\n".join(c.source for c in nb.cells)
+
+
+def test_there_are_four_notebooks():
+    assert {p.stem for p in NOTEBOOKS} == {
+        "agentic_roof_edge_detection",
+        "analyze_sequential_images",
+        "house_image_discovery_with_cost",
+        "surface_material_detection",
+    }
+
+
+@pytest.fixture(params=NOTEBOOKS, ids=lambda p: p.stem)
+def nb(request):
+    return nbformat.read(request.param, as_version=4)
+
+
+def test_valid_and_output_free(nb):
+    nbformat.validate(nb)
+    for c in nb.cells:
+        if c.cell_type == "code":
+            assert c.outputs == [] and c.execution_count is None
+
+
+def test_project_placeholder_and_parameters(nb):
+    code = _code(nb)
+    assert "YOUR_PROJECT_ID" in code
+    assert re.search(r"^MAX_GEMINI_CALLS\s*(:\s*[\w| ]+)?=", code, re.M), "MAX_GEMINI_CALLS param"
+    assert re.search(r"^MODEL\w*\s*=\s*[\"']gemini-3\.5-flash[\"']", code, re.M)
+    assert re.search(r"^GCS_BUCKET\s*=", code, re.M)
+
+
+def test_banned_patterns_absent(nb):
+    text = _all(nb)
+    for b in BANNED:
+        assert b not in text, b
+    assert not BANNED_TABLES.search(text)
+
+
+def test_sql_is_parameterised_and_pano_only(nb):
+    code = _code(nb)
+    assert not FSTRING_SQL.search(code), "f-string SQL"
+    assert "PANO_META_SQL" in code or "ScalarQueryParameter" in code
+    assert not GCS_URI_SELECT.search(code), "select gcs_uri -> use data.gcs_uri_for"
+    assert "gcs_uri_for" in code
+    for m in SQL_BLOCK.finditer(code):
+        tables = data.referenced_tables(m.group(2))
+        assert tables <= set(data.ALLOWED_TABLES) | {
+            t.replace(data.PROJECT, "YOUR_PROJECT_ID") for t in data.ALLOWED_TABLES
+        }, tables
+
+
+def test_images_are_prepared_in_code_and_costs_reported(nb):
+    code = _code(nb)
+    assert "rosette." in code or "pipeline." in code, "views must be rendered in code"
+    assert "estimate_cost" in code and ".cost.summary()" in code
+    assert "GeminiRunner" in code
+
+
+def test_notebook_json_has_no_secrets():
+    for p in NOTEBOOKS:
+        raw = p.read_text()
+        assert not re.search(r"AIza[0-9A-Za-z_\-]{30,}", raw)
+        assert "imagery-insights-sandbox" not in json.dumps(json.loads(raw)["cells"])
