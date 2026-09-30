@@ -12,13 +12,17 @@ using the Street View Insights **panoramic** tables only (`pano_observations_lat
 
 1.  **Metadata lookup (code).** A parameterised, dry-run-checked BigQuery query (capped at
     2 GB billed) reads frame metadata for panos within `--radius-m` of the point, or around the
-    given observation/pano id. It never selects `gcs_uri`: that column alone scans ~1.9 GB, so
-    the frame path is derived as `gs://<bucket>/<snapshot_id>/v0/<observation_id>.jpg`.
+    given id. `--observation-id` accepts an `observation_id`, a `pano_id` or a `capture_id`
+    (each pano has one `capture_id`). It never selects `gcs_uri`: that column alone scans
+    ~1.9 GB, so the frame path is derived as
+    `gs://<bucket>/<snapshot_id>/v0/<observation_id>.jpg`.
 2.  **Camera choice (code).** The forward camera of the nearest pano is picked from the travel
     direction (neighbouring panos of the same drive); camera 0 is the fallback.
-3.  **Road view (code).** The frame is downloaded with your credentials and a downward-looking
-    view is rendered deterministically (rectified with `svi_geo`'s fitted fisheye model when
-    `svi_geo` is installed, else a fixed crop of the lower frame).
+3.  **Road view (code).** The frame is downloaded with your credentials and a road view is
+    rendered deterministically. With `svi_geo` installed it is rectified with the fitted
+    fisheye model along the camera's calibrated heading, pitched 22 deg below the horizon
+    using the frame's real `camera_pose`, and the rows showing the vehicle are cropped.
+    Without `svi_geo` it is a fixed crop of the lower frame.
 4.  **Perception (Gemini).** The view is sent **inline as bytes** with a pydantic
     `response_schema`; the reply is validated in code (numeric confidence 0-1).
 
@@ -44,9 +48,9 @@ export PROJECT_ID=YOUR_PROJECT_ID GCS_BUCKET=YOUR_FRAME_BUCKET
 python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py \
   --coordinates <lat,lng>
 
-# By observation id or pano id
+# By observation id, pano id or capture id
 python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py \
-  --observation-id <observation_or_pano_id>
+  --observation-id <observation_pano_or_capture_id>
 
 # By a local image you already downloaded (no bucket needed)
 python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py \

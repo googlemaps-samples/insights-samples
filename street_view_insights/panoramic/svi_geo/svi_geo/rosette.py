@@ -739,3 +739,24 @@ def best_camera_for_view(
         if hfov >= min_hfov and (best is None or hfov > best.hfov_deg):
             best = CameraChoice(row, k, hfov, vfov)
     return best
+
+
+# Elevation (deg, camera frame) below which the capture vehicle's body fills the ground views.
+HOOD_ELEV_DEG = -40.0
+
+
+def hood_row(
+    view: PerspectiveView,
+    pose: Mapping[str, Any],
+    intr: Intrinsics,
+    hood_elev_deg: float = HOOD_ELEV_DEG,
+    cam_k: int | None = None,
+) -> int:
+    """First row of `view` (centre column) whose ray points below `hood_elev_deg` in the
+    camera frame of (`pose`, `cam_k`), i.e. onto the vehicle; `view.height` if none does.
+    Rows from here down show the vehicle, not the road, and should be cropped away."""
+    vs = np.arange(view.height, dtype=np.float64)
+    d_cam = view.pixel_dirs(np.full_like(vs, view.cx), vs) @ pose_rotation(intr, pose, cam_k)
+    el = np.degrees(np.arcsin(np.clip(-d_cam[..., 1], -1.0, 1.0)))
+    below = np.nonzero(el < hood_elev_deg)[0]
+    return int(below[0]) if below.size else int(view.height)

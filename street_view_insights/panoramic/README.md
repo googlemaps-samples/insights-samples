@@ -17,10 +17,11 @@ evaluation code.
   an accuracy measure): it projects each entity into a view that was not used
   and asks Gemini whether the object is there.
 - **[Surface Material Detection](notebooks/surface_material_detection.ipynb)**:
-  classifies continuous assets (road, sidewalk, fence, power line) at each
-  panorama along a drive. Labels are smoothed along the sequence with an HMM
-  (Viterbi), then merged into road segments with material, condition and
-  confidence.
+  classifies the road surface and the left/right sidewalks at each panorama
+  along a drive, from views centred on the travel direction. Labels are
+  smoothed along the sequence with an HMM (Viterbi) that keeps "no sidewalk" as
+  its own state and restarts at gaps. They are then merged into material
+  segments. Sidewalk lines are drawn at a schematic offset from the drive.
 - **[House Image Discovery with Cost](notebooks/house_image_discovery_with_cost.ipynb)**:
   picks, in each panorama, the camera that can show a whole target house without
   black border, renders an undistorted view framed on it, and asks Gemini to

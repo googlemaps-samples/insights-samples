@@ -156,3 +156,58 @@ def test_identical_capture_times_do_not_crash_or_merge_far_panos():
     assert (out["seq_id"] == far_seq).sum() == 1
     ids = out.loc[out["seq_id"] == out.loc[out["pano_id"] == "p005", "seq_id"].item()]
     assert ids["seq_idx"].is_unique
+
+
+# ----------------------------------------------------------------------------- Task 9
+
+from svi_geo import rosette  # noqa: E402
+
+INTR = rosette.DEFAULT_INTRINSICS
+
+
+def _rows(heading0):
+    rows = []
+    for k in range(7):
+        pitch = 90.0 if k == rosette.SKY_CAMERA else 0.0
+        pose = {"heading": (heading0 + 60.0 * k) % 360, "pitch": pitch, "roll": 0.0,
+                "latitude": 48.85, "longitude": 2.35, "altitude": 35.0}  # fmt: skip
+        rows.append({"observation_id": f"o1:PANO_{k}:5001ee", "cam_k": k, "camera_pose": pose})
+    return rows
+
+
+@pytest.mark.parametrize(("role", "off"), [("front", 0.0), ("left", -90.0), ("right", 90.0)])
+def test_road_view_yaw_is_travel_plus_role_offset(role, off):
+    assert sequence.road_view_yaw(80.0, role) == pytest.approx((80.0 + off) % 360)
+
+
+def test_road_view_is_centred_on_travel_even_when_cameras_are_25_deg_off():
+    travel = 80.0
+    rv = sequence.road_view(_rows(travel + 25.0), INTR, travel, "front", pitch_deg=-22.0)
+    assert rv is not None
+    assert rv.view.yaw_deg == pytest.approx(travel)
+    assert rv.view.pitch_deg == -22.0
+    black = rosette.view_black_fraction(
+        INTR, rv.choice.row["camera_pose"], rv.view, rv.choice.cam_k
+    )
+    assert black < 0.01
+
+
+def test_hood_row_masks_rows_below_the_hood_elevation():
+    pose = {"heading": 0.0, "pitch": 0.0, "roll": 0.0}
+    k = 0
+    yaw = INTR.cam_rot_delta_deg.get(k, (0.0,))[0]
+    view = rosette.PerspectiveView(yaw, -22.0, 70.0, 512, 384)  # bottom edge ~-50 deg
+    row = rosette.hood_row(view, pose, INTR, -40.0, cam_k=k)
+    assert 0 < row < view.height
+    _, el_at = view.pixel_to_bearing(view.cx, row)
+    assert float(el_at) == pytest.approx(-40.0, abs=1.5)
+    level = rosette.PerspectiveView(yaw, 0.0, 70.0, 512, 384)  # bottom edge ~-27 deg
+    assert rosette.hood_row(level, pose, INTR, -40.0, cam_k=k) == level.height
+
+
+def test_road_view_crops_rows_below_the_hood():
+    rv = sequence.road_view(_rows(0.0), INTR, 0.0, "front", pitch_deg=-22.0, hood_elev_deg=-40.0)
+    assert 0 < rv.keep_rows < rv.view.height
+    img = np.full((5472 // 8, 3648 // 8, 3), 90, np.uint8)
+    out = sequence.render_road_view(img, INTR, rv)
+    assert out.shape[0] == rv.keep_rows

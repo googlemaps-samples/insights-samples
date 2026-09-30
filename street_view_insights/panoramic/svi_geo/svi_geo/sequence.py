@@ -7,7 +7,8 @@ defaults to a multiple of the spacing *measured* on the same data (`spacing_stat
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import dataclasses
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -162,3 +163,56 @@ def camera_roles(frames: pd.DataFrame | list, travel_deg: float, include_sky: bo
     if include_sky and sky is not None:
         roles["sky"] = sky
     return roles
+
+
+ROAD_VIEW_ROLES = {"front": 0.0, "left": -90.0, "right": 90.0}
+
+
+def road_view_yaw(travel_deg: float, role: str) -> float:
+    """World yaw of a road view: travel direction + 0 (front), -90 (left) or +90 (right)."""
+    return float((travel_deg + ROAD_VIEW_ROLES[role]) % 360.0)
+
+
+@dataclasses.dataclass(frozen=True)
+class RoadView:
+    choice: rosette.CameraChoice
+    view: rosette.PerspectiveView
+    keep_rows: int  # rows above the vehicle hood; the rest is cropped after rendering
+
+
+def road_view(
+    pano_rows: Sequence[Any],
+    intr: rosette.Intrinsics,
+    travel_deg: float,
+    role: str,
+    pitch_deg: float = -22.0,
+    hfov_deg: float = 70.0,
+    size: tuple[int, int] = (1024, 768),
+    hood_elev_deg: float = rosette.HOOD_ELEV_DEG,
+    min_hfov_deg: float = 40.0,
+    max_black: float = 0.01,
+) -> RoadView | None:
+    """A world-oriented road view centred on travel + role offset (not on a camera heading).
+
+    The camera is whichever ground camera of the pano covers the view best
+    (`rosette.best_camera_for_view`); the FOV is narrowed from `hfov_deg` if needed so that
+    less than `max_black` of the view falls outside the sensor. Rows below the vehicle hood
+    are reported in `keep_rows` so `render_road_view` crops them. None if no camera reaches
+    `min_hfov_deg`."""
+    w, h = size
+    yaw = road_view_yaw(travel_deg, role)
+    choice = rosette.best_camera_for_view(
+        pano_rows, intr, yaw, pitch_deg, w / h,
+        min_hfov=min_hfov_deg, max_black=max_black, hfov_cap=hfov_deg,
+    )  # fmt: skip
+    if choice is None:
+        return None
+    view = rosette.PerspectiveView(yaw, float(pitch_deg), choice.hfov_deg, w, h)
+    keep = rosette.hood_row(view, _pose(choice.row), intr, hood_elev_deg, choice.cam_k)
+    return RoadView(choice, view, keep)
+
+
+def render_road_view(image: np.ndarray, intr: rosette.Intrinsics, rv: RoadView) -> np.ndarray:
+    """Render `rv` from its camera's frame and crop the rows below the vehicle hood."""
+    out = rosette.render_perspective(image, intr, _pose(rv.choice.row), rv.view, rv.choice.cam_k)
+    return out[: rv.keep_rows]

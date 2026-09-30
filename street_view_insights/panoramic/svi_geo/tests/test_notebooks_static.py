@@ -231,3 +231,34 @@ def test_uc2_self_check_is_labelled_consistency_with_bound_and_black_fraction():
     assert "selection_bound_deg" in code and "n_unrenderable" in code
     assert "black_fraction_max" in code
     assert "per-class" in code
+
+
+def _uc3():
+    return nbformat.read(
+        next(p for p in NOTEBOOKS if p.stem == "surface_material_detection"), as_version=4
+    )
+
+
+def test_uc3_sides_use_side_offset_and_no_numeric_side_literals():
+    code = _code(_uc3())
+    assert "smoothing.side_offset_m(" in code
+    assert not re.search(r'"(LEFT|RIGHT)",\s*-?\d', code)
+
+
+def test_uc3_absent_state_gap_breaks_and_travel_centred_views():
+    code = _code(_uc3())
+    assert "absent_label=smoothing.ABSENT" in code and "breaks=" in code
+    assert "smoothing.drive_length_m(" in code
+    assert "sequence.road_view(" in code and "sequence.render_road_view(" in code
+    assert "max(i - 1, 0)" not in code and "min(i + 1," not in code
+    assert "black_fraction_max" in code
+
+
+def test_uc3_reports_smoothing_effect_not_flicker_as_quality():
+    nb = _uc3()
+    code = _code(nb)
+    text = _all(nb).lower()
+    assert "flicker" not in code
+    assert "changed_by_smoothing" in code and "raw_smoothed_agreement" in code
+    assert "absent_share" in code
+    assert "not accuracy" in text and "schematic" in text

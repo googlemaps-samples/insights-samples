@@ -7,8 +7,10 @@ Pipeline (all deterministic code except the single Gemini perception call):
    gs://<bucket>/<snapshot_id>/v0/<observation_id>.jpg).
 2. Pick the forward-facing camera of the pano from the travel direction (neighbouring panos
    of the same drive), falling back to camera 0.
-3. Download the frame with the caller's credentials and render a road-facing view in code
-   (rectified with svi_geo when installed, otherwise a fixed lower-frame crop).
+3. Download the frame with the caller's credentials and render a road-facing view in code:
+   with svi_geo installed, a rectified view along the camera's calibrated heading, pitched
+   down in world coordinates using the frame's real camera_pose, with the vehicle hood
+   cropped; otherwise a fixed lower-frame crop.
 4. Send the view INLINE as bytes to Gemini with a pydantic `response_schema`; the reply is
    validated in code (numeric confidence, shared material taxonomy incl. Turf).
 """
@@ -81,7 +83,7 @@ SURFACE_MATERIAL_PROMPT = (
 _FIELDS = """
   pano_id, observation_id, snapshot_id, capture_time,
   capture_location.latitude AS lat, capture_location.longitude AS lng,
-  camera_pose.heading AS heading"""
+  camera_pose.heading AS heading, camera_pose.pitch AS pitch, camera_pose.roll AS roll"""
 
 # Frames of every pano within @radius_m of the point (the nearest pano plus its neighbours,
 # which give the travel direction). Filtered with ST_DWITHIN, never a full-table ORDER BY.
@@ -207,22 +209,42 @@ def _fit_within(img: np.ndarray, max_side: int = MAX_IMAGE_SIDE) -> np.ndarray:
     return cv2.resize(img, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA) if s < 1 else img
 
 
-def road_view(image: np.ndarray) -> np.ndarray:
-    """Deterministic road-facing view: rectified 25 deg below the optical axis with svi_geo's
-    fitted fisheye model when installed, else a fixed crop of the lower frame."""
+ROAD_PITCH_DEG = -22.0  # world pitch of the road view (PerspectiveView angles are world)
+ROAD_HFOV_DEG = 60.0
+ROAD_VIEW_SIZE = (1024, 768)
+
+
+def road_view_spec(pose: dict, cam_k: int | None, intr):
+    """World-oriented road view along the camera's calibrated heading (pose heading + the
+    fitted per-camera yaw delta), pitched `ROAD_PITCH_DEG` below the horizon."""
+    from svi_geo import rosette
+
+    delta = intr.cam_rot_delta_deg.get(int(cam_k), (0.0,))[0] if cam_k is not None else 0.0
+    yaw = (float(pose["heading"]) + delta) % 360.0
+    return rosette.PerspectiveView(yaw, ROAD_PITCH_DEG, ROAD_HFOV_DEG, *ROAD_VIEW_SIZE)
+
+
+def road_view(image: np.ndarray, pose: dict | None = None, cam_k: int | None = None) -> np.ndarray:
+    """Deterministic road-facing view.
+
+    With svi_geo installed and the frame's `camera_pose`: a 60 deg wide view rectified with the
+    fitted fisheye model along the camera's calibrated heading, pitched 22 deg below the
+    horizon in world coordinates (the pose's pitch and roll are applied), with the rows that
+    show the vehicle hood cropped. Without a pose (`--image`), the image is treated as a level
+    camera looking along its optical axis. Without svi_geo, a fixed crop of the lower frame."""
     try:
         from svi_geo import rosette
-
-        # 60 deg wide, 25 deg down: stays inside the lens field of view
-        view = rosette.PerspectiveView(0.0, -12.0, 60.0, 1024, 1024)
-        intr = rosette.load_intrinsics()
-        ident = {"heading": 0.0, "pitch": 0.0, "roll": 0.0}
-        intr0 = dataclasses.replace(intr, pose_convention=(1, 1), cam_rot_delta_deg={})
-        out = rosette.render_perspective(image, intr0, ident, view)
     except ImportError:
         h, w = image.shape[:2]
-        out = image[int(0.55 * h) : int(0.82 * h), int(0.1 * w) : int(0.9 * w)]
-    return _fit_within(out)
+        return _fit_within(image[int(0.55 * h) : int(0.82 * h), int(0.1 * w) : int(0.9 * w)])
+    intr = rosette.load_intrinsics()
+    if pose is None:
+        pose, cam_k = {"heading": 0.0, "pitch": 0.0, "roll": 0.0}, None
+        intr = dataclasses.replace(intr, pose_convention=(1, 1), cam_rot_delta_deg={})
+    view = road_view_spec(pose, cam_k, intr)
+    out = rosette.render_perspective(image, intr, pose, view, cam_k)
+    keep = rosette.hood_row(view, pose, intr, rosette.HOOD_ELEV_DEG, cam_k)
+    return _fit_within(out[:keep])
 
 
 # ----------------------------------------------------------------------------- auth
@@ -316,7 +338,9 @@ def fetch_frame(args) -> tuple[np.ndarray, dict]:
     gcs = storage.Client(project=project, credentials=creds)
     data = gcs.bucket(bucket).blob(name).download_as_bytes()
     img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    pose = {"heading": cam["heading"], "pitch": cam["pitch"] or 0.0, "roll": cam["roll"] or 0.0}
     meta = {
+        "camera_pose": pose,
         "pano_id": pano,
         "observation_id": cam["observation_id"],
         "cam_k": cam["cam_k"],
@@ -344,7 +368,7 @@ def main():
     from google import genai
     from google.genai import types
 
-    view = road_view(img)
+    view = road_view(img, pose=meta.get("camera_pose"), cam_k=meta.get("cam_k"))
     ok, jpg = cv2.imencode(".jpg", view, [cv2.IMWRITE_JPEG_QUALITY, 90])
     if not ok:
         print("Error: could not encode the road view", file=sys.stderr)
@@ -375,7 +399,7 @@ def main():
         sys.exit(1)
     out = {
         **result.model_dump(mode="json"),
-        "source": {k: v for k, v in meta.items() if k != "project"},
+        "source": {k: v for k, v in meta.items() if k not in ("project", "camera_pose")},
         "created": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
     }
     text = json.dumps(out, indent=2)

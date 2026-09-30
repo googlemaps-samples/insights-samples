@@ -11,11 +11,45 @@ from __future__ import annotations
 import math
 from collections import Counter
 from collections.abc import Hashable, Sequence
+from typing import Any
 
 import numpy as np
 from shapely.geometry import LineString
 
 from svi_geo import geo
+
+# Explicit "asset not present" state (e.g. no sidewalk on this side). Unlike `None` (no
+# answer), it is evidence in the smoothing chain, and no segment is emitted for it.
+ABSENT = "ABSENT"
+
+
+def side_offset_m(side: str, distance_m: float) -> float:
+    """Signed lateral offset for `segments_from_sequence`: positive = left of travel."""
+    return {"LEFT": float(distance_m), "RIGHT": -float(distance_m), "CENTER": 0.0}[side]
+
+
+def _enu(lat: Sequence[float], lng: Sequence[float]) -> tuple[np.ndarray, np.ndarray]:
+    lat = np.asarray(lat, float)
+    lng = np.asarray(lng, float)
+    e, n, _ = geo.lla_to_enu(lat, lng, np.zeros(len(lat)), float(lat[0]), float(lng[0]), 0.0)
+    return np.atleast_1d(e).astype(float), np.atleast_1d(n).astype(float)
+
+
+def gap_breaks(lat: Sequence[float], lng: Sequence[float], max_gap_m: float) -> list[bool]:
+    """breaks[i] is True when pano i is more than `max_gap_m` from pano i-1."""
+    if len(lat) == 0:
+        return []
+    e, n = _enu(lat, lng)
+    return [False] + [bool(d > max_gap_m) for d in np.hypot(np.diff(e), np.diff(n))]
+
+
+def drive_length_m(lat: Sequence[float], lng: Sequence[float], max_gap_m: float) -> float:
+    """Length of the drive, excluding jumps longer than `max_gap_m` (not driven here)."""
+    if len(lat) < 2:
+        return 0.0
+    e, n = _enu(lat, lng)
+    d = np.hypot(np.diff(e), np.diff(n))
+    return float(np.sum(d[d <= max_gap_m]))
 
 
 def majority_filter(labels: Sequence[Hashable], window: int = 3) -> list[Hashable]:
@@ -38,21 +72,41 @@ def viterbi(
     confidences: Sequence[float] | None = None,
     stay_prob: float = 0.9,
     states: Sequence[Hashable] | None = None,
-) -> list[Hashable]:
+    absent_label: Hashable | None = None,
+    breaks: Sequence[bool] | None = None,
+) -> list[Hashable | None]:
     """Most likely label path given noisy per-pano labels.
 
     Emission: the observed label has probability = its confidence (default 0.8, floored just
-    above 1/k), the remaining mass spread over the other states; `None` is uninformative.
+    above 1/k), the remaining mass spread over the other states.
+
+    - `None` (no answer) is uninformative, and it stays `None` in the output: smoothing
+      never invents a label for a pano that has none.
+    - `absent_label` (e.g. `ABSENT`) is an ordinary state, so a run of "not present" answers
+      survives smoothing like any other label.
+    - `breaks[i]` starts an independent chain at pano i (e.g. a gap in the drive).
     """
-    states = (
-        list(states)
-        if states is not None
-        else sorted({x for x in labels if x is not None}, key=str)
-    )
-    if not states:
+    n = len(labels)
+    conf = list(confidences) if confidences is not None else [0.8] * n
+    if states is None:
+        states = sorted({x for x in labels if x is not None}, key=str)
+    if absent_label is not None and absent_label not in states and absent_label in labels:
+        states = [*states, absent_label]
+    brk = list(breaks) if breaks is not None else [False] * n
+    out: list[Hashable | None] = []
+    start = 0
+    for i in range(1, n + 1):
+        if i == n or brk[i]:
+            path = _viterbi_chain(labels[start:i], conf[start:i], stay_prob, list(states))
+            out.extend(None if labels[j] is None else path[j - start] for j in range(start, i))
+            start = i
+    return out
+
+
+def _viterbi_chain(labels, conf, stay_prob, states) -> list[Hashable | None]:
+    if not states or not labels:
         return list(labels)
     k, n = len(states), len(labels)
-    conf = list(confidences) if confidences is not None else [0.8] * n
     idx = {s: i for i, s in enumerate(states)}
     log_t = np.full((k, k), math.log((1 - stay_prob) / max(1, k - 1)) if k > 1 else 0.0)
     np.fill_diagonal(log_t, math.log(stay_prob))
@@ -98,7 +152,8 @@ def segments_from_sequence(
     """Runs of equal labels along an ordered drive -> segments with lat/lng LINESTRINGs.
 
     `breaks[i]` (or a jump > `max_gap_m` between pano i-1 and i) starts a new segment. Each
-    run is extended half-way to its neighbours so consecutive segments meet.
+    run is extended half-way to its neighbours so consecutive segments meet. No segment is
+    emitted for `None` or `ABSENT`. Use `side_offset_m` for `offset_m` (positive = left).
     """
     lat = np.asarray(lat, float)
     lng = np.asarray(lng, float)
@@ -126,7 +181,7 @@ def segments_from_sequence(
             if hi < n - 1 and not brk[hi + 1]:
                 pe.append((e[hi] + e[hi + 1]) / 2)
                 pn.append((nn[hi] + nn[hi + 1]) / 2)
-            if labels[start] is not None and len(pe) >= 2:
+            if labels[start] not in (None, ABSENT) and len(pe) >= 2:
                 oe, on = _offset_enu(np.array(pe), np.array(pn), offset_m)
                 la, lo_, _ = geo.enu_to_lla(oe, on, np.zeros(len(oe)), *ref)
                 line = LineString(list(zip(np.atleast_1d(lo_), np.atleast_1d(la), strict=True)))
@@ -157,3 +212,20 @@ def flicker_per_km(labels: Sequence[Hashable | None], length_m: float) -> float:
     seq = [x for x in labels if x is not None]
     changes = sum(1 for a, b in zip(seq, seq[1:], strict=False) if a != b)
     return changes / max(length_m / 1000.0, 1e-9)
+
+
+def pick_slot(window_label: Any, asset: str, side: str) -> tuple[Hashable | None, float]:
+    """(label, confidence) of one (asset, side) slot of a `schemas.WindowLabel`.
+
+    `ABSENT` when the model says the asset is not present; `None` when the slot was not
+    answered (or is present without a material), so it stays uninformative."""
+    if window_label is None:
+        return None, 0.0
+    for o in window_label.observations:
+        if o.asset.value == asset and o.side.value == side:
+            if not o.present:
+                return ABSENT, float(o.confidence)
+            if o.material:
+                return o.material.value, float(o.confidence)
+            return None, 0.0
+    return None, 0.0

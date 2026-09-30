@@ -106,3 +106,37 @@ def test_road_crop_is_deterministic_code(dm):
     assert out.shape[0] <= 1536 and out.shape[1] <= 1536
     assert out.mean() > 100  # lower (road) part of the frame
     assert (out.max(axis=2) > 0).mean() > 0.9  # the view stays inside the lens FOV
+
+
+# ----------------------------------------------------------------------------- Task 9
+
+from svi_geo import rosette  # noqa: E402
+
+INTR = rosette.load_intrinsics()
+
+
+def test_road_view_uses_the_real_pose_camera_delta_and_world_pitch(dm):
+    pose = {"heading": 130.0, "pitch": 1.5, "roll": -0.8}
+    k = 2
+    view = dm.road_view_spec(pose, k, INTR)
+    assert view.yaw_deg == pytest.approx(130.0 + INTR.cam_rot_delta_deg.get(k, (0.0,))[0])
+    assert view.pitch_deg == dm.ROAD_PITCH_DEG  # world-relative (PerspectiveView is world)
+    img = np.full((5472 // 4, 3648 // 4, 3), 90, np.uint8)
+    img[: img.shape[0] // 2] = 30
+    out = dm.road_view(img, pose=pose, cam_k=k)
+    ref = rosette.render_perspective(img, INTR, pose, view, k)
+    keep = rosette.hood_row(view, pose, INTR, rosette.HOOD_ELEV_DEG, k)
+    np.testing.assert_array_equal(out, dm._fit_within(ref[:keep]))
+    assert (out.max(axis=2) == 0).mean() < 0.01
+
+
+def test_road_view_docstring_matches_the_code(dm):
+    doc = dm.road_view.__doc__
+    assert f"{abs(dm.ROAD_PITCH_DEG):g} deg" in doc
+    assert "25 deg" not in doc or dm.ROAD_PITCH_DEG == -25
+
+
+def test_skill_selects_the_full_pose_and_documents_capture_id(dm):
+    assert "camera_pose.pitch" in dm._FIELDS and "camera_pose.roll" in dm._FIELDS
+    md = SKILL.parents[1].joinpath("SKILL.md").read_text()
+    assert "capture_id" in md
