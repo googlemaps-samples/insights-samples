@@ -192,3 +192,95 @@ def test_horizon_row_follows_view_pitch():
     assert roof.horizon_row_for(view) == pytest.approx(view.cy)
     up = rosette.PerspectiveView(0.0, 14.0, 60.0, 1200, 900)
     assert roof.horizon_row_for(up) > view.cy  # looking up puts the horizon lower
+
+
+# ----------------------------------------------------------------------------- baselines (F4)
+# The validator checks that a straight image edge exists where Gemini drew a roof edge; it
+# does not check that the edge belongs to a roof. These tests pin what that means.
+
+
+def test_random_segments_stay_inside_the_region():
+    region = (300.0, 200.0, 800.0, 420.0)  # a roof band: wide and low
+    segs = roof.random_segments(900, 1200, n=300, seed=1, region=region)
+    assert len(segs) == 300
+    pts = np.array([p for s in segs for p in s])
+    assert (pts[:, 0] >= region[0]).all() and (pts[:, 0] <= region[2]).all()
+    assert (pts[:, 1] >= region[1]).all() and (pts[:, 1] <= region[3]).all()
+    lengths = [float(np.hypot(q[0] - p[0], q[1] - p[1])) for p, q in segs]
+    assert min(lengths) >= roof.MIN_SEGMENT_PX
+    assert segs == roof.random_segments(900, 1200, n=300, seed=1, region=region)
+
+
+def test_random_segments_region_is_clipped_to_the_image():
+    segs = roof.random_segments(900, 1200, n=50, seed=2, region=(-100.0, -50.0, 400.0, 300.0))
+    pts = np.array([p for s in segs for p in s])
+    assert pts.min() >= 0.0
+
+
+def _roof_band(scene):
+    (ex0, y_eave), (ex1, _) = next(p for t, p in scene.edges if t == "EAVE")
+    top = min(y for _, pts in scene.edges for _, y in pts)
+    return (ex0, top, ex1, y_eave)
+
+
+def test_result_baseline_can_be_sampled_in_the_roof_band():
+    scene = make_scene(9)
+    band = _roof_band(scene)
+    r = _validate(scene, scene.edges, n_random=200, seed=9, baseline_region=band)
+    assert r.random_acceptance == pytest.approx(
+        roof.random_line_baseline(
+            scene.image, 200, 9, scene.valid_mask, horizon_row=scene.horizon_row, region=band
+        )
+    )
+
+
+def _decoys(scene):
+    x0, y_eave, x1, y_base = scene.wall_box
+    hz = scene.horizon_row
+    return {
+        # sky / ground boundary beside the house
+        "horizon": [
+            [(max(0, x0 - 220), hz), (x0 - 20, hz)],
+            [(x1 + 20, hz), (min(1199, x1 + 220), hz)],
+        ],
+        # wall / ground boundary under the house
+        "wall_base": [[(x0 + 20, y_base), (x1 - 20, y_base)]],
+        # faint siding courses on the wall (7 % darker lines)
+        "siding": [[(x0 + 20, y), (x1 - 20, y)] for y in range(y_eave + 40, y_base - 10, 14)],
+    }
+
+
+def test_straight_non_roof_edges_pass_so_the_validator_is_not_a_roof_classifier():
+    acc = {"horizon": [], "wall_base": [], "siding": [], "band_random": []}
+    for s in HELD_OUT_SEEDS:
+        scene = make_scene(s)
+        got = roof.decoy_acceptance(
+            scene.image, _decoys(scene), scene.valid_mask, horizon_row=scene.horizon_row
+        )
+        for k, v in got.items():
+            acc[k].append(v)
+        acc["band_random"].append(
+            roof.random_line_baseline(
+                scene.image, 200, s, scene.valid_mask, scene.horizon_row, region=_roof_band(scene)
+            )
+        )
+    mean = {k: float(np.mean(v)) for k, v in acc.items()}
+    print("synthetic decoy / roof-band random acceptance:", mean)
+    # Measured on held-out seeds 8-15: horizon 0.625, wall base 0.625, siding 0.0, random
+    # segments in the roof band 0.001.
+    # strong straight boundaries that are not roof edges are accepted ...
+    assert mean["horizon"] >= 0.5 and mean["wall_base"] >= 0.5, mean
+    # ... faint texture lines and random segments in the roof band are not
+    assert mean["siding"] < 0.1 and mean["band_random"] < 0.05, mean
+
+
+def test_straight_lines_in_a_region_are_lsd_segments_inside_it():
+    scene = make_scene(10)
+    x0, y_eave, x1, y_base = scene.wall_box
+    region = (x0 - 10, y_eave + 5, x1 + 10, y_base + 10)
+    lines = roof.straight_lines_in(scene.image, region, min_len_px=40.0)
+    assert lines, "the wall base and wall sides are straight edges"
+    for (ax, ay), (bx, by) in lines:
+        assert region[0] <= min(ax, bx) and max(ax, bx) <= region[2]
+        assert region[1] <= min(ay, by) and max(ay, by) <= region[3]
+        assert np.hypot(bx - ax, by - ay) >= 40.0

@@ -396,3 +396,39 @@ def roof_box(row: Mapping[str, Any], view: rosette.PerspectiveView) -> tuple[flo
     _, v_eave, _ = view.bearing_to_pixel(row["bearing"], el_eave)
     _, v_top, _ = view.bearing_to_pixel(row["bearing"], el_top)
     return (float(u) - half_w, float(v_top), float(u) + half_w, float(v_eave))
+
+
+SIDING_HEIGHTS_M = (0.8, 1.4, 2.0)  # wall rows below the eave used as siding decoys
+
+
+def roof_decoys(
+    row: Mapping[str, Any], view: rosette.PerspectiveView
+) -> dict[str, list[list[tuple[float, float]]]]:
+    """Level non-roof lines across the roof box width for `roof.decoy_acceptance`: the
+    horizon (camera height), the wall base (ground) and siding rows (`SIDING_HEIGHTS_M`) at
+    `row['dist_m']`. None of them is a roof edge; the share that passes the validator shows
+    how often it accepts a straight edge that is not a roof."""
+    d = float(row["dist_m"])
+    x0, _, x1, _ = roof_box(row, view)
+    x0, x1 = max(x0, 0.0), min(x1, view.width - 1.0)
+
+    def level(h: float) -> list[tuple[float, float]]:
+        el = math.degrees(math.atan((h - CAM_HEIGHT_M) / d))
+        _, v, _ = view.bearing_to_pixel(row["bearing"], el)
+        return [(x0, float(v)), (x1, float(v))]
+
+    return {
+        "horizon": [level(CAM_HEIGHT_M)],
+        "wall_base": [level(0.0)],
+        "siding": [level(h) for h in SIDING_HEIGHTS_M],
+    }
+
+
+def wall_box(row: Mapping[str, Any], view: rosette.PerspectiveView) -> tuple[float, ...]:
+    """Pixel box (x0, y0, x1, y1) of the walls under `roof_box`: same width, from the eave
+    row down to the wall base (ground at `row['dist_m']`). Straight lines found here are
+    real image edges that are not roof edges (siding, windows, wall base)."""
+    x0, _, x1, y_eave = roof_box(row, view)
+    el_base = math.degrees(math.atan(-CAM_HEIGHT_M / float(row["dist_m"])))
+    _, v_base, _ = view.bearing_to_pixel(row["bearing"], el_base)
+    return (x0, y_eave, x1, float(v_base))

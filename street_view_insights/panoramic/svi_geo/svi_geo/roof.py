@@ -4,7 +4,10 @@
 * `validate_roof_edges` accepts a proposed edge only where the image has an oriented
   gradient and a line segment along it, off foliage, sky and no-data pixels; accepted edges
   are snapped to the image lines. `random_acceptance` reports how often random segments of
-  the same image pass, so every result carries its own false-accept baseline.
+  the same image (or of the roof band) pass, so every result carries its own false-accept
+  baseline. The validator checks that a straight image edge exists where an edge was drawn,
+  not that it is a roof edge; `decoy_acceptance` measures how often named non-roof lines
+  (horizon, wall base, siding) pass.
 """
 
 import dataclasses
@@ -311,15 +314,31 @@ def _as_typed(edge) -> tuple[str | None, list[tuple[float, float]]]:
     return None, list(edge)
 
 
-def random_segments(h: int, w: int, n: int = 200, seed: int = 0) -> list[list[tuple]]:
-    """`n` random straight segments of RANDOM_LEN_PX length fully inside an h x w image."""
+def random_segments(
+    h: int,
+    w: int,
+    n: int = 200,
+    seed: int = 0,
+    region: Sequence[float] | None = None,
+) -> list[list[tuple]]:
+    """`n` random straight segments fully inside an h x w image, or inside `region`
+    (x0, y0, x1, y1), clipped to the image. Lengths are RANDOM_LEN_PX, shortened to fit a
+    small region (at most its shorter side and at least MIN_SEGMENT_PX)."""
+    x0, y0, x1, y1 = (0.0, 0.0, w - 1.0, h - 1.0) if region is None else region
+    x0, x1 = max(0.0, float(x0)), min(w - 1.0, float(x1))
+    y0, y1 = max(0.0, float(y0)), min(h - 1.0, float(y1))
+    short = min(x1 - x0, y1 - y0) if region is not None else math.inf
+    lo = max(MIN_SEGMENT_PX, min(RANDOM_LEN_PX[0], 0.5 * short))
+    hi = max(lo, min(RANDOM_LEN_PX[1], math.hypot(x1 - x0, y1 - y0)))
+    if x1 - x0 < MIN_SEGMENT_PX and y1 - y0 < MIN_SEGMENT_PX:
+        raise ValueError(f"region {region} is too small for {MIN_SEGMENT_PX} px segments")
     rng = np.random.default_rng(seed)
     out = []
     while len(out) < n:
-        p = rng.uniform([0, 0], [w - 1, h - 1])
+        p = rng.uniform([x0, y0], [x1, y1])
         a = rng.uniform(0, math.pi)
-        q = p + rng.uniform(*RANDOM_LEN_PX) * np.array([math.cos(a), math.sin(a)])
-        if 0 <= q[0] <= w - 1 and 0 <= q[1] <= h - 1:
+        q = p + rng.uniform(lo, hi) * np.array([math.cos(a), math.sin(a)])
+        if x0 <= q[0] <= x1 and y0 <= q[1] <= y1:
             out.append([tuple(p), tuple(q)])
     return out
 
@@ -337,11 +356,46 @@ def random_line_baseline(
     seed: int = 0,
     valid_mask: np.ndarray | None = None,
     horizon_row: float | None = None,
+    region: Sequence[float] | None = None,
 ) -> float:
-    """Share of `n` random 100-400 px segments that the validator accepts on `img`: the
-    false-accept rate to compare an edge's acceptance against."""
+    """Share of `n` random segments that the validator accepts on `img` (inside `region`,
+    e.g. the expected roof band, when given): the false-accept rate to compare an edge's
+    acceptance against."""
     ctx = _context(img, valid_mask, horizon_row)
-    return _acceptance(ctx, random_segments(*img.shape[:2], n=n, seed=seed))
+    return _acceptance(ctx, random_segments(*img.shape[:2], n=n, seed=seed, region=region))
+
+
+def decoy_acceptance(
+    img: np.ndarray,
+    decoys: Mapping[str, Sequence[Sequence[Sequence[float]]]],
+    valid_mask: np.ndarray | None = None,
+    horizon_row: float | None = None,
+) -> dict[str, float]:
+    """Share of each named group of straight decoy segments (horizon, wall base, siding,
+    ...) that the validator accepts. The validator checks that a straight image edge exists
+    along a proposed segment, not that the edge is a roof edge, so a decoy lying on a real
+    straight boundary is expected to pass; these numbers say how often."""
+    ctx = _context(img, valid_mask, horizon_row)
+    return {name: _acceptance(ctx, segs) for name, segs in decoys.items() if len(segs)}
+
+
+def straight_lines_in(
+    img: np.ndarray, region: Sequence[float], min_len_px: float = 40.0
+) -> list[list[tuple[float, float]]]:
+    """LSD line segments of at least `min_len_px` lying fully inside `region` (x0, y0, x1,
+    y1). With `views.wall_box` as the region these are real straight edges that are not roof
+    edges, a stronger decoy set for `decoy_acceptance` than lines at assumed rows."""
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
+    lines = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD).detect(gray)[0]
+    if lines is None:
+        return []
+    x0, y0, x1, y1 = region
+    out = []
+    for ax, ay, bx, by in lines.reshape(-1, 4).astype(float):
+        inside = x0 <= min(ax, bx) and max(ax, bx) <= x1 and y0 <= min(ay, by) and max(ay, by) <= y1
+        if inside and math.hypot(bx - ax, by - ay) >= min_len_px:
+            out.append([(ax, ay), (bx, by)])
+    return out
 
 
 def validate_roof_edges(
@@ -352,6 +406,7 @@ def validate_roof_edges(
     snap_tol_px: float = 6.0,
     n_random: int = 200,
     seed: int = 0,
+    baseline_region: Sequence[float] | None = None,
 ) -> RoofValidationResult:
     """Accept a roof polyline only if every segment is backed by image evidence.
 
@@ -360,7 +415,13 @@ def validate_roof_edges(
     normal; near-collinear LSD segments cover >= MIN_LSD_OVERLAP of it; at most MAX_FOLIAGE
     lies on foliage and MAX_SKY inside the sky; and it stays inside `valid_mask` (eroded).
     Accepted polylines are snapped (see `_snap_polyline`); rejected ones keep their points
-    and a reason. `random_acceptance` is the same test on random segments of this image."""
+    and a reason. `random_acceptance` is the same test on random segments of this image, or
+    of `baseline_region` (x0, y0, x1, y1; e.g. the expected roof band) when given.
+
+    What passing means: a straight, oriented image edge exists along every segment, away
+    from foliage, sky and no-data pixels. It does not mean the edge belongs to a roof: a
+    horizon, a wall base or a strong siding line drawn by Gemini passes too (see
+    `decoy_acceptance`)."""
     ctx = _context(img, valid_mask, horizon_row)
     valid, rejected = [], []
     sup_ok, sup_all, residuals = [], [], []
@@ -391,7 +452,9 @@ def validate_roof_edges(
         sup_ok.extend(sups)
         valid.append(TypedEdge(etype, [tuple(map(float, p)) for p in snapped]))
     random_acc = (
-        _acceptance(ctx, random_segments(*img.shape[:2], n=n_random, seed=seed))
+        _acceptance(
+            ctx, random_segments(*img.shape[:2], n=n_random, seed=seed, region=baseline_region)
+        )
         if n_random
         else math.nan
     )

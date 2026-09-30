@@ -332,3 +332,33 @@ def test_roof_box_spans_the_roof_width_and_eave_to_ridge():
     assert float(el_top) == pytest.approx(np.degrees(np.arctan(rise / 30.0)), abs=0.1)
     drop = views.ROOF_EAVE_M - views.CAM_HEIGHT_M
     assert float(el_eave) == pytest.approx(np.degrees(np.arctan(drop / 30.0)), abs=0.1)
+
+
+def test_roof_decoys_are_non_roof_rows_across_the_roof_width():
+    view = rosette.PerspectiveView(90.0, 14.0, 60.0, 1200, 900)
+    row = {"bearing": 90.0, "dist_m": 25.0}
+    x0, _, x1, y_eave = views.roof_box(row, view)
+    decoys = views.roof_decoys(row, view)
+    assert set(decoys) == {"horizon", "wall_base", "siding"}
+    heights = {
+        "horizon": [views.CAM_HEIGHT_M],
+        "wall_base": [0.0],
+        "siding": views.SIDING_HEIGHTS_M,
+    }
+    for name, segs in decoys.items():
+        assert len(segs) == len(heights[name])
+        for ((ax, ay), (bx, by)), h in zip(segs, heights[name], strict=True):
+            assert ay == pytest.approx(by) and ay > y_eave  # level, below the eave
+            assert ax == pytest.approx(max(x0, 0.0)) and bx == pytest.approx(min(x1, 1199.0))
+            _, el = view.pixel_to_bearing(view.cx, ay)
+            expect = np.degrees(np.arctan((h - views.CAM_HEIGHT_M) / 25.0))
+            assert float(el) == pytest.approx(expect, abs=0.1)
+
+
+def test_wall_box_spans_eave_to_wall_base_under_the_roof_box():
+    view = rosette.PerspectiveView(90.0, 14.0, 60.0, 1200, 900)
+    row = {"bearing": 90.0, "dist_m": 25.0}
+    rx0, _, rx1, y_eave = views.roof_box(row, view)
+    x0, y0, x1, y1 = views.wall_box(row, view)
+    assert (x0, x1, y0) == pytest.approx((rx0, rx1, y_eave))
+    assert y1 == pytest.approx(views.roof_decoys(row, view)["wall_base"][0][0][1])

@@ -24,6 +24,7 @@ class Scene:
     horizon_row: float
     wedge: np.ndarray  # (3, 2) wedge triangle
     foliage_centres: list[tuple[int, int, int]]  # (x, y, radius)
+    wall_box: tuple[int, int, int, int] = (0, 0, 0, 0)  # (x0, y_eave, x1, y_base) of the walls
 
 
 def _texture(rng, h, w, base, amp, blur=3):
@@ -117,7 +118,8 @@ def make_scene(seed: int) -> Scene:
     assert ok
     out = cv2.imdecode(jpg, cv2.IMREAD_COLOR)
     edges_f = [(t_, [(float(x), float(y)) for x, y in pts]) for t_, pts in edges]
-    return Scene(out, edges_f, wmask == 0, float(horizon), wedge, foliage)
+    return Scene(out, edges_f, wmask == 0, float(horizon), wedge, foliage,
+                 (x0, y_eave, x1, y_base))  # fmt: skip
 
 
 def jitter(edges, rng, px=2):
