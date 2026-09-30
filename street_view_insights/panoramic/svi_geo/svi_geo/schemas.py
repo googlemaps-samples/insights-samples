@@ -65,6 +65,26 @@ class RoofType(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
+MIN_BOX_PX = 2.0
+
+
+def _check_in_range(coords: list[int] | list[float], what: str) -> None:
+    if any(c < 0 or c > 1000 for c in coords):
+        raise ValueError(f"{what} values must be in 0..1000, got {list(coords)}")
+
+
+def _check_box_in_image(box: list[int] | None, width: int, height: int) -> None:
+    """Range-check a 0..1000 box and reject boxes under MIN_BOX_PX in either pixel dimension."""
+    if box is None:
+        return
+    if len(box) != 4:
+        raise ValueError("box_2d must have 4 values [ymin, xmin, ymax, xmax]")
+    _check_in_range(box, "box_2d")
+    x0, y0, x1, y1 = box_2d_to_pixels(box, width, height)
+    if x1 - x0 < MIN_BOX_PX or y1 - y0 < MIN_BOX_PX:
+        raise ValueError(f"degenerate box_2d {list(box)} in a {width}x{height} image")
+
+
 def _check_box(v: list[int] | None) -> list[int] | None:
     if v is None:
         return v
@@ -210,6 +230,10 @@ class HouseView(BaseModel):
     def _valid_box(cls, v):
         return _check_box(v)
 
+    def validate_in_image(self, width: int, height: int) -> None:
+        """Raise ValueError if the box is out of range or degenerate in a width x height image."""
+        _check_box_in_image(self.box_2d, width, height)
+
 
 class EdgeType(str, Enum):
     RIDGE = "RIDGE"
@@ -246,6 +270,22 @@ class RoofEdges(BaseModel):
     roof_visible: bool
     edges: list[RoofEdge] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
+
+    def validate_in_image(self, width: int, height: int) -> None:
+        """Raise ValueError for a polyline with < 2 points, points outside 0..1000, or points
+        that repeat once mapped to whole pixels of a width x height image."""
+        for i, e in enumerate(self.edges):
+            pts = list(e.points or [])
+            if len(pts) < 2:
+                raise ValueError(f"edge {i} needs >= 2 points, got {len(pts)}")
+            pixels = []
+            for p in pts:
+                if len(p) != 2:
+                    raise ValueError(f"edge {i}: points must be [y, x] pairs")
+                _check_in_range(p, f"edge {i} point")
+                pixels.append((round(p[1] / 1000 * width), round(p[0] / 1000 * height)))
+            if len(set(pixels)) != len(pixels):
+                raise ValueError(f"edge {i} has repeated points {pts} in a {width}x{height} image")
 
 
 class PresenceCheck(BaseModel):

@@ -25,7 +25,7 @@ evaluation code.
   house. The cost of every call is logged.
 - **[Agentic Roof Edge Detection](notebooks/agentic_roof_edge_detection.ipynb)**:
   lens-corrects the best view of a building with the calibrated rosette model.
-  Gemini with code execution then traces the visible roof edges.
+  Gemini then traces the visible roof edges as schema-validated polylines.
 
 Every notebook has a `MAX_GEMINI_CALLS` parameter (default 500; set it to
 `None` for no limit) and a `CONCURRENCY` parameter (default 16). The estimated

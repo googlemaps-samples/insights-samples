@@ -73,3 +73,68 @@ def test_frame_detections_repairs_or_drops_bad_boxes_instead_of_failing():
     assert [d.box_2d for d in fd.detections] == [[100, 100, 500, 600], [100, 100, 500, 600]]
     assert fd.n_dropped == 2
     assert "n_dropped" not in schemas.FrameDetections.model_json_schema()["properties"]
+
+
+# ----------------------------------------------------------------------------- in-image checks
+
+
+def _house(box, visible=True):
+    return schemas.HouseView(
+        house_visible=visible, box_2d=box, occlusion="NONE", facade_visible_fraction=0.5,
+        confidence=0.8,
+    )  # fmt: skip
+
+
+def test_house_view_accepts_a_real_box_and_no_box():
+    _house([100, 200, 600, 800]).validate_in_image(1024, 768)
+    _house(None, visible=False).validate_in_image(1024, 768)
+
+
+def test_house_view_rejects_a_box_thinner_than_two_pixels():
+    with pytest.raises(ValueError, match="degenerate"):
+        _house([100, 500, 900, 501]).validate_in_image(1024, 768)  # 1 unit = 1 px wide
+
+
+def test_house_view_rejects_out_of_range_box_even_if_constructed_unchecked():
+    h = schemas.HouseView.model_construct(
+        house_visible=True, box_2d=[0, 0, 500, 1200], occlusion="NONE",
+        facade_visible_fraction=0.5, confidence=0.8,
+    )  # fmt: skip
+    with pytest.raises(ValueError, match="0..1000"):
+        h.validate_in_image(1024, 768)
+
+
+def _roof(*polylines):
+    return schemas.RoofEdges.model_construct(
+        roof_visible=True,
+        edges=[schemas.RoofEdge.model_construct(edge_type="EAVE", points=p) for p in polylines],
+        confidence=0.7,
+    )
+
+
+def test_roof_edges_accept_a_clean_polyline():
+    _roof([[100, 100], [100, 900]], [[100, 900], [400, 950], [700, 990]]).validate_in_image(
+        1200, 900
+    )
+
+
+@pytest.mark.parametrize(
+    "bad, why",
+    [
+        ([[100, 100]], "2 points"),
+        ([], "2 points"),
+        ([[100, 100], [100, 100]], "repeated"),
+        ([[100, 100], [300, 300], [100, 100]], "repeated"),
+        ([[100, 100], [100, 1001]], "0..1000"),
+        ([[-1, 100], [100, 200]], "0..1000"),
+    ],
+)
+def test_roof_edges_reject_bad_polylines(bad, why):
+    with pytest.raises(ValueError, match=why):
+        _roof([[10, 10], [10, 500]], bad).validate_in_image(1200, 900)
+
+
+def test_roof_edges_reject_points_that_collapse_to_one_pixel():
+    # 0.5 units apart after rounding to pixels at 400 px width -> the same pixel
+    with pytest.raises(ValueError, match="repeated"):
+        _roof([[500, 500], [500, 501]]).validate_in_image(400, 300)

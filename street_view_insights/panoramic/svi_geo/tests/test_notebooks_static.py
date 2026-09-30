@@ -138,3 +138,14 @@ def test_every_gemini_cell_checks_failures_and_asserts_results(nb):
     for src in cells:
         assert "runner.check(" in src, f"Gemini cell without runner.check():\n{src[:200]}"
         assert re.search(r"\bassert (len|any)\(", src), f"Gemini cell without assert:\n{src[:200]}"
+
+
+@pytest.mark.parametrize("schema", ["schemas.HouseView", "schemas.RoofEdges"])
+def test_uc1_uc4_do_not_use_code_execution(schema):
+    """UC1 (HouseView) and UC4 (RoofEdges) use response_schema, not the code tool."""
+    books = [nbformat.read(p, as_version=4) for p in NOTEBOOKS]
+    matches = [b for b in books if schema in _code(b)]
+    assert len(matches) == 1, schema
+    text = _all(matches[0])
+    assert "code_execution=True" not in text
+    assert "code execution" not in text.lower()

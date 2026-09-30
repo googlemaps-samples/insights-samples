@@ -3,10 +3,11 @@
 Hard rules (tested in tests/test_no_uri_parts.py and here):
 * Images are downloaded with the user's own credentials and sent inline as bytes
   (`Part.from_bytes`). No URI parts, no file uploads, no batch prediction.
-* Every request declares a pydantic `response_schema`; replies are validated in code with one
-  re-ask on a schema failure. With the code-execution tool (agentic vision, where the model
-  may crop/zoom with Python) the schema is enforced on the final JSON text instead, and any
-  geometry it returns must be re-checked by the caller in code.
+* Every request declares a pydantic `response_schema` (JSON mode, constrained decoding);
+  replies are validated in code, then by an optional per-call `validator` (e.g. geometry
+  range checks), with one re-ask on either failure. Only the model's final text is parsed:
+  tool stdout never counts as the answer. The code-execution tool cannot be combined with
+  `response_schema`, so asking for it with a schema requires a `validator`.
 * `MAX_GEMINI_CALLS` (default 500, `None` = unlimited) and a concurrency semaphore (default
   16) bound each run; `CostTracker` sums `usage_metadata` (thinking tokens billed as output).
 * Failures are loud: a batch in which every request fails raises `AllRequestsFailed`, every
@@ -21,7 +22,7 @@ import dataclasses
 import json
 import re
 import warnings
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, Protocol
 
 import cv2
@@ -196,26 +197,12 @@ class VertexGeminiBackend:
         self.model = model
         self.temperature = temperature
 
-    async def generate(self, parts, schema, code_execution=False) -> RawReply:
+    async def generate(self, parts, schema, code_execution=False, validator=None) -> RawReply:
         from google.genai import types
 
-        cfg: dict[str, Any] = {}
-        if self.temperature is not None:
-            cfg["temperature"] = self.temperature
-        if code_execution:
-            cfg["tools"] = [types.Tool(code_execution=types.ToolCodeExecution())]
-        if schema is not None:
-            if not code_execution:
-                cfg["response_mime_type"] = "application/json"
-                cfg["response_schema"] = schema
-            else:
-                parts = parts + [
-                    types.Part.from_text(
-                        text="Use Python code execution (cv2, numpy, PIL) to inspect, crop/zoom small regions, "
-                        "and verify visual details on the image. At the end of your code or response, output ONLY a single JSON object matching this exact JSON schema:\n"
-                        + json.dumps(schema.model_json_schema())
-                    )
-                ]
+        cfg, extra = _build_config(schema, code_execution, validator, self.temperature)
+        if extra is not None:
+            parts = parts + [types.Part.from_text(text=extra)]
         resp = await self.client.aio.models.generate_content(
             model=self.model,
             contents=[types.Content(role="user", parts=parts)],
@@ -229,6 +216,41 @@ class VertexGeminiBackend:
                 if getattr(p, "code_execution_result", None) is not None:
                     code_out.append(p.code_execution_result.output or "")
         return RawReply("\n".join(texts), resp.usage_metadata, code_out)
+
+
+def _build_config(
+    schema: type[BaseModel] | None,
+    code_execution: bool,
+    validator: Callable[[Any], None] | None,
+    temperature: float | None = None,
+) -> tuple[dict[str, Any], str | None]:
+    """GenerateContentConfig kwargs and an optional extra prompt (pure, no network).
+
+    Without the code tool the schema is enforced by the API (`response_schema`, JSON mode).
+    The code tool cannot be combined with `response_schema`, so the schema goes into the
+    prompt and a code-side `validator` is mandatory."""
+    cfg: dict[str, Any] = {}
+    if temperature is not None:
+        cfg["temperature"] = temperature
+    if schema is None:
+        return cfg, None
+    if not code_execution:
+        cfg["response_mime_type"] = "application/json"
+        cfg["response_schema"] = schema
+        return cfg, None
+    if validator is None:
+        raise ValueError(
+            "code_execution with a schema bypasses response_schema; pass a validator that "
+            "re-checks the parsed reply in code"
+        )
+    from google.genai import types
+
+    cfg["tools"] = [types.Tool(code_execution=types.ToolCodeExecution())]
+    extra = (
+        "You may use Python code execution to inspect the image. End your reply with ONLY a "
+        "single JSON object matching this JSON schema:\n" + json.dumps(schema.model_json_schema())
+    )
+    return cfg, extra
 
 
 def make_vertex_client(project: str, location: str = DEFAULT_LOCATION, credentials: Any = None):
@@ -267,10 +289,10 @@ def _json_objects(text: str) -> list[Any]:
 
 
 def parse_reply(text: str, schema: type[BaseModel]) -> BaseModel:
-    """Validate a reply against `schema`; tolerates ```json fences / prose around the object.
+    """Validate the model's final text against `schema`; tolerates ```json fences / prose.
 
-    With prose (e.g. code-execution transcripts) the LAST object that validates wins, since
-    the final answer comes last."""
+    With prose the LAST object that validates wins, since the final answer comes last. Pass
+    only `RawReply.text`: code-tool stdout (`RawReply.code_outputs`) is not an answer."""
     try:
         return schema.model_validate_json(text)
     except ValidationError as err:
@@ -314,13 +336,16 @@ class GeminiRunner:
             raise BudgetExceeded(f"MAX_GEMINI_CALLS={self.max_calls} reached")
         self._reserved += 1
 
-    async def _call(self, parts, schema, code_execution) -> RawReply:
+    async def _call(self, parts, schema, code_execution, validator=None) -> RawReply:
         self._reserve()
         async with self._sem:
             self.in_flight += 1
             self.max_in_flight = max(self.max_in_flight, self.in_flight)
             try:
-                reply = await self.backend.generate(parts, schema, code_execution)
+                if code_execution:
+                    reply = await self.backend.generate(parts, schema, True, validator=validator)
+                else:
+                    reply = await self.backend.generate(parts, schema, False)
             finally:
                 self.in_flight -= 1
         self.cost.add(reply.usage)
@@ -332,15 +357,25 @@ class GeminiRunner:
         schema: type[BaseModel],
         code_execution: bool = False,
         reask: bool = True,
+        validator: Callable[[Any], None] | None = None,
     ) -> BaseModel | None:
-        """One request (+ at most one re-ask if the reply fails schema validation).
+        """One request (+ at most one re-ask if the reply fails schema or `validator` checks).
 
-        A reply that still fails validation is counted as a failure and returns None."""
+        `validator(parsed)` raises ValueError to reject a reply (e.g. degenerate geometry).
+        A reply that still fails is counted as a failure and returns None."""
+        _build_config(schema, code_execution, validator)  # refuse unvalidated code-tool use
         self.cost.requests += 1
         parts = build_parts(items)
-        reply = await self._call(parts, schema, code_execution)
+
+        def accept(reply: RawReply) -> BaseModel:
+            parsed = parse_reply(reply.text, schema)
+            if validator is not None:
+                validator(parsed)
+            return parsed
+
+        reply = await self._call(parts, schema, code_execution, validator)
         try:
-            return parse_reply("\n".join(reply.code_outputs + [reply.text]), schema)
+            return accept(reply)
         except (ValidationError, ValueError) as err:
             if not reask:
                 self.cost.record_failure(f"schema validation failed: {str(err)[:300]}")
@@ -352,9 +387,9 @@ class GeminiRunner:
                     f"{json.dumps(schema.model_json_schema())[:4000]}"
                 ]
             )
-            reply2 = await self._call(parts + fix, schema, code_execution)
+            reply2 = await self._call(parts + fix, schema, code_execution, validator)
             try:
-                return parse_reply("\n".join(reply2.code_outputs + [reply2.text]), schema)
+                return accept(reply2)
             except (ValidationError, ValueError) as err2:
                 self.cost.record_failure(
                     f"schema validation failed after re-ask: {str(err2)[:300]}"

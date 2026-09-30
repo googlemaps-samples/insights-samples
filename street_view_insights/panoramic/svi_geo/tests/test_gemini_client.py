@@ -133,42 +133,80 @@ def test_backend_omits_temperature_by_default():
     assert b.temperature is None
 
 
-@pytest.mark.live
-@pytest.mark.asyncio
-async def test_live_code_execution_with_schema():
+# --------------------------------------------------------------------------- config / parsing
 
-    from pydantic import BaseModel
 
-    class EdgeSchema(BaseModel):
-        found: bool
-        edge_count: int
+def test_build_config_with_schema_uses_json_mode_and_response_schema():
+    cfg, extra = gc._build_config(schemas.RoofEdges, code_execution=False, validator=None)
+    assert cfg["response_mime_type"] == "application/json"
+    assert cfg["response_schema"] is schemas.RoofEdges
+    assert "tools" not in cfg and extra is None
 
-    class FakeAuth:
-        def __init__(self):
-            pass
 
-    try:
-        _ = gc.make_vertex_client(
-            "test-project", "us-central1"
-        )  # Just placeholder, let's use the real project if we load auth correctly.
-    except Exception:
-        pytest.skip("Auth error")
+def test_build_config_refuses_code_execution_with_schema_but_no_validator():
+    with pytest.raises(ValueError, match="validator"):
+        gc._build_config(schemas.RoofEdges, code_execution=True, validator=None)
 
-    # We will test the schema and code extraction logic at the backend layer
 
-    class FakeCodeBackend(FakeBackend):
-        async def generate(self, parts, schema, code_execution=False):
-            # simulate code output
-            # we want to assert that when code_execution is True, the schema wasn't passed directly to the model as response_schema, but as instructions
+def test_build_config_code_execution_with_validator_adds_tool_and_schema_prompt():
+    cfg, extra = gc._build_config(schemas.RoofEdges, code_execution=True, validator=lambda r: None)
+    assert len(cfg["tools"]) == 1 and "response_schema" not in cfg
+    assert "roof_visible" in extra
+
+
+def test_build_config_passes_temperature_only_when_set():
+    assert "temperature" not in gc._build_config(None, False, None)[0]
+    assert gc._build_config(None, False, None, temperature=0.2)[0]["temperature"] == 0.2
+
+
+def test_parse_reply_ignores_code_outputs_by_default():
+    class CodeBackend(FakeBackend):
+        async def generate(self, parts, schema, code_execution=False, validator=None):
             self.seen.append((parts, schema, code_execution))
-            text = '```python\nprint("running code")\n```'
-            code_out = ['{"found": true, "edge_count": 3}']
-            return gc.RawReply(text, None, code_outputs=code_out)
+            return gc.RawReply(
+                '{"present": false, "confidence": 0.3}',
+                None,
+                code_outputs=['{"present": true, "confidence": 0.99}'],
+            )
 
-    runner = gc.GeminiRunner(FakeCodeBackend([]), max_calls=5, log=None)
-    out = await runner.ask(["find edges", _img(200, 200)], EdgeSchema, code_execution=True)
-    assert out.found is True
-    assert out.edge_count == 3
+    runner = gc.GeminiRunner(CodeBackend([]), max_calls=5, log=None)
+    out = asyncio.run(runner.ask(["q"], schemas.PresenceCheck))
+    assert out.present is False and out.confidence == 0.3
+
+
+def test_tool_stdout_alone_is_not_accepted_as_the_answer():
+    class StdoutOnlyBackend(FakeBackend):
+        async def generate(self, parts, schema, code_execution=False, validator=None):
+            self.seen.append((parts, schema, code_execution))
+            return gc.RawReply("done", None, code_outputs=['{"present": true, "confidence": 1}'])
+
+    runner = gc.GeminiRunner(StdoutOnlyBackend([]), max_calls=5, log=None)
+    assert asyncio.run(runner.ask(["q"], schemas.PresenceCheck)) is None
+    assert runner.cost.failures == 1
+
+
+def test_validator_failure_triggers_one_reask_and_is_counted():
+    def no_absent(r):
+        if not r.present:
+            raise ValueError("must be present")
+
+    be = FakeBackend(
+        ['{"present": false, "confidence": 0.5}', '{"present": true, "confidence": 0.6}']
+    )
+    runner = gc.GeminiRunner(be, max_calls=5, log=None)
+    out = asyncio.run(runner.ask(["q"], schemas.PresenceCheck, validator=no_absent))
+    assert out.present is True and len(be.seen) == 2
+
+    be = FakeBackend(['{"present": false, "confidence": 0.5}'] * 2)
+    runner = gc.GeminiRunner(be, max_calls=5, log=None)
+    assert asyncio.run(runner.ask(["q"], schemas.PresenceCheck, validator=no_absent)) is None
+    assert runner.cost.failures == 1 and "must be present" in runner.cost.failure_messages[0]
+
+
+def test_runner_refuses_code_execution_without_validator():
+    runner = gc.GeminiRunner(FakeBackend([]), max_calls=5, log=None)
+    with pytest.raises(ValueError, match="validator"):
+        asyncio.run(runner.ask(["q"], schemas.PresenceCheck, code_execution=True))
 
 
 # --------------------------------------------------------------------------- loud failures
