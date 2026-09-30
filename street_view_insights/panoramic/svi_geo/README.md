@@ -16,9 +16,18 @@ GCS_BUCKET=YOUR_FRAME_BUCKET SVI_PROJECT=YOUR_PROJECT_ID \
 The scripts in `scripts/` take the frame bucket from `--gcs-bucket` or `$GCS_BUCKET`; the
 bucket is never discovered by selecting `gcs_uri`.
 
-`pyproject.toml` bounds every dependency (lower bound: the verified version; upper bound:
-the next major release). For a reproducible, hash-checked install of the exact verified
-versions, install `requirements.lock` first and then the package without dependencies:
+`pyproject.toml` bounds every dependency. The lower bound is the version preinstalled on
+Colab (runtime 2026.07: Python 3.12, numpy 2.0.2, pandas 2.2.2, pyarrow 18.1; and the current
+runtime: Python 3.13, numpy 2.1.3, pandas 2.2.3), so installing `svi_geo` on Colab upgrades
+nothing; the upper bound is the next major release. `constraints/colab-2026.07.txt` and
+`constraints/colab-current.txt` are Colab's own pip-freeze files (source commit and date in
+their headers). `scripts/check_colab_compat.py` (run by `pytest --run-slow
+tests/test_colab_compat.py`) builds a Colab-equivalent venv per runtime, plus an
+opencv-python-headless 4.14 row, checks that pip would replace no preinstalled package, and
+runs the offline suite in each.
+
+`requirements.lock` pins the exact, hash-checked versions used locally (Python 3.13). For a
+reproducible install, install it first and then the package without dependencies:
 
 ```bash
 .venv/bin/pip install --require-hashes -r street_view_insights/panoramic/svi_geo/requirements.lock

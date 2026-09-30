@@ -1,4 +1,4 @@
-"""Shared pytest configuration: the `live` marker and `--run-live` flag."""
+"""Shared pytest configuration: the `live` / `slow` markers and `--run-live` / `--run-slow`."""
 
 import os
 
@@ -12,19 +12,27 @@ def pytest_addoption(parser):
         default=False,
         help="Run tests that hit BigQuery / GCS / Vertex AI (need ADC).",
     )
+    parser.addoption(
+        "--run-slow",
+        action="store_true",
+        default=False,
+        help="Run slow tests (e.g. building Colab-equivalent virtualenvs, several minutes).",
+    )
 
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "live: needs network + Google Cloud credentials")
+    config.addinivalue_line("markers", "slow: takes minutes (builds virtualenvs); --run-slow")
 
 
 def pytest_collection_modifyitems(config, items):
-    if config.getoption("--run-live"):
-        return
     skip_live = pytest.mark.skip(reason="live test: pass --run-live to run")
+    skip_slow = pytest.mark.skip(reason="slow test: pass --run-slow to run")
     for item in items:
-        if "live" in item.keywords:
+        if "live" in item.keywords and not config.getoption("--run-live"):
             item.add_marker(skip_live)
+        if "slow" in item.keywords and not config.getoption("--run-slow"):
+            item.add_marker(skip_slow)
 
 
 @pytest.fixture(scope="session")

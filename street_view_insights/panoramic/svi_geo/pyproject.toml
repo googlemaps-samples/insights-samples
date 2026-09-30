@@ -10,25 +10,36 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 dependencies = [
-  # Lower bound: the versions the notebooks and tests were verified with; upper bound: the
-  # next major release. requirements.lock pins the exact, hash-checked set.
-  "numpy>=2.5,<3",
-  "scipy>=1.18,<2",
-  "opencv-python-headless>=5.0,<6",
-  "scikit-learn>=1.9,<2",
+  # Lower bound: the versions preinstalled on Colab (runtime 2026.07 and current, see
+  # constraints/), so installing svi_geo on Colab upgrades nothing; upper bound: the
+  # next major release. requirements.lock pins the exact, hash-checked local set.
+  "numpy>=2.0.2,<3",
+  "scipy>=1.14,<2",
+  "opencv-python-headless>=4.10,<6",
+  "scikit-learn>=1.6,<2",
   "shapely>=2.1,<3",
   "pydantic>=2.13,<3",
-  "google-genai>=2.25,<3",
-  "google-cloud-bigquery>=3.45,<4",
-  "google-cloud-storage>=3.14,<4",
+  "google-genai>=2.11,<3",
+  "google-cloud-bigquery>=3.42,<4",
+  "google-cloud-storage>=3.13,<4",
   "db-dtypes>=1.7,<2",
-  "pandas>=3.0,<4",
-  "pyarrow>=25.0,<26",
+  "pandas>=2.2.2,<4",
+  "pyarrow>=18.1,<26",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=9.1,<10", "pytest-asyncio>=1.4,<2", "ruff==0.16.9"]
-notebooks = ["folium>=0.20,<1", "matplotlib>=3.11,<4", "nbformat>=5.11,<6", "nbconvert>=7.17,<8"]
+dev = [
+  "pytest>=8.4,<10",
+  "pytest-asyncio>=1.4,<2",
+  "ruff==0.16.9",
+  "uv>=0.12,<1",  # provisions Python 3.12 for tests/test_colab_compat.py (slow)
+]
+notebooks = [
+  "folium>=0.20,<1",
+  "matplotlib>=3.10,<4",
+  "nbformat>=5.10.4,<6",
+  "nbconvert>=7.17,<8",
+]
 
 [tool.setuptools]
 packages = ["svi_geo"]
