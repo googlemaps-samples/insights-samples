@@ -335,3 +335,8 @@ def test_division_of_labour_lists_only_steps_the_notebook_runs():
     for step in ("triangulation", "deduplication", "box -> bearing"):
         assert step not in uc3, step  # UC3 labels surfaces; it locates no objects
     assert "smoothing" in uc3 and "segments" in uc3
+
+
+def test_first_run_bigquery_cost_noted_in_cell_1(nb):
+    cell1 = nb.cells[1].source
+    assert "1.6 GB" in cell1 and "7 days" in cell1 and "$6.25/TB" in cell1

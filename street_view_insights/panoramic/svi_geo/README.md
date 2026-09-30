@@ -16,6 +16,10 @@ GCS_BUCKET=YOUR_FRAME_BUCKET SVI_PROJECT=YOUR_PROJECT_ID \
 The scripts in `scripts/` take the frame bucket from `--gcs-bucket` or `$GCS_BUCKET`; the
 bucket is never discovered by selecting `gcs_uri`.
 
+**First-run BigQuery cost.** The pano metadata query dry-runs at ~1.6 GB on first run (cached
+locally for 7 days under `~/.cache/svi_geo/bq`; $0 within the free 1 TB/month tier or ~$0.01
+at $6.25/TB on-demand; re-runs within 7 days bill 0 bytes).
+
 `pyproject.toml` bounds every dependency. The lower bound is the version preinstalled on
 Colab (runtime 2026.07: Python 3.12, numpy 2.0.2, pandas 2.2.2, pyarrow 18.1; and the current
 runtime: Python 3.13, numpy 2.1.3, pandas 2.2.3), so installing `svi_geo` on Colab upgrades

@@ -63,7 +63,8 @@ The notebooks read only
   parameter; it is never discovered by a query.
 - **Query cost.** The metadata query dry-runs at about 1.6 GB per run whatever
   the radius (the pano views are not clustered on location), which is inside
-  the 2 GB `maximum_bytes_billed` cap. Results are cached locally for 7 days
+  the 2 GB `maximum_bytes_billed` cap (~$0.01 on-demand at $6.25/TB, or $0
+  within the free 1 TB/month tier). Results are cached locally for 7 days
   (`~/.cache/svi_geo/bq`), so re-runs bill 0 bytes.
 - Pano rows have no prior detections, so all objects come from Gemini.
 - BigQuery access is dry-run first, capped with `maximum_bytes_billed`, and
@@ -129,8 +130,7 @@ normal Application Default Credentials, leave them unset.
   self-calibrated from multi-view panoramic imagery and how to reproduce the
   calibration test yourself.
 - **[`svi_geo/README.md`](svi_geo/README.md)**: package overview, calibration
-  metrics, and how to re-run the synthetic and self-consistency evaluations (no current
-  results are published).
-- **[`svi_geo/EVALUATION.md`](svi_geo/EVALUATION.md)**: hand-label protocol for
-  measuring accuracy on real imagery (label kit and scorer); no results until real labels
-  exist.
+  metrics, and how to re-run the synthetic, self-consistency, and label-free evaluations.
+- **[`svi_geo/EVALUATION.md`](svi_geo/EVALUATION.md)**: label-free evaluation protocol and
+  baseline-vs-final results across `lakeland_fl` (tune), `salt_lake_ut` (held-out), and
+  `osaka_jp` (stress test), plus the hand-label protocol for ground-truth accuracy.
