@@ -152,3 +152,40 @@ def test_best_camera_ignores_the_sky_camera():
 
 def test_best_camera_returns_none_when_no_camera_reaches_min_hfov():
     assert rosette.best_camera_for_view(_pano_rows(), INTR, _axis(1), 0.0, ASPECT, 89.0) is None
+
+
+# ----------------------------------------------------------------------------- F6 seam parallax
+def _explicit_seam_step_px(view, el_deg, depth_m, cam_h=2.5, radius=0.084, half_angle=30.0):
+    """Two camera centres on the rosette circle at +-half_angle from the seam direction (+y);
+    a point on the seam ray at `depth_m` slant range (or on the ground) projected into the
+    view from both centres: the pixel distance is the step at the seam."""
+    a = np.radians(half_angle)
+    c1, c2 = (
+        np.array([radius * np.sin(a), radius * np.cos(a), 0.0]),
+        np.array([-radius * np.sin(a), radius * np.cos(a), 0.0]),
+    )
+    mid = (c1 + c2) / 2
+    e = np.radians(el_deg)
+    d = np.array([0.0, np.cos(e), np.sin(e)])
+    s = depth_m if depth_m is not None else cam_h / -np.sin(e)
+    p = mid + s * d
+    px = []
+    for c in (c1, c2):
+        r = p - c
+        az = np.degrees(np.arctan2(r[0], r[1]))
+        el = np.degrees(np.arctan2(r[2], np.hypot(r[0], r[1])))
+        u, v, ok = view.bearing_to_pixel(az, el)
+        assert bool(ok)
+        px.append((float(u), float(v)))
+    return float(np.hypot(px[0][0] - px[1][0], px[0][1] - px[1][1]))
+
+
+def test_seam_parallax_matches_explicit_reprojection_and_the_documented_range():
+    view = rosette.PerspectiveView(0.0, -22.0, 70.0, 1024, 768)  # f ~ 731 px
+    near = rosette.seam_parallax_px(view, rosette.HOOD_ELEV_DEG)  # ground at the hood crop
+    assert near == pytest.approx(_explicit_seam_step_px(view, -40.0, None), rel=0.05)
+    assert 14.0 <= near <= 18.0  # ~16 px, as documented
+    for depth in (20.0, 50.0):  # objects near the horizon
+        far = rosette.seam_parallax_px(view, 0.0, depth_m=depth)
+        assert far == pytest.approx(_explicit_seam_step_px(view, 0.0, depth), rel=0.05)
+        assert 1.0 <= far <= 3.5

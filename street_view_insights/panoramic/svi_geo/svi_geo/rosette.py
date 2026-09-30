@@ -786,9 +786,49 @@ def hood_row(
 # --------------------------------------------------------------------------- multi-camera views
 # A view centred on the seam between two cameras (on the real rosette the travel direction is
 # such a seam) is composited: every view pixel is taken from the covering camera whose optical
-# axis is nearest to it. Adjacent camera centres are about 8 cm apart (rosette radius 0.084 m),
-# so objects very close to the vehicle can show a small step at the seam; at road-view
-# distances the parallax is a few pixels.
+# axis is nearest to it. The seam is hard (no blending). The two cameras flanking the travel
+# direction sit on the rosette circle (radius 0.084 m) at +-30 deg, 0.084 m apart across the
+# seam, so a point is seen from slightly different directions: `seam_parallax_px`. In a 70 deg
+# 1024 px road view pitched -22 deg (f = 731 px) the step is 16.6 px for the ground at the
+# hood-crop row (-40 deg, 3.9 m slant range), 8.4 px for the ground at -20 deg, and 3.3 / 1.3 px
+# for objects 20 / 50 m away near the horizon (tests/test_rosette_fov.py).
+ROSETTE_RADIUS_M = 0.084
+
+
+def seam_parallax_px(
+    view: PerspectiveView,
+    el_deg: float,
+    depth_m: float | None = None,
+    cam_height_m: float = 2.5,
+    radius_m: float = ROSETTE_RADIUS_M,
+    half_angle_deg: float = 30.0,
+) -> float:
+    """Step (view pixels) at a composite seam along `view.yaw_deg` for a point on the seam
+    ray at elevation `el_deg`: the point is projected into `view` from the two camera centres
+    on the rosette circle at +-`half_angle_deg` from the seam, and the pixel distance returned.
+    The point lies at slant range `depth_m`, or on the ground under the ray (camera
+    `cam_height_m` up) when `depth_m` is None and the ray points down."""
+    e = math.radians(el_deg)
+    if depth_m is None:
+        if el_deg >= 0:
+            raise ValueError("a ray at or above the horizon has no ground point; pass depth_m")
+        depth_m = cam_height_m / math.sin(-e)
+    yaw = math.radians(view.yaw_deg)
+    fwd = np.array([math.sin(yaw), math.cos(yaw)])
+    side = np.array([math.cos(yaw), -math.sin(yaw)])
+    a = math.radians(half_angle_deg)
+    centres = [radius_m * (math.cos(a) * fwd + sgn * math.sin(a) * side) for sgn in (1, -1)]
+    mid = (centres[0] + centres[1]) / 2
+    p_h = mid + depth_m * math.cos(e) * fwd
+    p_z = depth_m * math.sin(e)
+    px = []
+    for c in centres:
+        r = p_h - c
+        az = math.degrees(math.atan2(r[0], r[1]))
+        el = math.degrees(math.atan2(p_z, math.hypot(r[0], r[1])))
+        u, v, _ = view.bearing_to_pixel(az, el)
+        px.append((float(u), float(v)))
+    return float(math.hypot(px[0][0] - px[1][0], px[0][1] - px[1][1]))
 
 
 def _ground_rows(rows: Sequence[Any]) -> list[tuple[Any, int]]:
