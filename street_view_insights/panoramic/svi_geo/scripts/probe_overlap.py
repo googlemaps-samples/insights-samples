@@ -55,7 +55,8 @@ def main() -> None:
     train = calib[calib["split"] == "train"]
     pano_ids = list(dict.fromkeys(train.groupby("aoi")["pano_id"].first()))[: args.n_panos]
     fetcher = images.GcsImageFetcher(
-        storage.Client(project=data.PROJECT, credentials=auth.get_credentials())
+        storage.Client(project=data.PROJECT, credentials=auth.get_credentials()),
+        cache_dir=images.DEFAULT_FRAME_CACHE,
     )
     sift = cv2.SIFT_create(nfeatures=8000)
     report = []

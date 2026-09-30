@@ -103,6 +103,20 @@ local enterprise-certificate proxy) exist only to help on managed workstations
 where plain Application Default Credentials return 401. In Colab or with
 normal Application Default Credentials, leave them unset.
 
+## Terms of use, attribution and caching
+
+- The frames come from your Imagery Insights dataset and are governed by the
+  Imagery Insights terms of your Google Cloud agreement. Do not redistribute
+  frames, or crops rendered from them, outside your organisation.
+- Every figure that shows imagery is labelled "Imagery © Google"
+  (`svi_geo.attribution.add_to_axes`). Every map passes
+  `attr=attribution.FOLIUM_ATTR`, which keeps the base-map credit and adds the
+  imagery credit. Keep these labels when you reuse the figures.
+- Frames are downloaded with your own credentials and sent to Gemini inline.
+  `GcsImageFetcher` does not cache them on disk unless you pass `cache_dir=`.
+  Cached frames expire after 24 hours (`cache_ttl_s`), and
+  `fetcher.purge_expired()` deletes stale files.
+
 ## Calibration and evaluation
 
 - **[`intrinsic-calculation.md`](intrinsic-calculation.md)**: detailed guide on

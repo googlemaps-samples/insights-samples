@@ -210,7 +210,10 @@ def main() -> None:
     runner = data.QueryRunner(
         data.make_bigquery_client(data.PROJECT, creds), cache_dir=data.DEFAULT_QUERY_CACHE
     )
-    fetcher = images.GcsImageFetcher(storage.Client(project=data.PROJECT, credentials=creds))
+    fetcher = images.GcsImageFetcher(
+        storage.Client(project=data.PROJECT, credentials=creds),
+        cache_dir=images.DEFAULT_FRAME_CACHE,
+    )
     calib = pd.read_parquet(args.panos)
     bucket = config.require_bucket(args.gcs_bucket, env=dict(os.environ))
     nb = heldout_neighbours(runner, calib, bucket, args.radius_m)

@@ -111,3 +111,60 @@ def test_fetch_many_retries_only_transient_and_skips_final_sleep(tmp_path):
     out = f.fetch_many(["gs://b/a.jpg"], retries=3)
     assert isinstance(out["gs://b/a.jpg"], gexc.TooManyRequests)
     assert store.downloads == 3 and len(sleeps) == 2  # no sleep after the last attempt
+
+
+# ----------------------------------------------------------------------------- Task 10
+
+from svi_geo.data import gcs_uri_for  # noqa: E402
+
+
+class Clock:
+    def __init__(self, t=1_000_000.0):
+        self.t = t
+
+    def __call__(self):
+        return self.t
+
+
+URI0 = gcs_uri_for("b", "s", "o1:P_0:5001ee")
+URI1 = gcs_uri_for("b", "s", "o1:P_1:5001ee")
+
+
+def _store():
+    return FakeStorage({"s/v0/o1:P_0:5001ee.jpg": b"abc", "s/v0/o1:P_1:5001ee.jpg": b"de"})
+
+
+def test_frame_cache_is_opt_in():
+    store = _store()
+    f = images.GcsImageFetcher(store)
+    assert f.cache_dir is None
+    f.fetch(URI0)
+    f.fetch(URI0)
+    assert store.downloads == 2
+
+
+def test_cached_frame_older_than_ttl_is_downloaded_again(tmp_path):
+    store = _store()
+    clock = Clock()
+    f = images.GcsImageFetcher(store, cache_dir=tmp_path, cache_ttl_s=100, clock=clock)
+    f.fetch(URI0)
+    clock.t += 50
+    f.fetch(URI0)
+    assert store.downloads == 1
+    clock.t += 51  # 101 s after the download
+    assert f.fetch(URI0) == b"abc"
+    assert store.downloads == 2
+
+
+def test_purge_expired_deletes_only_stale_files(tmp_path):
+    store = _store()
+    clock = Clock()
+    f = images.GcsImageFetcher(store, cache_dir=tmp_path, cache_ttl_s=100, clock=clock)
+    f.fetch(URI0)
+    clock.t += 80
+    f.fetch(URI1)
+    clock.t += 30  # first file is 110 s old, second 30 s
+    assert f.purge_expired() == 1
+    assert len(list(tmp_path.iterdir())) == 1
+    f.fetch(URI1)
+    assert store.downloads == 2

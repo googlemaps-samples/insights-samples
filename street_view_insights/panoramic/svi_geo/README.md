@@ -25,7 +25,8 @@ bucket is never discovered by selecting `gcs_uri`.
 | `rosette` | KB4 fisheye model for the 7-camera rosette, per-camera pose, perspective rendering, `undistort`, camera selection |
 | `data` | parameterized, dry-run-first, byte-capped queries on the pano tables; cheap `gcs_uri_for` |
 | `sequence` | drive-sequence reconstruction, measured spacing, camera roles |
-| `images` | GCS fetch with local cache, fast JPEG decode |
+| `images` | GCS fetch (opt-in disk cache with a 24 h TTL), fast JPEG decode |
+| `attribution` | "Imagery © Google" credit for figures and folium maps |
 | `triangulate`, `entities` | multi-view ray triangulation and per-class entity clustering / dedup |
 | `smoothing` | HMM / Viterbi smoothing of per-pano labels along a drive; segments |
 | `schemas`, `gemini_client` | typed Gemini outputs; async runner with call cap, concurrency and cost log |

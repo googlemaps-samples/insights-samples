@@ -126,7 +126,10 @@ def main() -> None:
     print(calib.groupby("split")["pano_id"].nunique())
     if args.no_download:
         return
-    fetcher = images.GcsImageFetcher(storage.Client(project=args.project, credentials=creds))
+    fetcher = images.GcsImageFetcher(
+        storage.Client(project=args.project, credentials=creds),
+        cache_dir=images.DEFAULT_FRAME_CACHE,
+    )
     t = time.time()
     res = fetcher.fetch_many(list(calib["gcs_uri"]), max_workers=4)
     errs = {u: e for u, e in res.items() if isinstance(e, Exception)}

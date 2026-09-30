@@ -243,7 +243,10 @@ async def run_self_consistency_async(args) -> dict:
     ]
     fr_a = fa[fa["pano_id"].isin(pa) & fa["cam_k"].between(0, 5)]
     fr_b = fa[fa["pano_id"].isin(pb) & fa["cam_k"].between(0, 5)]
-    fetcher = images.GcsImageFetcher(storage.Client(project=data.PROJECT, credentials=creds))
+    fetcher = images.GcsImageFetcher(
+        storage.Client(project=data.PROJECT, credentials=creds),
+        cache_dir=images.DEFAULT_FRAME_CACHE,
+    )
     uris = sorted(set(fr_a["gcs_uri"]) | set(fr_b["gcs_uri"]))
     res = fetcher.fetch_many(uris, max_workers=4)
     bad = [u for u, v in res.items() if isinstance(v, Exception)]

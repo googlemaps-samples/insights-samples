@@ -1,4 +1,4 @@
-"""Frame download + decoding helpers (user credentials, local disk cache).
+"""Frame download + decoding helpers (user credentials, optional short-lived disk cache).
 
 Frames are always downloaded with the caller's own credentials (`download_as_bytes`) and
 later sent to Gemini inline; nothing here grants or relies on service-agent bucket access.
@@ -7,6 +7,7 @@ later sent to Gemini inline; nothing here grants or relies on service-agent buck
 from __future__ import annotations
 
 import hashlib
+import os
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -20,6 +21,8 @@ from google.api_core import exceptions as gexc
 from svi_geo.data import split_gcs_uri
 
 DEFAULT_FRAME_CACHE = Path.home() / ".cache" / "svi_geo" / "frames"
+# Frames are licensed imagery: a local copy is only a short-lived working cache.
+DEFAULT_CACHE_TTL_S = 86_400
 
 _TRANSIENT = (
     gexc.ServiceUnavailable,
@@ -46,16 +49,23 @@ class ImageFetcher(Protocol):
 
 
 class GcsImageFetcher:
-    """Download `gs://` objects as bytes with the user's credentials, caching on disk."""
+    """Download `gs://` objects as bytes with the user's credentials.
+
+    Disk caching is opt-in (`cache_dir`, e.g. `DEFAULT_FRAME_CACHE`). A cached frame older
+    than `cache_ttl_s` is downloaded again, and `purge_expired()` deletes stale files."""
 
     def __init__(
         self,
         storage_client: Any,
-        cache_dir: str | Path | None = DEFAULT_FRAME_CACHE,
+        cache_dir: str | Path | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        cache_ttl_s: float = DEFAULT_CACHE_TTL_S,
+        clock: Callable[[], float] = time.time,
     ):
         self.client = storage_client
         self._sleep = sleep
+        self._clock = clock
+        self.cache_ttl_s = float(cache_ttl_s)
         self.cache_dir = Path(cache_dir) if cache_dir else None
         self.n_downloads = 0
         self.bytes_downloaded = 0
@@ -68,9 +78,23 @@ class GcsImageFetcher:
         h = hashlib.sha1(uri.encode()).hexdigest()[:8]
         return self.cache_dir / f"{h}_{safe}"
 
+    def _fresh(self, path: Path) -> bool:
+        return self._clock() - path.stat().st_mtime <= self.cache_ttl_s
+
+    def purge_expired(self) -> int:
+        """Delete cached frames older than the TTL; returns how many were deleted."""
+        if self.cache_dir is None or not self.cache_dir.exists():
+            return 0
+        n = 0
+        for f in self.cache_dir.iterdir():
+            if f.is_file() and not self._fresh(f):
+                f.unlink(missing_ok=True)
+                n += 1
+        return n
+
     def fetch(self, uri: str) -> bytes:
         path = self._cache_path(uri)
-        if path is not None and path.exists():
+        if path is not None and path.exists() and self._fresh(path):
             return path.read_bytes()
         bucket, name = split_gcs_uri(uri)
         data = self.client.bucket(bucket).blob(name).download_as_bytes()
@@ -80,6 +104,8 @@ class GcsImageFetcher:
             path.parent.mkdir(parents=True, exist_ok=True)
             tmp = path.with_suffix(path.suffix + ".part")
             tmp.write_bytes(data)
+            now = self._clock()
+            os.utime(tmp, (now, now))  # the TTL counts from the download time
             tmp.replace(path)
         return data
 

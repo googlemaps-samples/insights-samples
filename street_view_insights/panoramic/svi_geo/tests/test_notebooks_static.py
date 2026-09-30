@@ -262,3 +262,18 @@ def test_uc3_reports_smoothing_effect_not_flicker_as_quality():
     assert "changed_by_smoothing" in code and "raw_smoothed_agreement" in code
     assert "absent_share" in code
     assert "not accuracy" in text and "schematic" in text
+
+
+def test_figures_and_maps_carry_imagery_attribution(nb):
+    for c in nb.cells:
+        if c.cell_type != "code":
+            continue
+        if "imshow(" in c.source:
+            assert "attribution.add_to_axes(" in c.source, c.source[:200]
+        for call in re.findall(r"folium\.Map\((.*?)\)\n", c.source, re.S):
+            assert "attr=" in call, call
+
+
+def test_notebooks_state_terms_of_use(nb):
+    md = "\n".join(c.source for c in nb.cells if c.cell_type == "markdown").lower()
+    assert "terms" in md and "redistribut" in md and "attribution" in md
