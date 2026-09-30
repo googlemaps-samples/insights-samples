@@ -74,6 +74,10 @@ Notes on the seam check:
 
 ## Evaluation (`scripts/run_eval.py`)
 
+Accuracy against human labels on real imagery is measured with the label kit described in
+[`EVALUATION.md`](EVALUATION.md) (`scripts/make_label_kit.py`, `scripts/score_labels.py`).
+The 4-scene live evaluation from commit `c2b057c` is retracted there.
+
 > **Stale results.** The tables below were produced before the clustering fixes: at that time
 > houses were clustered with an 8 m eps, and single-view houses were placed at a fixed 15 m
 > range (the "single-view only" p90 of 15.0 m is that constant). Houses now use a 5 m eps.

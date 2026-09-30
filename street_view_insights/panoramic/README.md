@@ -125,3 +125,6 @@ normal Application Default Credentials, leave them unset.
   calibration test yourself.
 - **[`svi_geo/README.md`](svi_geo/README.md)**: package overview, calibration
   metrics, synthetic evaluation, and real-data self-consistency results.
+- **[`svi_geo/EVALUATION.md`](svi_geo/EVALUATION.md)**: hand-label protocol for
+  measuring accuracy on real imagery (label kit and scorer); no results until real labels
+  exist.

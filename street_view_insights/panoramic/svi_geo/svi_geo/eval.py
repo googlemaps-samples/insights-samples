@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import csv
 import dataclasses
+import json
 import math
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -491,16 +492,183 @@ def score_hand_labels(labels_csv: str | Path, pipeline_output: Sequence[Mapping[
         truth = {f"m{i}": lab["object_key"] for i, (lab, _) in enumerate(keyed)}
         m = clustering_metrics(pred, truth)
         out["dedup_purity"], out["dedup_completeness"] = m["purity"], m["completeness"]
-    seg_pred = {
-        (str(p["pano_id"]), p["cls"]): str(p["material"]).strip().lower()
-        for p in pipeline_output
-        if p.get("cls") in SEGMENTS and p.get("material")
+    # segments: keyed by (pano, class, side), present=false scored as ABSENT
+    out.update(score_segment_labels(labels, pipeline_output))
+    return out
+
+
+# ----------------------------------------------------------------------------- label-kit scoring
+
+SIDEWALK = "SIDEWALK_SEGMENT"
+_ABSENT = "ABSENT"
+
+
+def _truthy(v: Any) -> bool | None:
+    s = str(v).strip().lower() if v is not None else ""
+    if s in ("true", "1", "yes", "y"):
+        return True
+    if s in ("false", "0", "no", "n"):
+        return False
+    return None
+
+
+def _slot_value(material: Any, present: Any) -> str | None:
+    """Material (lower case), ABSENT, or None when the slot carries no usable value."""
+    p = present if isinstance(present, bool) else _truthy(present)
+    if p is False:
+        return _ABSENT
+    m = str(material).strip().lower() if material not in (None, "") else ""
+    return m or None
+
+
+def score_segment_labels(
+    labels: Sequence[Mapping[str, Any]], predictions: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """UC3 metrics from label-kit rows keyed by (pano_id, class, side).
+
+    Label rows: class ROAD_SEGMENT/SIDEWALK_SEGMENT, side, present, material. Prediction rows:
+    pano_id, cls, side, and material or present=False. Returns material accuracy (slots
+    present in both), sidewalk presence F1 and the side-swap rate (panos whose two sidewalk
+    sides differ in the labels and whose predictions are exactly mirrored)."""
+
+    def key(r, cls_key):
+        return (str(r["pano_id"]), r[cls_key], str(r.get("side") or "CENTER"))
+
+    lab = {
+        key(r, "class"): _slot_value(r.get("material"), r.get("present"))
+        for r in labels
+        if r.get("class") in SEGMENTS
     }
-    seg = [r for r in labels if r["class"] in SEGMENTS and r.get("material")]
-    hits = [
-        seg_pred.get((r["pano_id"], r["class"])) == r["material"].strip().lower()
-        for r in seg
-        if (r["pano_id"], r["class"]) in seg_pred
-    ]
-    out["material_accuracy"] = float(np.mean(hits)) if hits else math.nan
+    pred = {
+        key(p, "cls"): _slot_value(p.get("material"), p.get("present", True))
+        for p in predictions
+        if p.get("cls") in SEGMENTS
+    }
+    lab = {k: v for k, v in lab.items() if v is not None}
+    pred = {k: v for k, v in pred.items() if v is not None}
+    both = sorted(set(lab) & set(pred))
+    mat = [lab[k] == pred[k] for k in both if _ABSENT not in (lab[k], pred[k])]
+    side = [k for k in both if k[1] == SIDEWALK]
+    tp = sum(lab[k] != _ABSENT and pred[k] != _ABSENT for k in side)
+    fp = sum(lab[k] == _ABSENT and pred[k] != _ABSENT for k in side)
+    fn = sum(lab[k] != _ABSENT and pred[k] == _ABSENT for k in side)
+    swaps, n_pairs = 0, 0
+    for pano in sorted({k[0] for k in side}):
+        kl, kr = (pano, SIDEWALK, "LEFT"), (pano, SIDEWALK, "RIGHT")
+        if all(k in lab and k in pred for k in (kl, kr)) and lab[kl] != lab[kr]:
+            n_pairs += 1
+            swaps += pred[kl] == lab[kr] and pred[kr] == lab[kl]
+    return {
+        "n_slots": len(both),
+        "n_material": len(mat),
+        "material_accuracy": float(np.mean(mat)) if mat else math.nan,
+        "sidewalk_presence_f1": 2 * tp / (2 * tp + fp + fn) if (tp + fp + fn) else math.nan,
+        "side_swap_rate": swaps / n_pairs if n_pairs else math.nan,
+    }
+
+
+def _polyline_points(pts: Sequence[Sequence[float]], step: float = 1.0) -> np.ndarray:
+    p = np.asarray(pts, float)
+    out = [p[:1]]
+    for a, b in zip(p[:-1], p[1:], strict=True):
+        n = max(1, int(np.ceil(np.linalg.norm(b - a) / step)))
+        out.append(a + (b - a) * (np.arange(1, n + 1)[:, None] / n))
+    return np.concatenate(out)
+
+
+def _point_to_polyline(q: np.ndarray, pts: Sequence[Sequence[float]]) -> np.ndarray:
+    p = np.asarray(pts, float)
+    best = np.full(len(q), np.inf)
+    for a, b in zip(p[:-1], p[1:], strict=True):
+        ab = b - a
+        t = np.clip(((q - a) @ ab) / max(float(ab @ ab), 1e-12), 0.0, 1.0)
+        best = np.minimum(best, np.linalg.norm(q - (a + t[:, None] * ab), axis=1))
+    return best
+
+
+def polyline_distance(a: Sequence[Sequence[float]], b: Sequence[Sequence[float]]) -> float:
+    """Symmetric mean distance (px) between two polylines, sampled every pixel."""
+    da = _point_to_polyline(_polyline_points(a), b).mean()
+    db = _point_to_polyline(_polyline_points(b), a).mean()
+    return float((da + db) / 2)
+
+
+def score_roof_labels(
+    labels: Sequence[Mapping[str, Any]],
+    predictions: Sequence[Mapping[str, Any]],
+    max_mean_dist_px: float = 5.0,
+) -> dict[str, Any]:
+    """UC4 metrics: edge precision/recall (same view and edge type, mean distance within
+    `max_mean_dist_px`, one-to-one greedy by distance) and the validator's accept/reject
+    confusion against those matches (a matched prediction is a true edge)."""
+    labs = [
+        (str(r["pano_id"]), round(float(r["view_yaw_deg"])), r["edge_type"],
+         json.loads(r["points_json"]))
+        for r in labels
+        if r.get("class") == "ROOF_EDGE" and r.get("points_json")
+    ]  # fmt: skip
+    cands = []
+    for i, (pid, yaw, et, pts) in enumerate(labs):
+        for j, p in enumerate(predictions):
+            same = (str(p["pano_id"]), round(float(p["view_yaw_deg"])), p["edge_type"])
+            if same == (pid, yaw, et) and len(p["points"]) >= 2:
+                d = polyline_distance(pts, p["points"])
+                if d <= max_mean_dist_px:
+                    cands.append((d, i, j))
+    used_l, used_p = set(), set()
+    for _, i, j in sorted(cands):
+        if i not in used_l and j not in used_p:
+            used_l.add(i)
+            used_p.add(j)
+    conf = {"tp": 0, "fp": 0, "fn": 0, "tn": 0}
+    for j, p in enumerate(predictions):
+        true_edge, acc = j in used_p, bool(p.get("accepted"))
+        conf[("tp" if true_edge else "fp") if acc else ("fn" if true_edge else "tn")] += 1
+    return {
+        "n_label_edges": len(labs),
+        "n_pred_edges": len(predictions),
+        "edge_recall": len(used_l) / len(labs) if labs else math.nan,
+        "edge_precision": len(used_p) / len(predictions) if predictions else math.nan,
+        "validator_confusion": conf,
+    }
+
+
+def bootstrap_ci(
+    per_pano: Mapping[str, tuple[float, float]],
+    n_boot: int = 1000,
+    seed: int = 0,
+    alpha: float = 0.05,
+) -> tuple[float, float, float]:
+    """(point, lo, hi) of the ratio sum(num) / sum(den) with a percentile bootstrap that
+    resamples panos (views of one pano are correlated). NaNs when there is no data."""
+    keys = sorted(per_pano)
+    if not keys:
+        return math.nan, math.nan, math.nan
+    num = np.array([per_pano[k][0] for k in keys], float)
+    den = np.array([per_pano[k][1] for k in keys], float)
+    point = float(num.sum() / den.sum()) if den.sum() else math.nan
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(0, len(keys), (int(n_boot), len(keys)))
+    d = den[idx].sum(1)
+    stats = np.where(d > 0, num[idx].sum(1) / np.where(d > 0, d, 1.0), np.nan)
+    lo, hi = np.nanpercentile(stats, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    return point, float(min(lo, point)), float(max(hi, point))
+
+
+def per_pano_counts(
+    labels: Sequence[Mapping[str, Any]],
+    predictions: Sequence[Mapping[str, Any]],
+    scorer: Callable[..., Mapping[str, Any]],
+    rate_key: str,
+    n_key: str,
+) -> dict[str, tuple[float, int]]:
+    """{pano_id: (successes, trials)} for `bootstrap_ci`: `scorer` is run on each pano's
+    labels and predictions alone, and successes = rate * trials (0 when there are no trials)."""
+    out = {}
+    for pano in sorted({str(r["pano_id"]) for r in labels}):
+        lab = [r for r in labels if str(r["pano_id"]) == pano]
+        pred = [p for p in predictions if str(p["pano_id"]) == pano]
+        s = scorer(lab, pred)
+        n = int(s[n_key])
+        out[pano] = (float(s[rate_key]) * n if n else 0.0, n)
     return out
