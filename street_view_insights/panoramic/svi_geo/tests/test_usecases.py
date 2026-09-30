@@ -205,3 +205,50 @@ def test_uc4_select_and_run_with_recorded_edges():
     )
     assert len(out["results"]) == len(chosen)
     assert len(out["decoy_rates"]) == len(chosen)
+
+
+def test_uc3_v1_prompt_and_kerb_sidewalk_prior_survives_viterbi():
+    fr = _attach_uris(sim.synthetic_frames(5, 10.0, 28.0502, -81.9601, travel_deg=0.0))
+    panos = sequence.build_sequences(fr.drop_duplicates("pano_id"))
+    panos["travel_deg"] = sequence.travel_bearing(panos)
+    sel = panos.sort_values("seq_idx").reset_index(drop=True)
+    sel_frames = fr.drop(columns=["seq_id", "seq_idx"]).merge(
+        sel[["pano_id", "seq_idx", "travel_deg"]], on="pano_id"
+    )
+    seen_prompts = []
+
+    def reply_fn(idx, parts, _schema):
+        seen_prompts.append(parts[0])
+        # Middle pano has a weak false-positive sidewalk on RIGHT (0.65), others say ABSENT (0.92)
+        if idx == 2:
+            return (
+                '{"observations": ['
+                '{"asset": "ROAD", "side": "CENTER", "present": true, "material": "Paved Asphalt", "condition": "Good", "confidence": 0.95},'
+                '{"asset": "SIDEWALK", "side": "LEFT", "present": true, "material": "Concrete", "condition": "Good", "confidence": 0.9},'
+                '{"asset": "SIDEWALK", "side": "RIGHT", "present": true, "material": "Concrete", "condition": "Fair", "confidence": 0.65}'
+                "]}"
+            )
+        return (
+            '{"observations": ['
+            '{"asset": "ROAD", "side": "CENTER", "present": true, "material": "Paved Asphalt", "condition": "Good", "confidence": 0.95},'
+            '{"asset": "SIDEWALK", "side": "LEFT", "present": true, "material": "Concrete", "condition": "Good", "confidence": 0.9},'
+            '{"asset": "SIDEWALK", "side": "RIGHT", "present": false, "material": null, "condition": null, "confidence": 0.92}'
+            "]}"
+        )
+
+    v3 = uc.Variant(name="v3b", uc3_prompt_version="v1", uc3_kerb_sidewalk_prior=True)
+    runner = gemini_client.GeminiRunner(_ScriptedBackend(reply_fn), max_calls=20)
+    out = asyncio.run(
+        uc.uc3_run(
+            sel,
+            sel_frames,
+            _dummy_fetch,
+            runner,
+            rosette.DEFAULT_INTRINSICS,
+            variant=v3,
+        )
+    )
+    assert out["prompt_version"] == "uc3_v1"
+    first_txt = getattr(seen_prompts[0], "text", str(seen_prompts[0]))
+    assert "MUST set present=false" in first_txt
+    assert all(x == "ABSENT" for x in out["smooth_by_slot"]["RIGHT"])

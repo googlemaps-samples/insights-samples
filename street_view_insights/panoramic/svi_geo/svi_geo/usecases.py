@@ -517,9 +517,9 @@ async def uc3_run(
                 rv = rv_by_pano.get(pid, {}).get(role_key)
                 if im is not None and rv is not None and raw[idx_p] is not None:
                     full_h = np.zeros((rv.view.height, rv.view.width, 3), dtype=np.uint8)
-                    full_h[: im.shape[0], : im.shape[1]] = im
-                    ipm, vmask = cvc.ground_ipm(full_h, rv.view)
-                    ke = cvc.kerb_evidence(ipm, vmask)
+                    top = max(0, rv.view.height - im.shape[0])
+                    full_h[top : top + im.shape[0], : im.shape[1]] = im
+                    ke = cvc.kerb_evidence(full_h, rv.view, side=side)
                     if not ke["present"] and raw[idx_p] != smoothing.ABSENT and conf[idx_p] < 0.85:
                         conf[idx_p] = max(0.35, conf[idx_p] * 0.65)
         smooth = smoothing.viterbi(
