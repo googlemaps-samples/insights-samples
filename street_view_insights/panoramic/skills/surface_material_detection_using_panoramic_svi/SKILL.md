@@ -29,31 +29,37 @@ using the Street View Insights **panoramic** tables only (`pano_observations_lat
     installs all of them plus the optional rectification).
 -   Application Default Credentials with BigQuery, read access to the frame bucket, and
     Vertex AI in your project.
+-   Your billing project (`--project`, or `$PROJECT_ID`, then `$GOOGLE_CLOUD_PROJECT`) and the
+    frame bucket linked to your Imagery Insights dataset (`--gcs-bucket` or `$GCS_BUCKET`). The
+    bucket is required unless you pass `--image`; it is never looked up by selecting `gcs_uri`.
 
 ## Instructions
 
 Run from the repository root:
 
 ```bash
+export PROJECT_ID=YOUR_PROJECT_ID GCS_BUCKET=YOUR_FRAME_BUCKET
+
 # By GPS coordinates (nearest pano within --radius-m, default 30 m)
 python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py \
-  --project YOUR_PROJECT_ID --coordinates <lat,lng>
+  --coordinates <lat,lng>
 
 # By observation id or pano id
 python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py \
-  --project YOUR_PROJECT_ID --observation-id <observation_or_pano_id>
+  --observation-id <observation_or_pano_id>
 
-# By a local image you already downloaded
+# By a local image you already downloaded (no bucket needed)
 python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py \
-  --project YOUR_PROJECT_ID --image frame.jpg
+  --image frame.jpg
 ```
 
 ### Optional arguments
 
+-   `--project`: billing project (default `$PROJECT_ID`, then `$GOOGLE_CLOUD_PROJECT`; the
+    script stops if neither is set).
+-   `--gcs-bucket`: frame bucket (default `$GCS_BUCKET`; required unless `--image`).
 -   `--output`: path to save the JSON result.
 -   `--dataset`: BigQuery dataset (default `imagery_insights___us`).
--   `--gcs-bucket`: frame bucket; skips the one-off ~1.9 GB bucket lookup (the result is also
-    cached in `~/.cache/svi_geo/bucket.json`, or set `$GCS_BUCKET`).
 -   `--radius-m`: search radius for the pano lookup (default 30).
 -   `--model` (default `gemini-3.5-flash`) and `--location` (default `global`).
 

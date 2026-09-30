@@ -9,13 +9,18 @@ Install (from the repo root):
 python3 -m venv .venv
 .venv/bin/pip install -e "street_view_insights/panoramic/svi_geo[dev,notebooks]"
 .venv/bin/pytest street_view_insights/panoramic/svi_geo/tests -q            # offline
-.venv/bin/pytest street_view_insights/panoramic/svi_geo/tests -q --run-live # + BigQuery/GCS/Gemini
+GCS_BUCKET=YOUR_FRAME_BUCKET SVI_PROJECT=YOUR_PROJECT_ID \
+  .venv/bin/pytest street_view_insights/panoramic/svi_geo/tests -q -m live --run-live  # BigQuery/GCS/Gemini
 ```
+
+The scripts in `scripts/` take the frame bucket from `--gcs-bucket` or `$GCS_BUCKET`; the
+bucket is never discovered by selecting `gcs_uri`.
 
 ## Modules
 
 | module | purpose |
 |---|---|
+| `config` | explicit `PROJECT_ID` / `GCS_BUCKET` resolution; fails fast on placeholders |
 | `geo` | ENU / haversine / bearing helpers |
 | `rosette` | KB4 fisheye model for the 7-camera rosette, per-camera pose, perspective rendering, `undistort`, camera selection |
 | `data` | parameterized, dry-run-first, byte-capped queries on the pano tables; cheap `gcs_uri_for` |

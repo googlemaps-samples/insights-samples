@@ -15,6 +15,7 @@ import argparse
 import dataclasses
 import datetime as dt
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -27,7 +28,16 @@ from google.cloud import storage
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fetch_calibration_panos import AOIS  # noqa: E402
 
-from svi_geo import auth, calib_real, calibrate, data, images, rosette, sequence  # noqa: E402
+from svi_geo import (  # noqa: E402
+    auth,
+    calib_real,
+    calibrate,
+    config,
+    data,
+    images,
+    rosette,
+    sequence,
+)
 from svi_geo import calib_features as cf  # noqa: E402
 
 W, H = 3648, 5472
@@ -185,6 +195,7 @@ def evaluate(tag, intr, prob_h, prob_hs, chains_h, frames_by_key, fetcher, held_
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--gcs-bucket", default=None, help="frame bucket (default: $GCS_BUCKET)")
     ap.add_argument("--panos", default="data/calib_panos.parquet")
     ap.add_argument("--out", default="svi_geo/intrinsics/rosette_kb4_v1.json")
     ap.add_argument("--report", default="data/calib_report.md")
@@ -201,7 +212,7 @@ def main() -> None:
     )
     fetcher = images.GcsImageFetcher(storage.Client(project=data.PROJECT, credentials=creds))
     calib = pd.read_parquet(args.panos)
-    bucket = data.discover_bucket(runner)
+    bucket = config.require_bucket(args.gcs_bucket, env=dict(os.environ))
     nb = heldout_neighbours(runner, calib, bucket, args.radius_m)
     log(f"held-out neighbours: {nb['pano_id'].nunique()} panos; downloading missing frames")
     res = fetcher.fetch_many(list(nb["gcs_uri"]), max_workers=4)

@@ -22,6 +22,7 @@ import asyncio
 import datetime as dt
 import json
 import math
+import os
 import sys
 import time
 from collections import defaultdict
@@ -33,7 +34,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fetch_calibration_panos import AOIS  # noqa: E402
 
-from svi_geo import auth, data, geo, images, pipeline, rosette, sequence  # noqa: E402
+from svi_geo import auth, config, data, geo, images, pipeline, rosette, sequence  # noqa: E402
 from svi_geo import entities as ent  # noqa: E402
 from svi_geo import eval as ev  # noqa: E402
 from svi_geo import gemini_client as gc  # noqa: E402
@@ -229,7 +230,7 @@ async def run_self_consistency_async(args) -> dict:
         data.make_bigquery_client(data.PROJECT, creds), cache_dir=data.DEFAULT_QUERY_CACHE
     )
     frames_all = load_aoi_frames(runner_bq, args.radius_m)
-    bucket = data.discover_bucket(runner_bq)
+    bucket = config.require_bucket(args.gcs_bucket, env=dict(os.environ))
     found = find_repeat_passes(frames_all, args.sc_panos)
     if found is None:
         raise SystemExit("no repeat pass with enough panos found in the AOIs")
@@ -365,6 +366,7 @@ def sc_report(r: dict) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--gcs-bucket", default=None, help="frame bucket (default: $GCS_BUCKET)")
     ap.add_argument("--synthetic", action="store_true")
     ap.add_argument("--self-consistency", action="store_true")
     ap.add_argument("--labels")

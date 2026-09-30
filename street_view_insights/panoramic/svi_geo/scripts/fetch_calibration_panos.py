@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import time
 from pathlib import Path
 
@@ -20,7 +21,7 @@ import numpy as np
 import pandas as pd
 from google.cloud import storage
 
-from svi_geo import auth, data, images, sequence
+from svi_geo import auth, config, data, images, sequence
 
 # Dense AOIs found with one aggregate query over pano_observations_latest (0.01 deg cells).
 AOIS = {
@@ -82,6 +83,7 @@ def select(
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--gcs-bucket", default=None, help="frame bucket (default: $GCS_BUCKET)")
     ap.add_argument("--out", default="data/calib_panos.parquet")
     ap.add_argument("--radius-m", type=float, default=250.0)
     ap.add_argument("--train-per-aoi", type=int, default=12)
@@ -112,7 +114,7 @@ def main() -> None:
         )
         parts.append(sel)
     calib = pd.concat(parts, ignore_index=True)
-    bucket = data.discover_bucket(runner)
+    bucket = config.require_bucket(args.gcs_bucket, env=dict(os.environ))
     print(f"[bigquery] total billed estimate this run: {runner.total_billed_estimate / 1e9:.2f} GB")
     calib["gcs_uri"] = [
         data.gcs_uri_for(bucket, s, o)

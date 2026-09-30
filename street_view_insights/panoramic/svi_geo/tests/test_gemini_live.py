@@ -15,14 +15,11 @@ KNOWN_OBS = "o1:---zLYmNYEHVW4MKF1YhYA_0:5001ee"
 
 
 @pytest.fixture(scope="module")
-def rendered_view(svi_project, tmp_path_factory):
+def rendered_view(svi_project, svi_bucket, tmp_path_factory):
     from google.cloud import storage
 
     creds = auth.get_credentials()
-    runner = data.QueryRunner(
-        data.make_bigquery_client(svi_project, creds), cache_dir=data.DEFAULT_QUERY_CACHE
-    )
-    bucket = data.discover_bucket(runner)
+    bucket = svi_bucket
     fetcher = images.GcsImageFetcher(
         storage.Client(project=svi_project, credentials=creds),
         cache_dir=tmp_path_factory.mktemp("frames"),

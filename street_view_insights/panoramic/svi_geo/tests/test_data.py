@@ -1,4 +1,4 @@
-import json
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -115,22 +115,12 @@ def test_pano_meta_sql_never_selects_gcs_uri():
     assert "@radius_m" in data.PANO_META_SQL and "FARM_FINGERPRINT" in data.PANO_META_SQL
 
 
-def test_discover_bucket_uses_override_then_cache_then_query(tmp_path, monkeypatch):
-    cache = tmp_path / "bucket.json"
-    monkeypatch.delenv("GCS_BUCKET", raising=False)
-    df = pd.DataFrame({"gcs_uri": ["gs://geoai_published_x__us/snap/v0/o1:p_0:5001ee.jpg"]})
-    client = FakeClient(1_900_000_000, df)
-    runner = data.QueryRunner(client)
-    assert data.discover_bucket(runner, cache_path=cache) == "geoai_published_x__us"
-    assert len(client.calls) == 2
-    assert json.loads(cache.read_text())[PANO_LATEST] == "geoai_published_x__us"
-    # cached: no new query
-    assert data.discover_bucket(runner, cache_path=cache) == "geoai_published_x__us"
-    assert len(client.calls) == 2
-    monkeypatch.setenv("GCS_BUCKET", "envbucket")
-    assert data.discover_bucket(runner, cache_path=cache) == "envbucket"
-    assert data.discover_bucket(runner, cache_path=cache, override="given") == "given"
-    assert len(client.calls) == 2
+def test_bucket_discovery_by_gcs_uri_scan_is_gone():
+    # GCS_BUCKET is a required, documented parameter; nothing may SELECT gcs_uri (~1.9 GB).
+    assert hasattr(data, "discover_bucket") is False
+    assert not hasattr(data, "_BUCKET_SQL_TEMPLATE")
+    assert not hasattr(data, "DEFAULT_BUCKET_CACHE")
+    assert "select gcs_uri" not in Path(data.__file__).read_text().lower()
 
 
 def test_rows_to_frames_adds_camera_index_and_pose():

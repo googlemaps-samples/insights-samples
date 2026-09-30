@@ -33,7 +33,6 @@ from pydantic import BaseModel, Field
 DEFAULT_DATASET = "imagery_insights___us"
 MAX_BYTES_BILLED = 2_000_000_000
 MAX_IMAGE_SIDE = 1536
-BUCKET_CACHE = Path.home() / ".cache" / "svi_geo" / "bucket.json"
 
 # ----------------------------------------------------------------------------- schema
 # Copied from svi_geo.schemas so the skill runs stand-alone; a test keeps them identical.
@@ -111,11 +110,6 @@ WHERE pano_id IS NOT NULL
 """
 )
 
-BUCKET_SQL = (
-    "SELECT gcs_uri FROM `__PROJECT__.__DATASET__.pano_observations_latest` "
-    "WHERE pano_id IS NOT NULL LIMIT 1"
-)
-
 _IDENT = re.compile(r"^[A-Za-z0-9_\-.]+$")
 
 
@@ -143,31 +137,13 @@ def run_query(client, sql: str, params: list) -> list:
     )
     if (dry.total_bytes_processed or 0) > MAX_BYTES_BILLED:
         raise RuntimeError(f"query would scan {gb:.2f} GB > cap")
-    cfg = bigquery.QueryJobConfig(
-        maximum_bytes_billed=MAX_BYTES_BILLED, query_parameters=params
-    )
+    cfg = bigquery.QueryJobConfig(maximum_bytes_billed=MAX_BYTES_BILLED, query_parameters=params)
     return [dict(r) for r in client.query(sql, job_config=cfg).result()]
 
 
 def gcs_uri_for(bucket: str, snapshot_id: str, observation_id: str) -> str:
+    """gs://<bucket>/<snapshot_id>/v0/<observation_id>.jpg (the published frame layout)."""
     return f"gs://{bucket}/{snapshot_id}/v0/{observation_id}.jpg"
-
-
-def discover_bucket(client, project: str, dataset: str, override: str | None) -> str:
-    if override:
-        return override.removeprefix("gs://").strip("/")
-    if os.environ.get("GCS_BUCKET"):
-        return os.environ["GCS_BUCKET"].removeprefix("gs://").strip("/")
-    table = f"{project}.{dataset}.pano_observations_latest"
-    cache = json.loads(BUCKET_CACHE.read_text()) if BUCKET_CACHE.exists() else {}
-    if table in cache:
-        return cache[table]
-    rows = run_query(client, render_sql(BUCKET_SQL, project, dataset), [])
-    bucket = rows[0]["gcs_uri"].removeprefix("gs://").split("/", 1)[0]
-    cache[table] = bucket
-    BUCKET_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    BUCKET_CACHE.write_text(json.dumps(cache, indent=2))
-    return bucket
 
 
 # ----------------------------------------------------------------------------- geometry
@@ -188,14 +164,10 @@ def _bearing(lat1, lng1, lat2, lng2) -> float:
 
 def _dist_m(lat1, lng1, lat2, lng2) -> float:
     k = 111_320.0
-    return math.hypot(
-        (lat2 - lat1) * k, (lng2 - lng1) * k * math.cos(math.radians(lat1))
-    )
+    return math.hypot((lat2 - lat1) * k, (lng2 - lng1) * k * math.cos(math.radians(lat1)))
 
 
-def travel_direction(
-    rows: list[dict], pano_id: str, max_dt_s: float = 5.0
-) -> float | None:
+def travel_direction(rows: list[dict], pano_id: str, max_dt_s: float = 5.0) -> float | None:
     """Bearing from the previous to the next pano of the same drive (same snapshot, <= 5 s)."""
     panos = {}
     for r in rows:
@@ -232,11 +204,7 @@ def pick_front_camera(frames: list[dict], travel_deg: float | None) -> dict:
 def _fit_within(img: np.ndarray, max_side: int = MAX_IMAGE_SIDE) -> np.ndarray:
     h, w = img.shape[:2]
     s = max_side / max(h, w)
-    return (
-        cv2.resize(img, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA)
-        if s < 1
-        else img
-    )
+    return cv2.resize(img, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA) if s < 1 else img
 
 
 def road_view(image: np.ndarray) -> np.ndarray:
@@ -275,32 +243,45 @@ def _optional_svi_geo_auth():
 # ----------------------------------------------------------------------------- main
 
 
-def parse_args():
-    p = argparse.ArgumentParser(
-        description="Surface material detection (panoramic SVI)."
-    )
+def parse_args(argv=None, env=None):
+    """CLI arguments. `env` (default: the process environment) supplies PROJECT_ID /
+    GOOGLE_CLOUD_PROJECT / GCS_BUCKET / BIGQUERY_DATASET defaults; nothing else is guessed."""
+    env = dict(os.environ) if env is None else env
+    p = argparse.ArgumentParser(description="Surface material detection (panoramic SVI).")
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--image", help="Path to a local image file (already downloaded).")
     g.add_argument("--observation-id", "--pano-id", dest="observation_id")
     g.add_argument("--coordinates", help="'lat,lng' - nearest pano within --radius-m")
     p.add_argument("--radius-m", type=float, default=30.0)
     p.add_argument("--output", help="Optional path to save the JSON result.")
-    p.add_argument("--project", default=os.getenv("GOOGLE_CLOUD_PROJECT"))
-    p.add_argument("--dataset", default=os.getenv("BIGQUERY_DATASET", DEFAULT_DATASET))
     p.add_argument(
-        "--gcs-bucket", default=None, help="Frame bucket (skips a ~1.9 GB lookup)."
+        "--project",
+        default=env.get("PROJECT_ID") or env.get("GOOGLE_CLOUD_PROJECT"),
+        help="Billing project (default: $PROJECT_ID, then $GOOGLE_CLOUD_PROJECT).",
+    )
+    p.add_argument("--dataset", default=env.get("BIGQUERY_DATASET", DEFAULT_DATASET))
+    p.add_argument(
+        "--gcs-bucket",
+        default=env.get("GCS_BUCKET"),
+        help="Frame bucket linked to your dataset (default: $GCS_BUCKET). Required unless --image.",
     )
     p.add_argument("--location", default="global")
     p.add_argument("--model", default="gemini-3.5-flash")
-    return p.parse_args()
+    args = p.parse_args(argv)
+    if not args.project:
+        p.error("set --project or the PROJECT_ID environment variable")
+    args.gcs_bucket = (args.gcs_bucket or "").removeprefix("gs://").strip("/") or None
+    if not args.image and not args.gcs_bucket:
+        p.error("set --gcs-bucket or the GCS_BUCKET environment variable")
+    return args
 
 
 def fetch_frame(args) -> tuple[np.ndarray, dict]:
     from google.cloud import bigquery, storage
 
     creds, _ = _optional_svi_geo_auth()
-    bq = bigquery.Client(project=args.project, credentials=creds)
-    project = args.project or bq.project
+    project = args.project
+    bq = bigquery.Client(project=project, credentials=creds)
     if args.coordinates:
         lat, lng = (float(x) for x in args.coordinates.split(","))
         params = [
@@ -318,24 +299,18 @@ def fetch_frame(args) -> tuple[np.ndarray, dict]:
             bigquery.ScalarQueryParameter("radius_m", "FLOAT64", args.radius_m),
         ]
         rows = run_query(bq, render_sql(ID_SQL, project, args.dataset), params)
-        hit = [
-            r
-            for r in rows
-            if args.observation_id in (r["observation_id"], r["pano_id"])
-        ]
+        hit = [r for r in rows if args.observation_id in (r["observation_id"], r["pano_id"])]
         if not hit:
             raise ValueError(f"no pano observation found for {args.observation_id}")
         near = hit[0]
     pano = near["pano_id"]
     frames = [
-        {**r, "cam_k": _camera_index(r["observation_id"])}
-        for r in rows
-        if r["pano_id"] == pano
+        {**r, "cam_k": _camera_index(r["observation_id"])} for r in rows if r["pano_id"] == pano
     ]
     frames = [f for f in frames if f["cam_k"] is not None]
     travel = travel_direction(rows, pano)
     cam = pick_front_camera(frames, travel)
-    bucket = discover_bucket(bq, project, args.dataset, args.gcs_bucket)
+    bucket = args.gcs_bucket
     uri = gcs_uri_for(bucket, cam["snapshot_id"], cam["observation_id"])
     name = uri.removeprefix("gs://").split("/", 1)[1]
     gcs = storage.Client(project=project, credentials=creds)

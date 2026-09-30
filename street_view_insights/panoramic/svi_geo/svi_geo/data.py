@@ -15,7 +15,6 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
-import os
 import re
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -352,11 +351,21 @@ def assign_nearest_aoi(
 
 # --------------------------------------------------------------------------- GCS paths
 
-DEFAULT_BUCKET_CACHE = Path.home() / ".cache" / "svi_geo" / "bucket.json"
 DEFAULT_QUERY_CACHE = Path.home() / ".cache" / "svi_geo" / "bq"
 
 
 def gcs_uri_for(bucket: str, snapshot_id: str, observation_id: str) -> str:
+    """Frame URI derived from metadata, so `gcs_uri` never has to be selected (~1.9 GB scan).
+
+    Layout of the Imagery Insights frame bucket linked to your dataset (the bucket name is a
+    required parameter, `GCS_BUCKET`):
+
+        gs://<bucket>/<snapshot_id>/v0/<observation_id>.jpg
+
+    e.g. `gs://b/21d75cd4-.../v0/o1:<pano_id>_0:5001ee.jpg`. This layout is what the published
+    `gcs_uri` column contains; if it ever changes, a fetch fails with 404 rather than returning
+    the wrong frame.
+    """
     b = bucket.removeprefix("gs://").strip("/")
     return f"gs://{b}/{snapshot_id}/v0/{observation_id}.jpg"
 
@@ -366,35 +375,6 @@ def split_gcs_uri(uri: str) -> tuple[str, str]:
         raise ValueError(f"not a gs:// uri: {uri}")
     bucket, _, name = uri[5:].partition("/")
     return bucket, name
-
-
-_BUCKET_SQL_TEMPLATE = "SELECT gcs_uri FROM `__TABLE__` WHERE pano_id IS NOT NULL LIMIT 1"
-
-
-def discover_bucket(
-    runner: QueryRunner,
-    table: str = PANO_LATEST,
-    cache_path: str | Path = DEFAULT_BUCKET_CACHE,
-    override: str | None = None,
-) -> str:
-    """Bucket holding the pano frames: override > $GCS_BUCKET > cache > one guarded query (~1.9 GB)."""
-    if override:
-        return override.removeprefix("gs://").strip("/")
-    env = os.environ.get("GCS_BUCKET")
-    if env:
-        return env.removeprefix("gs://").strip("/")
-    cache_path = Path(cache_path)
-    cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
-    if table in cache:
-        return cache[table]
-    if not is_pano_table(table):
-        raise DisallowedTable(table)
-    df = runner.run(_BUCKET_SQL_TEMPLATE.replace("__TABLE__", table))
-    bucket, _ = split_gcs_uri(str(df["gcs_uri"].iloc[0]))
-    cache[table] = bucket
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(json.dumps(cache, indent=2))
-    return bucket
 
 
 # --------------------------------------------------------------------------- frames

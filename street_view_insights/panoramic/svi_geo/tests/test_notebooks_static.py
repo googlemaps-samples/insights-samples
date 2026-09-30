@@ -88,3 +88,42 @@ def test_notebook_json_has_no_secrets():
         raw = p.read_text()
         assert not re.search(r"AIza[0-9A-Za-z_\-]{30,}", raw)
         assert "imagery-insights-sandbox" not in json.dumps(json.loads(raw)["cells"])
+
+
+def test_install_ref_is_a_single_pinned_parameter(nb):
+    code = _code(nb)
+    assert len(re.findall(r"^SVI_GEO_REF\s*=", code, re.M)) == 1
+    assert "@{SVI_GEO_REF}#subdirectory=street_view_insights/panoramic/svi_geo" in code
+    assert 'TODO(after-merge): set to "main"' in code
+    assert not re.search(r"^SVI_GEO_REF\s*=\s*[\"']main[\"']", code, re.M)
+
+
+def test_local_svi_geo_is_found_by_env_or_path_check_not_bare_cwd(nb):
+    code = _code(nb)
+    assert re.search(r"LOCAL_SVI_GEO\s*=", code)
+    assert 'os.path.join("..", "svi_geo")' not in code
+    assert "SVI_GEO_LOCAL_PATH" in code
+    assert "street_view_insights/panoramic/svi_geo" in code
+
+
+def test_project_and_bucket_are_explicit_and_validated(nb):
+    code = _code(nb)
+    assert re.search(
+        r'^PROJECT_ID\s*=\s*os\.environ\.get\("PROJECT_ID",\s*"YOUR_PROJECT_ID"\)', code, re.M
+    )
+    assert re.search(r'^GCS_BUCKET\s*=\s*os\.environ\.get\("GCS_BUCKET",\s*""\)', code, re.M)
+    assert "config.resolve_settings(" in code
+    assert "GOOGLE_CLOUD_PROJECT" not in code and "default_project" not in code
+    assert "discover_bucket" not in _all(nb)
+
+
+def test_auth_options_are_documented(nb):
+    md = "\n".join(c.source for c in nb.cells if c.cell_type == "markdown")
+    for s in (
+        "authenticate_user",
+        "gcloud auth application-default login",
+        "SVI_USE_GCLOUD_TOKEN",
+        "SVI_ECP_PROXY_URL",
+        "roles/",
+    ):
+        assert s in md, s

@@ -30,3 +30,14 @@ def pytest_collection_modifyitems(config, items):
 @pytest.fixture(scope="session")
 def svi_project() -> str:
     return os.environ.get("SVI_PROJECT", "imagery-insights-sandbox")
+
+
+@pytest.fixture(scope="session")
+def svi_bucket() -> str:
+    """Frame bucket for live tests: `GCS_BUCKET` is required (never discovered by a scan)."""
+    from svi_geo import config
+
+    try:
+        return config.require_bucket(None, env=dict(os.environ))
+    except config.ConfigError as err:
+        pytest.fail(f"live tests need GCS_BUCKET: {err}")

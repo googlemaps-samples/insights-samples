@@ -20,9 +20,9 @@ def live_clients(svi_project):
 
 
 @pytest.mark.live
-def test_derived_uri_exists_and_downloads(live_clients, tmp_path):
+def test_derived_uri_exists_and_downloads(live_clients, svi_bucket, tmp_path):
     runner, storage_client = live_clients
-    bucket = data.discover_bucket(runner)
+    bucket = svi_bucket
     uri = data.gcs_uri_for(bucket, PARIS_SNAPSHOT, KNOWN_OBS)
     fetcher = images.GcsImageFetcher(storage_client, cache_dir=tmp_path)
     assert fetcher.exists(uri)

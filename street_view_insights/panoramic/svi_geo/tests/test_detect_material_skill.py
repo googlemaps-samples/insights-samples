@@ -70,6 +70,35 @@ def test_gcs_uri_is_derived_not_selected(dm):
     assert dm.gcs_uri_for("b", "snap", "o1:p_0:5001ee") == "gs://b/snap/v0/o1:p_0:5001ee.jpg"
 
 
+def test_no_gcs_uri_select_and_no_bucket_discovery():
+    src = SKILL.read_text()
+    assert not re.search(r"SELECT\s+gcs_uri", src, re.I)
+    assert "discover_bucket" not in src
+    md = SKILL.parents[1].joinpath("SKILL.md").read_text()
+    assert "discover" not in md.lower() and "bucket.json" not in md
+
+
+def test_gcs_bucket_is_required_unless_image(dm):
+    env = {"PROJECT_ID": "p"}
+    with pytest.raises(SystemExit):
+        dm.parse_args(["--coordinates", "1,2"], env=env)
+    a = dm.parse_args(["--coordinates", "1,2", "--gcs-bucket", "gs://b/"], env=env)
+    assert a.gcs_bucket == "b"
+    a = dm.parse_args(["--coordinates", "1,2"], env={**env, "GCS_BUCKET": "eb"})
+    assert a.gcs_bucket == "eb"
+    a = dm.parse_args(["--image", "x.jpg"], env=env)
+    assert a.image == "x.jpg"
+
+
+def test_project_defaults_from_project_id_then_google_cloud_project(dm):
+    args = ["--image", "x.jpg"]
+    assert dm.parse_args(args, env={"PROJECT_ID": "a", "GOOGLE_CLOUD_PROJECT": "b"}).project == "a"
+    assert dm.parse_args(args, env={"GOOGLE_CLOUD_PROJECT": "b"}).project == "b"
+    assert dm.parse_args([*args, "--project", "c"], env={"PROJECT_ID": "a"}).project == "c"
+    with pytest.raises(SystemExit):
+        dm.parse_args(args, env={})
+
+
 def test_road_crop_is_deterministic_code(dm):
     img = np.full((5472, 3648, 3), 40, np.uint8)  # non-zero everywhere: black = off-lens
     img[3000:, :] = 200
