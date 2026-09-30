@@ -20,9 +20,10 @@ evaluation code.
   (Viterbi), then merged into road segments with material, condition and
   confidence.
 - **[House Image Discovery with Cost](notebooks/house_image_discovery_with_cost.ipynb)**:
-  picks the camera in each panorama that best sees a target house, renders an
-  undistorted crop centred on it, and asks Gemini to describe or verify the
-  house. The cost of every call is logged.
+  picks, in each panorama, the camera that can show a whole target house without
+  black border, renders an undistorted view framed on it, and asks Gemini to
+  describe it. The house is triangulated from the boxes of two or more panoramas
+  and its id is derived from that point. The cost of every call is logged.
 - **[Agentic Roof Edge Detection](notebooks/agentic_roof_edge_detection.ipynb)**:
   lens-corrects the best view of a building with the calibrated rosette model.
   Gemini then traces the visible roof edges as schema-validated polylines.

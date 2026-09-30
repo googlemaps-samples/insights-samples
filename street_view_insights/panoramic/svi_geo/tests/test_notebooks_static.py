@@ -149,3 +149,32 @@ def test_uc1_uc4_do_not_use_code_execution(schema):
     text = _all(matches[0])
     assert "code_execution=True" not in text
     assert "code execution" not in text.lower()
+
+
+def _uc1():
+    return nbformat.read(
+        next(p for p in NOTEBOOKS if p.stem == "house_image_discovery_with_cost"), as_version=4
+    )
+
+
+def test_uc1_uses_shared_view_geometry_and_triangulated_id():
+    code = _code(_uc1())
+    assert "views.triangulate_house" in code
+    assert "views.house_view_candidates" in code and "views.rank_house_views" in code
+    assert 'ent.entity_id_for("HOUSE", LAT, LNG)' not in code  # no user-anchored id
+    assert "SEARCH_RADIUS_M" not in code
+    assert not re.search(r"PerspectiveView\([^)]*\b8\.0\b", code)  # no fixed pitch
+    assert 'ignore={"UNKNOWN"}' in code
+
+
+def test_uc1_guards_empty_candidates_and_reports_black_fraction():
+    code = _code(_uc1())
+    assert re.search(r"if\s+\w+\.empty:", code)
+    assert "view_black_fraction" in code and "black_fraction_max" in code
+
+
+def test_uc1_markdown_claims_only_what_runs():
+    md = "\n".join(c.source for c in _uc1().cells if c.cell_type == "markdown").lower()
+    for claim in ("deduplication", "smoothing", "lens undistortion"):
+        assert claim not in md, claim
+    assert "triangulat" in md

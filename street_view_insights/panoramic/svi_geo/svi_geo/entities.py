@@ -27,7 +27,7 @@ import dataclasses
 import hashlib
 import math
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -89,11 +89,17 @@ class Entity:
         return len(set(self.pano_ids))
 
 
-def fuse_attribute(votes: Iterable[tuple[Any, float]]) -> tuple[Any, float]:
-    """Confidence-weighted vote -> (value, share of total weight)."""
+def fuse_attribute(
+    votes: Iterable[tuple[Any, float]], ignore: Collection[Any] = ()
+) -> tuple[Any, float]:
+    """Confidence-weighted vote -> (value, share of total weight).
+
+    Values in `ignore` (e.g. {"UNKNOWN"}) do not vote, so they can never outvote a known
+    value; if only ignored values were given the result is (None, 0.0)."""
+    skip = set(ignore)
     w: dict[Any, float] = defaultdict(float)
     for v, c in votes:
-        if v is not None:
+        if v is not None and v not in skip:
             w[v] += float(c)
     if not w:
         return None, 0.0
