@@ -1,7 +1,8 @@
 """Guarded BigQuery access to the Street View Insights pano views, plus GCS path derivation.
 
 Rules enforced here:
-* Only `pano_observations_latest` / `pano_observations_all` (in any project) may be queried.
+* Only `pano_observations_latest` / `pano_observations_all` of an allow-listed dataset
+  (`imagery_insights___us`, plus `$SVI_ALLOWED_DATASETS`) in any project may be queried.
 * Every query is dry-run first (no cache) and refused above `max_bytes` (<= 2 GB); the real
   run sets `maximum_bytes_billed`.
 * SQL must be parameterised (`@name` + ScalarQueryParameter); `{`/`}` are rejected so
@@ -15,6 +16,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
 import re
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -35,10 +37,20 @@ ALLOWED_TABLES = frozenset({PANO_LATEST, PANO_ALL})
 HARD_MAX_BYTES = 2_000_000_000
 FORBIDDEN_MARKERS = ("full_frame_", "cropped_", "all_observations", "all_assets")
 PANO_VIEWS = ("pano_observations_latest", "pano_observations_all")
-_PANO_TABLE_RE = re.compile(
-    r"^[A-Za-z0-9][A-Za-z0-9_\-]*\.imagery_insights___us\.pano_observations_(latest|all)$"
-)
+# Imagery Insights datasets whose pano views may be queried. Extend with the comma-separated
+# environment variable SVI_ALLOWED_DATASETS (e.g. a dataset linked in another region).
+DEFAULT_ALLOWED_DATASETS = (DATASET,)
 _IDENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]*$")
+
+
+def allowed_datasets(env: Mapping[str, str] | None = None) -> tuple[str, ...]:
+    """DEFAULT_ALLOWED_DATASETS plus the validated names in $SVI_ALLOWED_DATASETS."""
+    env = os.environ if env is None else env
+    extra = [d.strip() for d in env.get("SVI_ALLOWED_DATASETS", "").split(",") if d.strip()]
+    for d in extra:
+        if not _IDENT_RE.match(d):
+            raise ValueError(f"invalid dataset in SVI_ALLOWED_DATASETS: {d!r}")
+    return tuple(dict.fromkeys([*DEFAULT_ALLOWED_DATASETS, *extra]))
 
 
 class QueryTooExpensive(RuntimeError):
@@ -53,23 +65,45 @@ class UnsafeSql(ValueError):
     """SQL looks string-formatted (contains braces)."""
 
 
-def is_pano_table(name: str) -> bool:
-    """True for `<project>.<dataset>.pano_observations_latest|all` (any project/dataset)."""
-    return bool(_PANO_TABLE_RE.match(name or ""))
+def is_pano_table(name: str, datasets: Sequence[str] | None = None) -> bool:
+    """True for `<project>.<dataset>.pano_observations_latest|all` with an allow-listed dataset
+    (`datasets`, default `allowed_datasets()`) in any project."""
+    datasets = allowed_datasets() if datasets is None else datasets
+    parts = (name or "").split(".")
+    return (
+        len(parts) == 3
+        and bool(_IDENT_RE.match(parts[0]))
+        and parts[1] in datasets
+        and parts[2] in PANO_VIEWS
+    )
 
 
-def pano_table(project: str, dataset: str = DATASET, view: str = PANO_VIEWS[0]) -> str:
-    """Fully-qualified pano view in the caller's project (identifiers validated)."""
+def pano_table(
+    project: str,
+    dataset: str = DATASET,
+    view: str = PANO_VIEWS[0],
+    datasets: Sequence[str] | None = None,
+) -> str:
+    """Fully-qualified pano view in the caller's project (identifiers validated, dataset in
+    the allow-list)."""
     if view not in PANO_VIEWS:
         raise DisallowedTable(f"only {PANO_VIEWS} may be queried, got {view!r}")
     for v in (project, dataset):
         if not _IDENT_RE.match(v or ""):
             raise ValueError(f"invalid BigQuery identifier: {v!r}")
+    datasets = allowed_datasets() if datasets is None else datasets
+    if dataset not in datasets:
+        raise DisallowedTable(
+            f"dataset {dataset!r} is not in the allow-list {list(datasets)}; "
+            "add it to SVI_ALLOWED_DATASETS"
+        )
     return f"{project}.{dataset}.{view}"
 
 
-def pano_tables(project: str, dataset: str = DATASET) -> frozenset[str]:
-    return frozenset(pano_table(project, dataset, v) for v in PANO_VIEWS)
+def pano_tables(
+    project: str, dataset: str = DATASET, datasets: Sequence[str] | None = None
+) -> frozenset[str]:
+    return frozenset(pano_table(project, dataset, v, datasets) for v in PANO_VIEWS)
 
 
 _TABLE_TOKEN = re.compile(r"`([^`]+)`|\b(?:FROM|JOIN)\s+([A-Za-z0-9_\-]+\.[A-Za-z0-9_\-.]+)", re.I)
@@ -167,13 +201,14 @@ class QueryRunner:
         log: Callable[[str], None] | None = print,
         cache_dir: str | Path | None = None,
         cache_ttl_s: float = 7 * 24 * 3600,
+        allowed_datasets: Sequence[str] | None = None,
     ):
         if max_bytes > HARD_MAX_BYTES:
             raise ValueError(f"max_bytes must be <= {HARD_MAX_BYTES}")
         self.client = client
         self.max_bytes = int(max_bytes)
         requested = frozenset(allowed_tables)
-        if not requested or not all(is_pano_table(t) for t in requested):
+        if not requested or not all(is_pano_table(t, allowed_datasets) for t in requested):
             raise DisallowedTable(f"allowed_tables must be pano views only: {sorted(requested)}")
         self.allowed_tables = requested
         self.log = log

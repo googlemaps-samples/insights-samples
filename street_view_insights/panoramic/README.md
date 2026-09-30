@@ -103,6 +103,11 @@ local enterprise-certificate proxy) exist only to help on managed workstations
 where plain Application Default Credentials return 401. In Colab or with
 normal Application Default Credentials, leave them unset.
 
+`svi_geo` only queries the pano views of allow-listed datasets
+(`imagery_insights___us` by default). If your dataset has another name, set
+`DATASET_ID` in the notebook and add the name to `SVI_ALLOWED_DATASETS`
+(comma-separated), e.g. `SVI_ALLOWED_DATASETS=imagery_insights___eu`.
+
 ## Terms of use, attribution and caching
 
 - The frames come from your Imagery Insights dataset and are governed by the

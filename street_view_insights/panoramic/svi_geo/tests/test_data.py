@@ -235,3 +235,33 @@ def test_user_project_pano_tables_are_allowed_but_nothing_else():
     r.dry_run(sql, data.pano_meta_params(radius_m=10.0, lat=1.0, lng=2.0))
     with pytest.raises(data.DisallowedTable):
         r.dry_run(data.PANO_META_SQL, data.pano_meta_params())
+
+
+def test_pano_dataset_allow_list_is_configurable_and_defaults_to_the_us_dataset():
+    assert data.DEFAULT_ALLOWED_DATASETS == ("imagery_insights___us",)
+    assert data.allowed_datasets(env={}) == ("imagery_insights___us",)
+    env = {"SVI_ALLOWED_DATASETS": "imagery_insights___us, imagery_insights___eu"}
+    assert data.allowed_datasets(env=env) == ("imagery_insights___us", "imagery_insights___eu")
+    eu = "p.imagery_insights___eu.pano_observations_latest"
+    assert not data.is_pano_table(eu, datasets=data.allowed_datasets(env={}))
+    assert data.is_pano_table(eu, datasets=data.allowed_datasets(env=env))
+    assert not data.is_pano_table(
+        "p.imagery_insights___eu.cropped_x", datasets=("imagery_insights___eu",)
+    )
+    with pytest.raises(data.DisallowedTable, match="SVI_ALLOWED_DATASETS"):
+        data.pano_table("p", "imagery_insights___eu", datasets=("imagery_insights___us",))
+    assert data.pano_table("p", "imagery_insights___eu", datasets=("imagery_insights___eu",)) == eu
+    with pytest.raises(ValueError):
+        data.allowed_datasets(env={"SVI_ALLOWED_DATASETS": "bad`name"})
+
+
+def test_guarded_client_accepts_a_configured_dataset():
+    eu = data.pano_tables("p", "imagery_insights___eu", datasets=("imagery_insights___eu",))
+    with pytest.raises(data.DisallowedTable):
+        data.QueryRunner(
+            client=None, allowed_tables=eu, allowed_datasets=("imagery_insights___us",)
+        )
+    g = data.QueryRunner(
+        client=None, allowed_tables=eu, allowed_datasets=("imagery_insights___eu",)
+    )
+    assert g.allowed_tables == eu
