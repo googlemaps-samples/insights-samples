@@ -124,7 +124,8 @@ normal Application Default Credentials, leave them unset.
   self-calibrated from multi-view panoramic imagery and how to reproduce the
   calibration test yourself.
 - **[`svi_geo/README.md`](svi_geo/README.md)**: package overview, calibration
-  metrics, synthetic evaluation, and real-data self-consistency results.
+  metrics, and how to re-run the synthetic and self-consistency evaluations (no current
+  results are published).
 - **[`svi_geo/EVALUATION.md`](svi_geo/EVALUATION.md)**: hand-label protocol for
   measuring accuracy on real imagery (label kit and scorer); no results until real labels
   exist.

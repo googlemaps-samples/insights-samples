@@ -25,3 +25,14 @@ def test_ruff_is_clean_from_the_repository_root():
         cwd=root, capture_output=True, text=True, check=False,
     )  # fmt: skip
     assert res.returncode == 0, res.stdout[-3000:]
+
+
+def test_readme_evaluation_section_has_no_stale_pass_gates():
+    """Retracted / self-consistency numbers must not be framed as passing quality gates."""
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[1] / "README.md").read_text()
+    evaluation = text.split("## Evaluation", 1)[1]
+    assert "PASS" not in evaluation and "FAIL" not in evaluation
+    assert "was not written" not in evaluation  # scripts/make_label_kit.py exists
+    assert (Path(__file__).resolve().parents[1] / "scripts" / "make_label_kit.py").exists()

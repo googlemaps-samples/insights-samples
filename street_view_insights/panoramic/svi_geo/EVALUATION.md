@@ -11,9 +11,9 @@ figures came from `scripts/run_notebook_eval.py` / `notebook_eval.py`, which fil
 missing results with generated values rather than measuring them. That code has been deleted
 and the 4-scene figures are **retracted**. Do not quote them.
 
-The synthetic and self-consistency tables in [`README.md`](README.md) measure different things
-(simulated scenes, and agreement of the model with itself). They are not accuracy against
-ground truth, and they are marked stale until `run_eval.py` is re-run.
+The synthetic and self-consistency modes of `run_eval.py` (see [`README.md`](README.md)) measure
+different things (simulated scenes, and agreement of the model with itself). They are not
+accuracy against ground truth; their old result tables were removed from the README.
 
 ## Sample
 
