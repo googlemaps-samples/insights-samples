@@ -36,3 +36,29 @@ def test_readme_evaluation_section_has_no_stale_pass_gates():
     assert "PASS" not in evaluation and "FAIL" not in evaluation
     assert "was not written" not in evaluation  # scripts/make_label_kit.py exists
     assert (Path(__file__).resolve().parents[1] / "scripts" / "make_label_kit.py").exists()
+
+
+def test_dependencies_are_pinned_and_the_lock_file_has_hashes():
+    import re
+    from pathlib import Path
+
+    import tomllib
+
+    pkg = Path(__file__).resolve().parents[1]
+    proj = tomllib.loads((pkg / "pyproject.toml").read_text())["project"]
+    specs = list(proj["dependencies"])
+    for extra in proj["optional-dependencies"].values():
+        specs += extra
+    for spec in specs:
+        # an exact pin, or a lower bound together with an upper bound
+        assert "==" in spec or (">=" in spec and "<" in spec.replace("<=", "")), spec
+    lock = (pkg / "requirements.lock").read_text()
+    pinned = re.findall(r"^([A-Za-z0-9_.\-]+)==[^\s]+ \\$", lock, re.M)
+    assert pinned, "requirements.lock has no == pins"
+    for block in re.split(r"\n(?=[A-Za-z0-9_.\-]+==)", lock.split("\n", 1)[1]):
+        if "==" in block.split("\n", 1)[0]:
+            assert "--hash=sha256:" in block, block.split("\n", 1)[0]
+    names = {n.lower().replace("_", "-") for n in pinned}
+    for spec in proj["dependencies"]:
+        name = re.split(r"[<>=~!\[ ]", spec, maxsplit=1)[0].lower()
+        assert name in names, f"{name} missing from requirements.lock"

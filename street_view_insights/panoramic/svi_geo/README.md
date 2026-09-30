@@ -16,6 +16,15 @@ GCS_BUCKET=YOUR_FRAME_BUCKET SVI_PROJECT=YOUR_PROJECT_ID \
 The scripts in `scripts/` take the frame bucket from `--gcs-bucket` or `$GCS_BUCKET`; the
 bucket is never discovered by selecting `gcs_uri`.
 
+`pyproject.toml` bounds every dependency (lower bound: the verified version; upper bound:
+the next major release). For a reproducible, hash-checked install of the exact verified
+versions, install `requirements.lock` first and then the package without dependencies:
+
+```bash
+.venv/bin/pip install --require-hashes -r street_view_insights/panoramic/svi_geo/requirements.lock
+.venv/bin/pip install --no-deps -e street_view_insights/panoramic/svi_geo
+```
+
 ## Modules
 
 | module | purpose |
