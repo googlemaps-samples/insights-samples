@@ -177,6 +177,7 @@ def test_pano_id_and_observation_id_are_separate_or_aliased_flags(dm):
 @pytest.mark.live
 def test_id_sql_dry_run_under_145gb(dm):
     import os
+
     from google.cloud import bigquery
 
     project = os.environ.get("PROJECT_ID") or "imagery-insights-sandbox"

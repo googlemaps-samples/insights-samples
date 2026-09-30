@@ -52,13 +52,19 @@ def test_dependencies_are_pinned_and_the_lock_file_has_hashes():
     for spec in specs:
         # an exact pin, or a lower bound together with an upper bound
         assert "==" in spec or (">=" in spec and "<" in spec.replace("<=", "")), spec
-    lock = (pkg / "requirements.lock").read_text()
-    pinned = re.findall(r"^([A-Za-z0-9_.\-]+)==[^\s]+ \\$", lock, re.M)
-    assert pinned, "requirements.lock has no == pins"
-    for block in re.split(r"\n(?=[A-Za-z0-9_.\-]+==)", lock.split("\n", 1)[1]):
-        if "==" in block.split("\n", 1)[0]:
-            assert "--hash=sha256:" in block, block.split("\n", 1)[0]
-    names = {n.lower().replace("_", "-") for n in pinned}
-    for spec in proj["dependencies"]:
-        name = re.split(r"[<>=~!\[ ]", spec, maxsplit=1)[0].lower()
-        assert name in names, f"{name} missing from requirements.lock"
+    lock_checks = [
+        ("requirements.lock", proj["dependencies"]),
+        ("requirements-notebooks.lock", proj["dependencies"] + proj["optional-dependencies"]["notebooks"]),
+        ("requirements-dev.lock", proj["dependencies"] + proj["optional-dependencies"]["dev"]),
+    ]
+    for lock_filename, expected_specs in lock_checks:
+        lock = (pkg / lock_filename).read_text()
+        pinned = re.findall(r"^([A-Za-z0-9_.\-]+)==[^\s]+ \\$", lock, re.M)
+        assert pinned, f"{lock_filename} has no == pins"
+        for block in re.split(r"\n(?=[A-Za-z0-9_.\-]+==)", lock.split("\n", 1)[1]):
+            if "==" in block.split("\n", 1)[0]:
+                assert "--hash=sha256:" in block, f"{lock_filename}: {block.split(chr(10), 1)[0]}"
+        names = {n.lower().replace("_", "-") for n in pinned}
+        for spec in expected_specs:
+            name = re.split(r"[<>=~!\[ ]", spec, maxsplit=1)[0].lower()
+            assert name in names, f"{name} missing from {lock_filename}"
