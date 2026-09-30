@@ -123,27 +123,27 @@ VARIANTS: dict[str, uc.Variant] = {
         uc1_min_agree_views=2,
         uc1_facade_edge_triangulation=True,
     ),
-    # Combined final candidate across all 4 UCs
+    # Combined final candidate across all 4 UCs (selected on tune=lakeland_fl)
     "final": uc.Variant(
         name="final",
         uc1_sky_contact_weight=0.5,
         uc1_truncation_penalty=0.6,
-        uc1_diversify_days=True,
+        uc1_diversify_days=False,
         uc1_framing_weighted_fusion=True,
-        uc1_min_agree_views=2,
+        uc1_min_agree_views=1,
         uc1_facade_edge_triangulation=True,
         uc2_min_post_panos=2,
         uc2_class_min_confidence={"ROAD_SIGN": 0.55, "UTILITY_POLE": 0.50, "HOUSE": 0.45},
         uc2_cv_post_gate=True,
         uc2_cv_post_min_support=0.35,
-        uc2_house_facade_edges=True,
+        uc2_house_facade_edges=False,
         uc3_prompt_version="v1",
         uc3_road_view_size=(1280, 960),
         uc3_kerb_sidewalk_prior=True,
         uc3_window_size=3,
         uc4_sky_contact_min=0.25,
         uc4_validator_gates=True,
-        uc4_validator_sky_min=0.35,
+        uc4_validator_sky_min=0.20,
     ),
 }
 
@@ -389,7 +389,9 @@ async def evaluate_uc1(
     for b, (num, den) in zip(block_ids, agree_num_den, strict=True):
         prev_num, prev_den = per_cluster.get(b, (0.0, 0.0))
         per_cluster[b] = (prev_num + num, prev_den + den)
-    m1_1 = lf.block_ratio_ci(per_cluster, seed=seed)
+    m1_1 = lf.block_ratio_ci(
+        per_cluster, seed=seed, min_clusters=max(2, min(5, len(per_cluster)))
+    )
     sh = lf.split_half_location(split_rays_all)
     if loc_dists:
         m1_2 = lf.Measurement(

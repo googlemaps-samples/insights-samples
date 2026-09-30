@@ -66,6 +66,19 @@ def test_variant_defaults_preserve_current_parameters():
     assert v.uc4_validator_gates is False
 
 
+def test_default_variant_enables_validated_improvements():
+    dv = uc.DEFAULT_VARIANT
+    assert dv.name == "final"
+    assert dv.uc1_framing_weighted_fusion is True
+    assert dv.uc1_facade_edge_triangulation is True
+    assert dv.uc2_min_post_panos == 2
+    assert dv.uc2_cv_post_gate is True
+    assert dv.uc3_prompt_version == "v1"
+    assert dv.uc3_kerb_sidewalk_prior is True
+    assert dv.uc4_sky_contact_min == pytest.approx(0.25)
+    assert dv.uc4_validator_gates is True
+
+
 def test_uc1_select_and_run_with_recorded_replies():
     fr = _attach_uris(sim.synthetic_frames(8, 10.0, 28.0502, -81.9601, travel_deg=0.0))
     panos = sequence.build_sequences(fr.drop_duplicates("pano_id"))

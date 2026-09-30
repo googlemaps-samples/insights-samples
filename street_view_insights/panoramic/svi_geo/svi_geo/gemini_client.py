@@ -240,11 +240,17 @@ class VertexGeminiBackend:
         contents = [types.Content(role="user", parts=parts)]
         gen_cfg = types.GenerateContentConfig(**cfg)
         last_err: Exception | None = None
+        fallback_models = [m for m in PRICES_BY_MODEL if "2.5" in m and "pro" in m]
         for attempt in range(2):
+            use_model = (
+                fallback_models[0]
+                if (attempt == 1 and "3.1" in self.model and fallback_models)
+                else self.model
+            )
             try:
                 resp = await asyncio.wait_for(
                     self.client.aio.models.generate_content(
-                        model=self.model,
+                        model=use_model,
                         contents=contents,
                         config=gen_cfg,
                     ),

@@ -17,7 +17,7 @@ from collections.abc import Callable, Sequence
 import google.auth
 from google.auth import credentials as ga_credentials
 
-_TOKEN_LIFETIME = _dt.timedelta(minutes=45)
+_TOKEN_LIFETIME = _dt.timedelta(minutes=10)
 
 
 def _run_gcloud(cmd: Sequence[str]) -> str:

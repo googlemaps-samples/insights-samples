@@ -155,11 +155,12 @@ def rank_house_views(
     n: int | None = None,
     *,
     diversify_days: bool = False,
+    frames: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Candidates with a camera, ordered by `dist/dist_max + off_axis/off_max` (lower is
     better, ties by pano_id), at most `max_per_seq` per drive sequence, then the first `n`.
-    When `diversify_days=True` and a `capture_day` column is present, interleaves views
-    round-robin across capture days so multi-day passes are represented first.
+    When `diversify_days=True` and a `capture_day` column is present (or derived from `frames`),
+    interleaves views round-robin across capture days so multi-day passes are represented first.
 
     Always returns a DataFrame with the input columns plus `score`, even when empty."""
     cols = list(cands.columns) + (["score"] if "score" not in cands.columns else [])
@@ -172,12 +173,26 @@ def rank_house_views(
     ok = ok.sort_values(["score", "pano_id"], kind="stable")
     seq = ok["seq_id"].fillna(ok["pano_id"])
     ok = ok[seq.groupby(seq).cumcount() < max_per_seq]
-    if diversify_days and "capture_day" in ok.columns:
-        day_key = ok["capture_day"].fillna(ok["pano_id"]).astype(str)
-        ok = ok.assign(_day_round=day_key.groupby(day_key).cumcount())
-        ok = ok.sort_values(["_day_round", "score", "pano_id"], kind="stable").drop(
-            columns=["_day_round"]
-        )
+    if diversify_days:
+        if "capture_day" not in ok.columns and frames is not None and "pano_id" in frames.columns:
+            if "capture_day" in frames.columns:
+                day_map = frames.drop_duplicates("pano_id").set_index("pano_id")["capture_day"]
+                ok = ok.assign(capture_day=ok["pano_id"].map(day_map))
+            elif "capture_time" in frames.columns:
+                day_map = (
+                    frames.drop_duplicates("pano_id")
+                    .assign(
+                        _d=pd.to_datetime(frames["capture_time"], utc=True).dt.strftime("%Y-%m-%d")
+                    )
+                    .set_index("pano_id")["_d"]
+                )
+                ok = ok.assign(capture_day=ok["pano_id"].map(day_map))
+        if "capture_day" in ok.columns:
+            day_key = ok["capture_day"].fillna(ok["pano_id"]).astype(str)
+            ok = ok.assign(_day_round=day_key.groupby(day_key).cumcount())
+            ok = ok.sort_values(["_day_round", "score", "pano_id"], kind="stable").drop(
+                columns=["_day_round"]
+            )
     if n is not None:
         ok = ok.head(n)
     return ok.reset_index(drop=True)[cols]

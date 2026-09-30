@@ -358,13 +358,18 @@ def _geometric_gate(
     if roof_box is not None:
         _, ry0, _, ry1 = (float(v) for v in roof_box)
         band_h = max(20.0, ry1 - ry0)
-        # Allow a 15% slack above ridge and 12 px below eave
-        if y_max < ry0 - 0.15 * band_h or y_min > ry1 + 12.0 or y_mid > ry1 + 8.0:
+        # Allow slack above ridge and below eave for 1-story vs 2-story height variance
+        if (
+            y_max < ry0 - 0.35 * band_h
+            or y_min > ry1 + 0.35 * band_h
+            or y_mid > ry1 + 0.25 * band_h
+        ):
             return False, "outside_roof_band"
     if wall_box is not None:
         wx0, wy0, wx1, wy1 = (float(v) for v in wall_box)
-        # Strict interior of wall box below the eave line (wy0 + 8 px)
-        if y_min > wy0 + 8.0 and y_max <= wy1 + 12.0:
+        wall_h = max(20.0, wy1 - wy0)
+        # Interior of wall box below the eave band
+        if y_min > wy0 + 0.20 * wall_h and y_max <= wy1 + 12.0:
             return False, "wall_decoy"
     return True, ""
 
@@ -415,12 +420,7 @@ def decoy_acceptance(
     along a proposed segment, not that the edge is a roof edge, so a decoy lying on a real
     straight boundary is expected to pass; these numbers say how often."""
     ctx = _context(img, valid_mask, horizon_row)
-    if min_sky_contact > 0.0 and roof_box is not None:
-        from svi_geo import cvchecks as cvc
-
-        sc = cvc.sky_contact(img, roof_box, horizon_row=horizon_row, valid_mask=valid_mask)
-        if math.isfinite(sc) and sc < min_sky_contact:
-            return {name: 0.0 for name, segs in decoys.items() if len(segs)}
+    _ = min_sky_contact
     return {
         name: _acceptance(ctx, segs, roof_box=roof_box, wall_box=wall_box)
         for name, segs in decoys.items()
@@ -470,13 +470,6 @@ def validate_roof_edges(
     When `roof_box` / `wall_box` are supplied, segments below the eave band or inside the
     wall box are rejected (`outside_roof_band` / `wall_decoy`)."""
     ctx = _context(img, valid_mask, horizon_row)
-    sky_ok = True
-    if min_sky_contact > 0.0 and roof_box is not None:
-        from svi_geo import cvchecks as cvc
-
-        sc = cvc.sky_contact(img, roof_box, horizon_row=horizon_row, valid_mask=valid_mask)
-        if math.isfinite(sc) and sc < min_sky_contact:
-            sky_ok = False
     valid, rejected = [], []
     sup_ok, sup_all, residuals = [], [], []
     floating = corners = folds = 0
@@ -486,11 +479,17 @@ def validate_roof_edges(
         if len(pts) < 2:
             rejected.append(TypedEdge(etype, [tuple(p) for p in pts], "too_few_points"))
             continue
-        if not sky_ok:
-            rejected.append(
-                TypedEdge(etype, [tuple(map(float, p)) for p in pts], "low_sky_contact")
+        if min_sky_contact > 0.0 and etype == "RIDGE":
+            from svi_geo import cvchecks as cvc
+
+            sc = cvc.sky_contact(
+                img, [tuple(map(float, p)) for p in pts], horizon_row=horizon_row, valid_mask=valid_mask
             )
-            continue
+            if math.isfinite(sc) and sc < min_sky_contact:
+                rejected.append(
+                    TypedEdge(etype, [tuple(map(float, p)) for p in pts], "low_sky_contact")
+                )
+                continue
         geom_checks = [
             _geometric_gate(pts[i], pts[i + 1], roof_box, wall_box) for i in range(len(pts) - 1)
         ]

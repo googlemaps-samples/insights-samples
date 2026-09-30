@@ -220,7 +220,11 @@ async def ask_teacher(
     items: list[Any] = [p_text, image]
     if extra_images:
         items.extend(extra_images)
-    parsed = await runner.ask(items, schema, seed=seed)
+    try:
+        parsed = await runner.ask(items, schema, seed=seed)
+    except Exception as exc:  # noqa: BLE001
+        runner.cost.record_failure(f"{type(exc).__name__}: {exc}")
+        parsed = None
     result_dict = parsed.model_dump(mode="json") if parsed is not None else None
     rec = {
         "model": model_name,

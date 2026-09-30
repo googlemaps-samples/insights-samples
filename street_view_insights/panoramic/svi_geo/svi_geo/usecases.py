@@ -100,7 +100,29 @@ class Variant:
     uc4_validator_sky_min: float = 0.35
 
 
-DEFAULT_VARIANT = Variant()
+BASELINE_VARIANT = Variant(name="baseline")
+
+DEFAULT_VARIANT = Variant(
+    name="final",
+    uc1_sky_contact_weight=0.5,
+    uc1_truncation_penalty=0.6,
+    uc1_diversify_days=False,
+    uc1_framing_weighted_fusion=True,
+    uc1_min_agree_views=1,
+    uc1_facade_edge_triangulation=True,
+    uc2_min_post_panos=2,
+    uc2_class_min_confidence={"ROAD_SIGN": 0.55, "UTILITY_POLE": 0.50, "HOUSE": 0.45},
+    uc2_cv_post_gate=True,
+    uc2_cv_post_min_support=0.35,
+    uc2_house_facade_edges=False,
+    uc3_prompt_version="v1",
+    uc3_road_view_size=(1280, 960),
+    uc3_kerb_sidewalk_prior=True,
+    uc3_window_size=3,
+    uc4_sky_contact_min=0.25,
+    uc4_validator_gates=True,
+    uc4_validator_sky_min=0.20,
+)
 
 
 # --------------------------------------------------------------------------- UC1
@@ -181,12 +203,19 @@ async def uc1_run(
     variant: Variant = DEFAULT_VARIANT,
 ) -> dict[str, Any]:
     """Render ranked house views, query Gemini (`HouseView`), triangulate location, and fuse attributes."""
-    cand_rows = ranked.to_dict("records")
+    raw_rows = ranked.to_dict("records")
+    cand_rows: list[dict[str, Any]] = []
+    valid_indices: list[int] = []
     crops: list[np.ndarray] = []
     black: list[float] = []
     view_objs: list[rosette.PerspectiveView] = []
-    for r in cand_rows:
-        img = images.decode(fetch(r["gcs_uri"]))
+    for idx_r, r in enumerate(raw_rows):
+        try:
+            img = images.decode(fetch(r["gcs_uri"]))
+        except Exception:
+            continue
+        cand_rows.append(r)
+        valid_indices.append(idx_r)
         base_view = views.view_for(r, width, height)
         if variant.yaw_delta_deg != 0.0 or variant.hfov_scale != 1.0:
             yaw = (base_view.yaw_deg + variant.yaw_delta_deg) % 360.0
@@ -229,7 +258,7 @@ async def uc1_run(
         else:
             sky_contacts.append(float("nan"))
 
-    res = ranked.assign(
+    res = ranked.iloc[valid_indices].assign(
         visible=[v.house_visible if v else None for v in views_out],
         occlusion=[v.occlusion.value if v else None for v in views_out],
         facade_fraction=[v.facade_visible_fraction if v else None for v in views_out],
@@ -463,8 +492,11 @@ async def uc3_run(
             )
             if rv is None:
                 continue
+            try:
+                imgs = {int(r["cam_k"]): images.decode(fetch(r["gcs_uri"])) for r in rv.rows}
+            except Exception:
+                continue
             black.append(rv.black_sent)
-            imgs = {int(r["cam_k"]): images.decode(fetch(r["gcs_uri"])) for r in rv.rows}
             rendered = sequence.render_road_view(imgs, intr, rv)
             out_v[role] = rendered
             out_rv[role] = rv
@@ -602,7 +634,10 @@ def uc4_select_views(
     chosen: list[dict[str, Any]] = []
     screen_records: list[dict[str, Any]] = []
     for row in roof_views.to_dict("records"):
-        img_raw = images.decode(fetch(row["gcs_uri"]))
+        try:
+            img_raw = images.decode(fetch(row["gcs_uri"]))
+        except Exception:
+            continue
         bearing = (float(row["bearing"]) + variant.yaw_delta_deg) % 360.0
         hfov = float(row["hfov"]) * variant.hfov_scale
         img, view, black = roof.render_roof_view(

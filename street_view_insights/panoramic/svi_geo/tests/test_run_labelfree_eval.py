@@ -87,3 +87,10 @@ def test_run_labelfree_eval_offline_writes_results_summary_and_calls(tmp_path):
     first_call = json.loads(calls_lines[0])
     for req_key in ("model", "input_tokens", "output_tokens", "usd", "prompt_version"):
         assert req_key in first_call
+
+    out_final = tmp_path / "eval_final"
+    res_f = rle.run_offline_smoke(
+        frames=fr, aoi="tune", out_dir=out_final, seed=7, variant_name="final"
+    )
+    assert res_f["variant"] == "final"
+    assert (out_final / "results.json").is_file()
