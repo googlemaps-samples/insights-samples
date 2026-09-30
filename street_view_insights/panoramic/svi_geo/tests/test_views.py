@@ -240,26 +240,68 @@ def test_rank_roof_views_empty_when_nothing_qualifies():
     assert out.empty and "score" in out.columns and "cam_k" in out.columns
 
 
-def _facade_scene(foliage_cover: float, seed=0):
-    rng = np.random.default_rng(seed)
-    wall = rng.normal(0, 25, (600, 800, 1)) + (150, 160, 175)  # grey-blue siding with texture
-    img = np.clip(wall, 0, 255).astype(np.uint8)
+def _texture(shape, seed, scale=0.35, blur=5):
+    """Multiplicative luminance texture (leaves and siding vary mostly in brightness)."""
+    import cv2
+
+    n = np.random.default_rng(seed).normal(0, 1, shape[:2]).astype(np.float32)
+    n = cv2.GaussianBlur(n, (0, 0), blur)
+    return 1.0 + scale * n / (n.std() + 1e-9)
+
+
+def _roof_scene(canopy_cover: float, canopy_bgr=(92, 108, 100), seed=0):
+    """Sky above a grey metal roof (rows 150-450 of the box), with a canopy of the given
+    colour covering `canopy_cover` of the box from one side. The default canopy is the dull
+    grey-green of the live Florida views (RGB ~100/108/92): saturation ~38/255, below the old
+    HSV screen's 40, so the old screen scored such canopy as not foliage."""
+    h, w = 600, 800
+    img = np.empty((h, w, 3), np.float32)
+    img[:300] = (230, 210, 200)  # overcast sky (BGR)
+    img[300:] = (150, 150, 150)  # grey metal roof
+    img *= _texture((h, w), seed, 0.12)[..., None]
     box = (200, 150, 600, 450)
     x0, y0, x1, y1 = box
-    if foliage_cover:
-        cut = int(y0 + (y1 - y0) * (1 - foliage_cover))
-        leaves = np.clip(rng.normal(0, 30, (y1 - cut, x1 - x0, 3)) + (40, 140, 50), 0, 255)
-        img[cut:y1, x0:x1] = leaves.astype(np.uint8)
-    return img, box
+    if canopy_cover:
+        cut = int(x0 + (x1 - x0) * canopy_cover)
+        leaves = np.array(canopy_bgr, np.float32) * _texture((h, w), seed + 1, 0.45, 2)[..., None]
+        img[y0:y1, x0:cut] = leaves[y0:y1, x0:cut]
+    return np.clip(img, 0, 255).astype(np.uint8), box
 
 
-def test_occlusion_screen_rejects_a_house_hidden_by_foliage():
-    img, box = _facade_scene(0.65)
+@pytest.mark.parametrize("bgr", [(92, 108, 100), (40, 140, 50), (55, 80, 60)],
+                         ids=["dull_grey_green", "bright_green", "dark_green"])  # fmt: skip
+def test_occlusion_screen_rejects_a_roof_hidden_by_realistic_canopy(bgr):
+    img, box = _roof_scene(0.7, bgr)
     s = views.occlusion_screen(img, box)
     assert s["foliage_frac"] >= 0.6 and s["rejected"]
 
 
-def test_occlusion_screen_keeps_a_clear_house():
-    img, box = _facade_scene(0.0)
+def test_occlusion_screen_keeps_a_clear_roof_under_grey_sky():
+    img, box = _roof_scene(0.0)
     s = views.occlusion_screen(img, box)
-    assert s["foliage_frac"] < 0.05 and s["texture_frac"] > 0.5 and not s["rejected"]
+    assert s["foliage_frac"] < 0.05 and not s["rejected"]
+
+
+def test_occlusion_screen_keeps_a_roof_with_a_small_tree():
+    img, box = _roof_scene(0.25)
+    s = views.occlusion_screen(img, box)
+    assert 0.15 < s["foliage_frac"] < 0.35 and not s["rejected"]
+
+
+def test_roof_box_spans_the_roof_width_and_eave_to_ridge():
+    view = rosette.PerspectiveView(90.0, 14.0, 60.0, 1200, 900)
+    row = {"bearing": 90.0, "dist_m": 30.0}
+    x0, y0, x1, y1 = views.roof_box(row, view)
+    assert (x0 + x1) / 2 == pytest.approx(view.cx, abs=1)
+    level = rosette.PerspectiveView(90.0, 0.0, 60.0, 1200, 900)  # width checked on the horizon
+    lx0, _, lx1, _ = views.roof_box(row, level)
+    az0, _ = level.pixel_to_bearing(lx0, level.cy)
+    az1, _ = level.pixel_to_bearing(lx1, level.cy)
+    width_m = 2 * 30.0 * np.tan(np.radians((float(az1) - float(az0)) / 2))
+    assert width_m == pytest.approx(views.ROOF_WIDTH_M, rel=0.02)
+    _, el_top = view.pixel_to_bearing(view.cx, y0)
+    _, el_eave = view.pixel_to_bearing(view.cx, y1)
+    rise = views.ROOF_TOP_M - views.CAM_HEIGHT_M
+    assert float(el_top) == pytest.approx(np.degrees(np.arctan(rise / 30.0)), abs=0.1)
+    drop = views.ROOF_EAVE_M - views.CAM_HEIGHT_M
+    assert float(el_eave) == pytest.approx(np.degrees(np.arctan(drop / 30.0)), abs=0.1)

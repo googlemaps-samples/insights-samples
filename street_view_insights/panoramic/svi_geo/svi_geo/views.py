@@ -321,16 +321,30 @@ def rank_roof_views(
     return df.drop(columns="_round").reset_index(drop=True)[cols]
 
 
-FOLIAGE_REJECT = 0.5  # reject a view when foliage covers at least this share of the target
+FOLIAGE_REJECT = 0.5  # reject a view when vegetation covers at least half of the target box
+# A pixel is vegetation when its normalised excess-green index ExG = (2G - R - B) / (R + G + B)
+# exceeds EXG_VEGETATION and it is textured (local std-dev, `rosette.textured_mask`). ExG is
+# brightness-invariant, so it also catches the dark and dull grey-green canopy that a hue /
+# saturation range misses (Woebbecke et al. 1995; ExG > 0 separates plants from soil and
+# man-made surfaces, and 0.05 leaves a margin for grey roofs and sky, whose ExG is <= ~0).
+# The texture term drops flat green paint and sky. Checked, not tuned, on 12 real roof views
+# (Lakeland, FL): the 2 clear roofs scored 0.11 and 0.21, the 8 canopy-hidden views 0.61-0.92.
+EXG_VEGETATION = 0.05
+
+
+def vegetation_mask(img: np.ndarray) -> np.ndarray:
+    """Boolean mask of textured pixels whose excess-green index exceeds `EXG_VEGETATION`."""
+    f = img.astype(np.float32)
+    b, g, r = f[..., 0], f[..., 1], f[..., 2]
+    exg = (2 * g - r - b) / (r + g + b + 1e-6)
+    return (exg > EXG_VEGETATION) & rosette.textured_mask(img)
 
 
 def occlusion_screen(
     img: np.ndarray, centre_box: Sequence[float], max_foliage: float = FOLIAGE_REJECT
 ) -> dict[str, Any]:
-    """Foliage and texture shares inside `centre_box` (x0, y0, x1, y1 pixels); `rejected`
-    when foliage covers at least `max_foliage` of it (the roof is hidden by trees)."""
-    import cv2
-
+    """Vegetation and texture shares inside `centre_box` (x0, y0, x1, y1 pixels); `rejected`
+    when vegetation (`vegetation_mask`) covers at least `max_foliage` of it."""
     h, w = img.shape[:2]
     x0, y0, x1, y1 = (int(round(v)) for v in centre_box)
     x0, x1 = max(0, x0), min(w, x1)
@@ -338,9 +352,20 @@ def occlusion_screen(
     crop = img[y0:y1, x0:x1]
     if crop.size == 0:
         return {"foliage_frac": math.nan, "texture_frac": math.nan, "rejected": True}
-    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-    foliage = cv2.inRange(hsv, np.array([35, 40, 40]), np.array([85, 255, 255])) > 0
-    texture = rosette.textured_mask(crop)
-    fol = float(np.mean(foliage))
-    return {"foliage_frac": fol, "texture_frac": float(np.mean(texture)),
+    fol = float(np.mean(vegetation_mask(crop)))
+    return {"foliage_frac": fol, "texture_frac": float(np.mean(rosette.textured_mask(crop))),
             "rejected": fol >= max_foliage}  # fmt: skip
+
+
+def roof_box(row: Mapping[str, Any], view: rosette.PerspectiveView) -> tuple[float, ...]:
+    """Pixel box (x0, y0, x1, y1) around the target roof in a `rank_roof_views` view: about
+    `ROOF_WIDTH_M` wide at `row['dist_m']`, from the eave (`ROOF_EAVE_M`) up to the ridge
+    (`ROOF_TOP_M`) above the ground."""
+    d = float(row["dist_m"])
+    u, _, _ = view.bearing_to_pixel(row["bearing"], 0.0)
+    half_w = view.f * (ROOF_WIDTH_M / 2) / d
+    el_eave = math.degrees(math.atan((ROOF_EAVE_M - CAM_HEIGHT_M) / d))
+    el_top = math.degrees(math.atan((ROOF_TOP_M - CAM_HEIGHT_M) / d))
+    _, v_eave, _ = view.bearing_to_pixel(row["bearing"], el_eave)
+    _, v_top, _ = view.bearing_to_pixel(row["bearing"], el_top)
+    return (float(u) - half_w, float(v_top), float(u) + half_w, float(v_eave))
