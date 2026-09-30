@@ -186,3 +186,80 @@ def test_fuse_attribute_ignores_unknown_when_a_known_value_exists():
     assert ent.fuse_attribute(votes, ignore={"UNKNOWN"})[0] == "BRICK"
     assert ent.fuse_attribute([("UNKNOWN", 0.9)], ignore={"UNKNOWN"}) == (None, 0.0)
     assert ent.fuse_attribute(votes)[0] == "UNKNOWN"  # default behaviour unchanged
+
+
+# ----------------------------------------------------------------------------- roof views (UC4)
+
+
+def test_roof_view_pitch_vfov_contains_eave_and_roof_top():
+    for d in (12.0, 20.0, 35.0):
+        pitch, vfov = views.roof_view_pitch_vfov(d, cam_h=2.5, eave_h=3.0, top_h=10.0)
+        lo, hi = pitch - vfov / 2, pitch + vfov / 2
+        assert lo < math.degrees(math.atan(0.5 / d)) and hi > math.degrees(math.atan(7.5 / d))
+
+
+def test_rank_roof_views_covers_the_roof_and_keeps_its_top_in_frame():
+    fr = _street(n=14)
+    lat, lng = _house_latlng(offset_e=16.0, along_n=55.0)
+    out = views.rank_roof_views(fr, lat, lng, INTR, n=6)
+    assert 1 <= len(out) <= 6
+    assert out.pano_id.is_unique  # at most one view per pano
+    white = np.full((INTR.height, INTR.width, 3), 255, np.uint8)
+    for r in out.to_dict("records"):
+        need = 2 * math.degrees(math.atan(views.ROOF_WIDTH_M / 2 / r["dist_m"]))
+        assert r["hfov"] >= need - 1e-6
+        view = views.view_for(r, 400, 300)
+        top_el = math.degrees(math.atan((views.ROOF_TOP_M - 2.5) / r["dist_m"]))
+        _, _, inside = view.bearing_to_pixel(r["bearing"], top_el)
+        assert bool(inside)
+        rendered = rosette.render_perspective(white, INTR, r["camera_pose"], view, int(r["cam_k"]))
+        assert float(np.mean(rendered[..., 0] == 0)) < 0.01
+
+
+def test_rank_roof_views_prefers_the_12_to_35_m_band():
+    fr = _street(n=14)
+    lat, lng = _house_latlng(offset_e=16.0, along_n=55.0)
+    out = views.rank_roof_views(fr, lat, lng, INTR, n=3)
+    assert all(12.0 <= d <= 35.0 for d in out.dist_m)
+
+
+def test_rank_roof_views_diversifies_across_sequences():
+    a = _street(n=14)
+    b = sim.synthetic_frames(14, 8.0, 48.85, 2.35 + 0.00001, travel_deg=0.0, seq_id="S1")
+    b["gcs_uri"] = "gs://unused/" + b["observation_id"]
+    fr = pd.concat([a, b], ignore_index=True)
+    lat, lng = _house_latlng(offset_e=16.0, along_n=55.0)
+    out = views.rank_roof_views(fr, lat, lng, INTR, n=2)
+    assert set(out.seq_id) == {"S0", "S1"}
+
+
+def test_rank_roof_views_empty_when_nothing_qualifies():
+    fr = _street(n=3)
+    lat, lng = _house_latlng(offset_e=300.0, along_n=0.0)  # far away
+    out = views.rank_roof_views(fr, lat, lng, INTR, n=4)
+    assert out.empty and "score" in out.columns and "cam_k" in out.columns
+
+
+def _facade_scene(foliage_cover: float, seed=0):
+    rng = np.random.default_rng(seed)
+    wall = rng.normal(0, 25, (600, 800, 1)) + (150, 160, 175)  # grey-blue siding with texture
+    img = np.clip(wall, 0, 255).astype(np.uint8)
+    box = (200, 150, 600, 450)
+    x0, y0, x1, y1 = box
+    if foliage_cover:
+        cut = int(y0 + (y1 - y0) * (1 - foliage_cover))
+        leaves = np.clip(rng.normal(0, 30, (y1 - cut, x1 - x0, 3)) + (40, 140, 50), 0, 255)
+        img[cut:y1, x0:x1] = leaves.astype(np.uint8)
+    return img, box
+
+
+def test_occlusion_screen_rejects_a_house_hidden_by_foliage():
+    img, box = _facade_scene(0.65)
+    s = views.occlusion_screen(img, box)
+    assert s["foliage_frac"] >= 0.6 and s["rejected"]
+
+
+def test_occlusion_screen_keeps_a_clear_house():
+    img, box = _facade_scene(0.0)
+    s = views.occlusion_screen(img, box)
+    assert s["foliage_frac"] < 0.05 and s["texture_frac"] > 0.5 and not s["rejected"]

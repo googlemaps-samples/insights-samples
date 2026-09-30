@@ -29,9 +29,9 @@ def _all(nb) -> str:
 
 def test_there_are_four_notebooks():
     assert {p.stem for p in NOTEBOOKS} == {
-        "agentic_roof_edge_detection",
         "analyze_sequential_images",
         "house_image_discovery_with_cost",
+        "roof_edge_tracing",
         "surface_material_detection",
     }
 
@@ -178,3 +178,31 @@ def test_uc1_markdown_claims_only_what_runs():
     for claim in ("deduplication", "smoothing", "lens undistortion"):
         assert claim not in md, claim
     assert "triangulat" in md
+
+
+def _uc4():
+    return nbformat.read(next(p for p in NOTEBOOKS if p.stem == "roof_edge_tracing"), as_version=4)
+
+
+def test_uc4_colours_edges_by_type_and_draws_rejected_edges():
+    code = _code(_uc4())
+    assert "EDGE_COLORS[" in code
+    assert "rejected_edges" in code
+    assert "random_acceptance" in code and "mean_gradient_support" in code
+    assert "views.rank_roof_views" in code and "views.occlusion_screen" in code
+
+
+def test_uc4_guards_empty_views_and_has_no_fixed_pitch_or_long_lines():
+    nb = _uc4()
+    code = _code(nb)
+    assert re.search(r"if not \w*views\b|if \w*views\.empty", code)
+    assert "pitch_deg=14.0" not in code
+    for c in nb.cells:
+        for line in c.source.splitlines():
+            assert len(line) <= 100, line
+
+
+def test_uc4_markdown_is_accurate():
+    md = "\n".join(c.source for c in _uc4().cells if c.cell_type == "markdown").lower()
+    assert "agentic" not in md and "rosette.undistort" not in md
+    assert "valid" in md and "snap" in md and "reject" in md

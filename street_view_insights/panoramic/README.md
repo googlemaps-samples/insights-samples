@@ -24,7 +24,7 @@ evaluation code.
   black border, renders an undistorted view framed on it, and asks Gemini to
   describe it. The house is triangulated from the boxes of two or more panoramas
   and its id is derived from that point. The cost of every call is logged.
-- **[Agentic Roof Edge Detection](notebooks/agentic_roof_edge_detection.ipynb)**:
+- **[Roof Edge Tracing](notebooks/roof_edge_tracing.ipynb)**:
   lens-corrects the best view of a building with the calibrated rosette model.
   Gemini then traces the visible roof edges as schema-validated polylines.
 
