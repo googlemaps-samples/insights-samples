@@ -284,3 +284,34 @@ def test_straight_lines_in_a_region_are_lsd_segments_inside_it():
         assert region[0] <= min(ax, bx) and max(ax, bx) <= region[2]
         assert region[1] <= min(ay, by) and max(ay, by) <= region[3]
         assert np.hypot(bx - ax, by - ay) >= 40.0
+
+
+def test_validator_geometric_and_sky_gates_reject_wall_decoys_and_keep_roof_edges():
+    for s in HELD_OUT_SEEDS:
+        scene = make_scene(s)
+        rbox = _roof_band(scene)
+        wbox = scene.wall_box
+        # True roof edges are kept (>= 90% retention)
+        res = roof.validate_roof_edges(
+            scene.image,
+            scene.edges,
+            scene.valid_mask,
+            horizon_row=scene.horizon_row,
+            roof_box=rbox,
+            wall_box=wbox,
+            min_sky_contact=0.25,
+            n_random=0,
+        )
+        assert len(res.valid_edges) >= len(scene.edges) - 1
+        # Wall base and siding decoys below the eave band are rejected (<= 0.10)
+        got = roof.decoy_acceptance(
+            scene.image,
+            _decoys(scene),
+            scene.valid_mask,
+            horizon_row=scene.horizon_row,
+            roof_box=rbox,
+            wall_box=wbox,
+            min_sky_contact=0.25,
+        )
+        assert got["wall_base"] == 0.0
+        assert got["siding"] == 0.0
