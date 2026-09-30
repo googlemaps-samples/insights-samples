@@ -7,7 +7,7 @@ name = "svi-geo"
 version = "0.1.0"
 description = "Geometry, sequencing, dedup and Gemini helpers for Street View Insights panoramic (rosette) imagery."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 dependencies = [
   # Lower bound: the versions the notebooks and tests were verified with; upper bound: the
