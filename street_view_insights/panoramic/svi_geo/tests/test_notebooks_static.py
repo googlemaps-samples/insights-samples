@@ -206,3 +206,28 @@ def test_uc4_markdown_is_accurate():
     md = "\n".join(c.source for c in _uc4().cells if c.cell_type == "markdown").lower()
     assert "agentic" not in md and "rosette.undistort" not in md
     assert "valid" in md and "snap" in md and "reject" in md
+
+
+def _uc2():
+    return nbformat.read(
+        next(p for p in NOTEBOOKS if p.stem == "analyze_sequential_images"), as_version=4
+    )
+
+
+def test_uc2_uses_default_eps_merges_single_views_and_maps_located_only():
+    code = _code(_uc2())
+    assert "eps_by_class" not in code
+    assert "merge_single_view=False" not in code
+    assert "ent.located_entities(" in code
+    assert '"unlocated"' in code  # unlocated entities are listed, not mapped
+    assert "range_m" in code  # single-view range provenance on the map
+
+
+def test_uc2_self_check_is_labelled_consistency_with_bound_and_black_fraction():
+    nb = _uc2()
+    md = "\n".join(c.source for c in nb.cells if c.cell_type == "markdown").lower()
+    assert "cross-view consistency (not accuracy)" in md
+    code = _code(nb)
+    assert "selection_bound_deg" in code and "n_unrenderable" in code
+    assert "black_fraction_max" in code
+    assert "per-class" in code

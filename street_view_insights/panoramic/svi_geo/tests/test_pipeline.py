@@ -131,12 +131,38 @@ def test_task_renderer_centres_a_small_view_on_the_predicted_bearing():
     task = ev.ViewTask(
         "e1", "UTILITY_POLE", row.pano_id, int(row.cam_k), 123.0, -10.0, 8.0, row.observation_id
     )
-    img, view = render(task)
+    img, view, black = render(task)
     assert img.shape[:2] == (768, 768)
-    assert view.yaw_deg == 123.0 and view.hfov_deg == 40.0
+    assert view.yaw_deg == 123.0 and 20.0 <= view.hfov_deg <= 40.0
     # poles/signs are centred ~2 m above the ground point, so the view looks up from -10 deg
     assert -10.0 < view.pitch_deg < 10.0
-    assert fetched == [row.gcs_uri]
+    pano_uris = set(fr.loc[fr.pano_id == row.pano_id, "gcs_uri"])
+    assert len(fetched) == 1 and fetched[0] in pano_uris
+    assert black < 0.01
+
+
+def test_task_renderer_views_are_black_free_at_every_bearing():
+    """The task's camera faces the target, but a 40 deg view centred up to 30 deg off its axis
+    runs off the sensor; the renderer must pick the covering camera or narrow the view."""
+    from svi_geo import eval as ev
+
+    fr = _frames()
+    blob = images.encode_jpeg(np.full((5472 // 8, 3648 // 8, 3), 90, np.uint8))
+    render = pipeline.task_renderer(fr, lambda uri: blob, INTR, size=256)
+    row = fr.iloc[0]
+    for az in np.arange(0.0, 360.0, 11.0):
+        task = ev.ViewTask("e", "HOUSE", row.pano_id, int(row.cam_k), float(az), 0.0, 12.0, "o")
+        img, view, black = render(task)
+        measured = float(np.mean(img.max(axis=-1) == 0))
+        assert measured < 0.01 and black < 0.01, (az, measured, black)
+        assert 20.0 <= view.hfov_deg <= 40.0
+
+
+def test_detect_panos_records_black_fraction_per_view():
+    fr = _frames()
+    runner = gc.GeminiRunner(BoxBackend(), max_calls=100, log=lambda *_: None)
+    run = asyncio.run(pipeline.detect_panos(fr, _fetch_grey, runner, INTR, sim.scene_ref(fr)))
+    assert all(0.0 <= r["black_fraction"] < 0.01 for r in run.records)
 
 
 class UnauthorizedBackend:

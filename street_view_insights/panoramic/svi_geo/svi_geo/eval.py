@@ -108,14 +108,15 @@ def clustering_metrics(
 def entity_labels(
     entities: Sequence[ent.Entity], observations: Sequence[ent.Observation] | None = None
 ):
-    """Labels + centres; observations the pipeline dropped (no usable range) count as their
-    own singleton entity so they are not silently excluded from the metrics."""
+    """Labels + centres. Observations the pipeline dropped (suppressed ghosts) count as their
+    own singleton entity so they are not silently excluded from the clustering metrics.
+    Only located entities get a centre: unlocated and dropped ones have no position, so
+    they are left out of the location error instead of being given an invented range."""
     labels = ent.labels_by_observation(entities)
-    centres = {e.entity_id: tuple(e.point_enu[:2]) for e in entities}
+    centres = {e.entity_id: tuple(e.point_enu[:2]) for e in ent.located_entities(entities)}
     for o in observations or []:
         if o.obs_id not in labels:
             labels[o.obs_id] = f"dropped_{o.obs_id}"
-            centres[labels[o.obs_id]] = tuple(tri.point_from_range(o.ray, 12.0)[:2])
     return labels, centres
 
 
@@ -223,9 +224,14 @@ def predict_withheld_views(
     min_range_m: float = 3.0,
     max_range_m: float = 30.0,
     max_tasks: int | None = None,
+    stratify: bool = True,
 ) -> list[ViewTask]:
     """For each triangulated entity, the panos (not among its supporting panos) where the
-    geometry predicts it is visible, with the camera and bearing to render."""
+    geometry predicts it is visible, with the camera and bearing to render.
+
+    With `stratify` (default) the list is ordered round-robin across classes, and within a
+    class round-robin across entities, so truncating to `max_tasks` samples every class and
+    many entities instead of the first entities by id."""
     tasks = []
     for e in sorted(entities, key=lambda e: e.entity_id):
         if e.method != "triangulated" or e.n_panos < 2:
@@ -240,7 +246,31 @@ def predict_withheld_views(
                     e.entity_id, e.cls, pid, int(row["cam_k"]), az, el, rh, row["observation_id"]
                 )
             )
+    if stratify:
+        tasks = _round_robin_by_class(tasks)
     return tasks[:max_tasks] if max_tasks is not None else tasks
+
+
+def _interleave(queues: Sequence[Sequence[Any]]) -> list[Any]:
+    out: list[Any] = []
+    for k in range(max((len(q) for q in queues), default=0)):
+        out.extend(q[k] for q in queues if k < len(q))
+    return out
+
+
+def _round_robin_by_class(tasks: Sequence[ViewTask]) -> list[ViewTask]:
+    by_cls: dict[str, dict[str, list[ViewTask]]] = defaultdict(lambda: defaultdict(list))
+    for t in tasks:
+        by_cls[t.cls][t.entity_id].append(t)
+    per_cls = [
+        _interleave([by_ent[e] for e in sorted(by_ent)]) for _, by_ent in sorted(by_cls.items())
+    ]
+    return _interleave(per_cls)
+
+
+# The presence prompt accepts an object only inside the central third of the crop, so a
+# confirmed offset can never exceed this fraction of the horizontal FOV.
+SELECTION_BOUND_FRACTION = 1.0 / 6.0
 
 
 def presence_prompt(cls: str) -> str:
@@ -255,24 +285,36 @@ def presence_prompt(cls: str) -> str:
 
 async def cross_view_agreement(
     tasks: Sequence[ViewTask],
-    render: Callable[[ViewTask], tuple[np.ndarray, rosette.PerspectiveView]],
+    render: Callable[[ViewTask], tuple | None],
     runner: Any,
     raise_if_all_failed: bool = True,
 ) -> dict[str, Any]:
-    """Ask `PresenceCheck` on a code-rendered crop centred at each predicted bearing."""
-    reqs, views = [], []
+    """Ask `PresenceCheck` on a code-rendered crop centred at each predicted bearing.
+
+    `render(task)` returns (image, view) or (image, view, black_fraction), or None when the
+    task cannot be rendered (it is then reported as not rendered and never sent)."""
+    reqs, views, blacks, rendered = [], [], [], []
     for t in tasks:
-        img, view = render(t)
+        out = render(t)
+        rendered.append(out is not None)
+        if out is None:
+            continue
+        img, view = out[0], out[1]
+        if len(out) > 2:
+            blacks.append(float(out[2]))
         reqs.append(([presence_prompt(t.cls), img], schemas.PresenceCheck))
         views.append(view)
-    replies = await runner.ask_many(reqs, raise_if_all_failed=raise_if_all_failed)
+    answers = iter(await runner.ask_many(reqs, raise_if_all_failed=raise_if_all_failed))
+    view_iter = iter(views)
     present, offsets, signed, per_task = [], [], [], []
     by_cls: dict[str, list[float]] = {}
-    for t, view, r in zip(tasks, views, replies, strict=True):
+    for t, ok in zip(tasks, rendered, strict=True):
+        view, r = (next(view_iter), next(answers)) if ok else (None, None)
         rec = {
             "entity_id": t.entity_id,
             "pano_id": t.pano_id,
             "cls": t.cls,
+            "rendered": ok,
             "answered": r is not None,
         }
         if r is not None:
@@ -299,6 +341,12 @@ async def cross_view_agreement(
         per_task.append(rec)
     return {
         "n_tasks": len(tasks),
+        "n_unrenderable": rendered.count(False),
+        "black_fraction_max": max(blacks) if blacks else math.nan,
+        # offsets are bounded by the prompt's selection window, not a measured accuracy
+        "selection_bound_deg": (
+            max(v.hfov_deg for v in views) * SELECTION_BOUND_FRACTION if views else math.nan
+        ),
         "n_asked": len(present),
         "confirmation_rate": float(np.mean(present)) if present else math.nan,
         "median_offset_deg": _pct(offsets, 50),
@@ -338,9 +386,11 @@ def match_passes(
 ) -> dict[str, float]:
     """Hungarian matching of entities from two independent passes, per class, within eps.
 
-    `multi_view_only` keeps entities seen from >= 2 panos (single-view entities carry a
-    range guess, so they are not expected to line up between passes)."""
+    Unlocated entities have no position and are ignored. `multi_view_only` keeps entities
+    seen from >= 2 panos (a single-view range from one box bottom is much noisier than a
+    triangulation, so those are not expected to line up between passes)."""
     eps_map = {**ent.EPS_BY_CLASS, **(eps_by_class or {})}
+    a, b = ent.located_entities(a), ent.located_entities(b)
     if multi_view_only:
         a = [e for e in a if e.n_panos >= 2]
         b = [e for e in b if e.n_panos >= 2]

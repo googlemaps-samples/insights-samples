@@ -16,7 +16,9 @@ Algorithm (per class):
    what separates objects closer than eps (e.g. two poles 2 m apart).
 4. A per-pano Hungarian pass re-assigns rays to the accepted centres (one ray per centre per
    pano), then centres are re-triangulated.
-5. Leftover rays become single-view entities (ground-contact range, or a class default).
+5. Leftover rays become single-view entities placed at the ground-contact range of their
+   box bottom; without a usable ground contact they are reported as `unlocated` (no
+   position is invented).
 6. Attributes are fused by confidence-weighted vote; `entity_id` is a hash of the class and
    the rounded location, so it is deterministic and independent of input order.
 """
@@ -37,6 +39,7 @@ from sklearn.cluster import DBSCAN
 from svi_geo import geo
 from svi_geo import triangulate as tri
 
+# Per-class matching tolerance (m) for evaluation (pass-to-pass and baseline matching).
 EPS_BY_CLASS = {
     "UTILITY_POLE": 3.0,
     "ROAD_SIGN": 3.0,
@@ -50,7 +53,17 @@ DEFAULT_EPS = 4.0
 # Classes whose box bottom is the ground-contact point (single-view range from elevation).
 POST_GROUP = frozenset({"UTILITY_POLE", "ROAD_SIGN", "STREET_LIGHT", "FIRE_HYDRANT"})
 GROUND_CONTACT = {"UTILITY_POLE", "ROAD_SIGN", "STREET_LIGHT", "FIRE_HYDRANT", "GATE"}
-DEFAULT_RANGE_M = {"HOUSE": 15.0, "BUILDING": 15.0}
+# Classes whose (untruncated) box bottom is where the object meets the ground, so a single
+# view can be ranged from its elevation. Buildings are included for single-view placement
+# only; their rays are not elevation-gated during clustering.
+SINGLE_VIEW_RANGE = GROUND_CONTACT | {"HOUSE", "BUILDING"}
+MAX_SINGLE_VIEW_RANGE_M = 60.0
+# Clustering eps (m) per cluster key: post-like classes share the key POST_GROUP. eps is
+# also the max triangulation RMS, so for buildings it must stay below the spacing of
+# neighbouring houses: at 8 m, rays of two houses 20 m apart (1 deg noise) formed ghost
+# centres in 18/20 synthetic trials, at 5 m in 0/20 (tests/test_entities.py).
+CLUSTER_EPS = {"POST_GROUP": 3.0, "GATE": 3.0, "HOUSE": 5.0, "BUILDING": 5.0}
+GHOST_CONF = 0.65  # single-view detections below this confidence near a same-key entity
 # Physical extent that widens the angular gate (box reference points move across views).
 SIZE_M = {"HOUSE": 10.0, "BUILDING": 12.0, "ROAD_SIGN": 0.8, "GATE": 3.0}
 DEFAULT_SIZE_M = 0.5
@@ -79,10 +92,15 @@ class Entity:
     lng: float
     obs_ids: list[str]
     pano_ids: list[str]
-    method: str  # "triangulated" | "single_view"
+    method: str  # "triangulated" | "single_view_ground_contact" | "unlocated"
     rms_m: float
     confidence: float
     attrs: dict[str, tuple[Any, float]]
+    range_m: float = math.nan  # single-view range from the camera (NaN otherwise)
+
+    @property
+    def located(self) -> bool:
+        return self.method != "unlocated" and math.isfinite(self.lat)
 
     @property
     def n_panos(self) -> int:
@@ -115,15 +133,40 @@ def entity_id_for(cls: str, lat: float, lng: float, precision_m: float = 2.0) ->
     return f"{cls.lower()}_{hashlib.sha1(key.encode()).hexdigest()[:10]}"
 
 
-def _single_view_point(o: Observation, cam_height_m: float) -> np.ndarray | None:
-    r = None
-    if o.cls in GROUND_CONTACT and o.el_bottom_deg is not None:
-        r = tri.single_view_range(o.el_bottom_deg, cam_height_m)
-    if r is None:
-        r = DEFAULT_RANGE_M.get(o.cls)
-    if r is None or r > 60:
+def located_entities(entities: Iterable[Entity]) -> list[Entity]:
+    """Entities with a position (triangulated or single-view ground contact)."""
+    return [e for e in entities if e.located]
+
+
+def cluster_key(cls: str) -> str:
+    return "POST_GROUP" if cls in POST_GROUP else cls
+
+
+def _single_view_range(o: Observation, cam_height_m: float) -> float | None:
+    """Range from the elevation of an untruncated box bottom, or None (no guess)."""
+    if o.cls not in SINGLE_VIEW_RANGE or o.el_bottom_deg is None:
         return None
-    return tri.point_from_range(o.ray, r)
+    r = tri.single_view_range(o.el_bottom_deg, cam_height_m)
+    if r is None or r > MAX_SINGLE_VIEW_RANGE_M:
+        return None
+    return r
+
+
+def _single_view_point(o: Observation, cam_height_m: float) -> np.ndarray | None:
+    r = _single_view_range(o, cam_height_m)
+    return None if r is None else tri.point_from_range(o.ray, r)
+
+
+def _check_eps_keys(eps_by_class: Mapping[str, float]) -> None:
+    for k in eps_by_class:
+        if k in POST_GROUP:
+            raise ValueError(
+                f"eps_by_class key {k!r}: this class is clustered under the key 'POST_GROUP'"
+            )
+        if k not in CLUSTER_EPS:
+            raise ValueError(
+                f"unknown eps_by_class key {k!r}; valid keys are {sorted(CLUSTER_EPS)}"
+            )
 
 
 def _votes(obs: Sequence[Observation], cam_height_m: float, max_range_m: float):
@@ -389,21 +432,28 @@ def cluster(
     max_range_m: float = 60.0,
     merge_single_view: bool = True,
     bearing_sigma_deg: float = 1.0,
+    ghost_conf: float = GHOST_CONF,
 ) -> list[Entity]:
-    """Deduplicate observations into entities (see module docstring). ENU is relative to ref."""
-    eps_map = {**EPS_BY_CLASS, **(eps_by_class or {})}
+    """Deduplicate observations into entities (see module docstring). ENU is relative to ref.
+
+    `eps_by_class` overrides `CLUSTER_EPS` and is keyed by cluster key (POST_GROUP, GATE,
+    HOUSE, BUILDING); any other key raises ValueError. A single-view detection with
+    confidence below `ghost_conf` within eps of a triangulated entity of the same cluster
+    key is dropped as a ghost. Single views without a usable ground contact are returned
+    with method "unlocated" and NaN position (see `located_entities`)."""
+    _check_eps_keys(eps_by_class or {})
+    eps_map = {**CLUSTER_EPS, **(eps_by_class or {})}
     # deterministic processing order regardless of input order
     obs_all = sorted(observations, key=lambda o: o.obs_id)
     out: list[Entity] = []
     by_cls: dict[str, list[Observation]] = defaultdict(list)
     for o in obs_all:
-        key = "POST_GROUP" if o.cls in POST_GROUP else o.cls
-        by_cls[key].append(o)
+        by_cls[cluster_key(o.cls)].append(o)
     for cls in sorted(by_cls):
         obs = by_cls[cls]
-        eps = eps_map.get(cls, 3.0 if cls == "POST_GROUP" else DEFAULT_EPS)
+        eps = eps_map.get(cls, DEFAULT_EPS)
         accepted, leftovers = _cluster_class(obs, eps, cam_height_m, max_range_m, bearing_sigma_deg)
-        groups = [(pt, list(idx), rms, "triangulated") for pt, idx, rms in accepted]
+        groups = [(pt, list(idx), rms, "triangulated", math.nan) for pt, idx, rms in accepted]
         n_tri = len(groups)
         for i in leftovers:
             # a leftover ray that points at a triangulated entity (angular gate, and a pano
@@ -421,32 +471,38 @@ def cluster(
                 if costs[j] <= LEFTOVER_GATE:
                     groups[j][1].append(i)
                     continue
-            p = _single_view_point(obs[i], cam_height_m)
-            if p is None:
+            r = _single_view_range(obs[i], cam_height_m)
+            if r is None:
+                groups.append((np.full(3, np.nan), [i], math.nan, "unlocated", math.nan))
                 continue
+            p = tri.point_from_range(obs[i].ray, r)
             if merge_single_view and groups:
-                d = [np.linalg.norm(g[0][:2] - p[:2]) for g in groups]
+                d = [
+                    np.linalg.norm(g[0][:2] - p[:2]) if g[3] != "unlocated" else math.inf
+                    for g in groups
+                ]
                 j = int(np.argmin(d))
                 pano_ids = {obs[k].pano_id for k in groups[j][1]}
                 if d[j] <= eps and obs[i].pano_id not in pano_ids:
                     groups[j][1].append(i)
                     continue
-            groups.append((p, [i], math.nan, "single_view"))
-        for pt, idx, rms, method in groups:
-            lat, lng, _ = geo.enu_to_lla(pt[0], pt[1], pt[2], *ref_lla)
+            groups.append((p, [i], math.nan, "single_view_ground_contact", r))
+        tri_pts = [g[0] for g in groups if g[3] == "triangulated"]
+        for pt, idx, rms, method, range_m in groups:
             members = [obs[i] for i in idx]
+            if method == "unlocated":
+                lat = lng = math.nan
+            else:
+                lat, lng, _ = geo.enu_to_lla(pt[0], pt[1], pt[2], *ref_lla)
 
-            # Suppress single-view low-confidence ghosts near triangulated
-            if method == "single_view" and len(members) == 1 and members[0].confidence < 0.65:
-                # find distance to any triangulated entity
-                dist = min(
-                    [
-                        np.linalg.norm(pt[:2] - t.point_enu[:2])
-                        for t in out
-                        if t.method == "triangulated"
-                    ]
-                    + [math.inf]
-                )
+            # a weak single view within eps of a triangulated entity of the same cluster key
+            # is a ghost of that entity (other keys are different objects and never compared)
+            if (
+                method == "single_view_ground_contact"
+                and len(members) == 1
+                and members[0].confidence < ghost_conf
+            ):
+                dist = min([float(np.linalg.norm(pt[:2] - t[:2])) for t in tri_pts] + [math.inf])
                 if dist < eps:
                     continue
 
@@ -469,9 +525,14 @@ def cluster(
                 1.0
                 - np.prod([1.0 - min(0.999, m.confidence) for m in members if m.cls == final_cls])
             )
+            eid = (
+                _unlocated_id(final_cls, [m.obs_id for m in members])
+                if method == "unlocated"
+                else entity_id_for(final_cls, float(lat), float(lng))
+            )
             out.append(
                 Entity(
-                    entity_id=entity_id_for(final_cls, float(lat), float(lng)),
+                    entity_id=eid,
                     cls=final_cls,
                     point_enu=np.asarray(pt, float),
                     lat=float(lat),
@@ -482,16 +543,27 @@ def cluster(
                     rms_m=float(rms),
                     confidence=conf,
                     attrs=attrs,
+                    range_m=float(range_m),
                 )
             )
     return _disambiguate_ids(out)
+
+
+def _unlocated_id(cls: str, obs_ids: Sequence[str]) -> str:
+    """Id of an entity without a position: derived from its observations, not a grid cell."""
+    digest = hashlib.sha1("|".join(sorted(obs_ids)).encode()).hexdigest()[:10]
+    return f"{cls.lower()}_unlocated_{digest}"
 
 
 def _disambiguate_ids(entities: list[Entity]) -> list[Entity]:
     """Distinct objects closer than the id grid can hash to the same id; suffix repeats
     deterministically (_2, _3, ...) so ids stay unique and input-order independent."""
     entities.sort(
-        key=lambda e: (e.entity_id, tuple(np.round(e.point_enu, 2)), tuple(sorted(e.obs_ids)))
+        key=lambda e: (
+            e.entity_id,
+            tuple(np.nan_to_num(np.round(e.point_enu, 2), nan=np.inf)),
+            tuple(sorted(e.obs_ids)),
+        )
     )
     seen: dict[str, int] = {}
     for e in entities:

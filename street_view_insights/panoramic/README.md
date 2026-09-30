@@ -11,9 +11,11 @@ evaluation code.
 - **[Analyze Sequential Images](notebooks/analyze_sequential_images.ipynb)**:
   rebuilds the drive sequence along a street and runs Gemini on
   lens-corrected views. It then triangulates houses, utility poles and signs
-  across panoramas and de-duplicates them into map entities. Last, it checks
-  itself by projecting each entity into a view that was not used and asking
-  Gemini whether the object is there.
+  across panoramas and de-duplicates them into map entities. A detection seen
+  from one panorama is placed only when its ground contact is visible; otherwise
+  it is listed as unlocated. Last, it runs a cross-view consistency check (not
+  an accuracy measure): it projects each entity into a view that was not used
+  and asks Gemini whether the object is there.
 - **[Surface Material Detection](notebooks/surface_material_detection.ipynb)**:
   classifies continuous assets (road, sidewalk, fence, power line) at each
   panorama along a drive. Labels are smoothed along the sequence with an HMM

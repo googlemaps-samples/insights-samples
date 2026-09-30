@@ -73,6 +73,13 @@ Notes on the seam check:
 
 ## Evaluation (`scripts/run_eval.py`)
 
+> **Stale results.** The tables below were produced before the clustering fixes: at that time
+> houses were clustered with an 8 m eps, and single-view houses were placed at a fixed 15 m
+> range (the "single-view only" p90 of 15.0 m is that constant). Houses now use a 5 m eps.
+> A single-view house is placed only from an untruncated box bottom and is `unlocated`
+> otherwise. The tables have not been re-run with the current code, so treat them as
+> historical until `run_eval.py` is re-run.
+
 ### Synthetic dedup (`--synthetic`)
 
 The synthetic scenes use real drive paths and per-camera poses: up to 150
@@ -139,6 +146,10 @@ What the results show:
   each.
 - Presence checks are answered by the same model family, so they are
   correlated with its own errors.
+- The presence prompt only accepts an object in the central third of the
+  crop, so confirmed offsets are bounded by hfov / 6 (`selection_bound_deg`,
+  6.7° for the 40° crops). The offsets are partly set by that bound, not
+  purely measured.
 
 ### Hand labels (`--labels`)
 

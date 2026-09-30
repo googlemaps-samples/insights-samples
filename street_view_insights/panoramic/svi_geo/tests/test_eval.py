@@ -262,3 +262,73 @@ def test_cross_view_agreement_can_opt_out_of_raising():
         ev.cross_view_agreement(_pole_tasks(), _blank_render, runner, raise_if_all_failed=False)
     )
     assert out["n_asked"] == 0 and runner.cost.failures == 3
+
+
+def _entity(eid, cls, xy, pids):
+    return ent.Entity(
+        eid, cls, np.array([xy[0], xy[1], 0.0]), 0, 0, ["a", "b"], list(pids), "triangulated",
+        0.1, 0.9, {},
+    )  # fmt: skip
+
+
+def test_predict_withheld_views_stratifies_across_classes():
+    fr = sim.synthetic_frames(8, 10.0, 48.85, 2.35, travel_deg=0.0)
+    ref = sim.scene_ref(fr)
+    pids = list(fr["pano_id"].unique())
+    # ids sort so that an unstratified truncation would take only the first class
+    # (scene ENU is centred on the drive, so y in -35..35 m is along the street)
+    ents = [
+        _entity(f"{tag}_{k}", cls, (x, y), pids[:2])
+        for tag, cls, x in (("a", "HOUSE", 12.0), ("b", "UTILITY_POLE", 4.0),
+                            ("c", "ROAD_SIGN", -4.0))
+        for k, y in enumerate((-10.0, 10.0))
+    ]  # fmt: skip
+    intr = rosette.DEFAULT_INTRINSICS
+    every = ev.predict_withheld_views(ents, fr, intr, ref, max_range_m=40.0)
+    per_cls = {c: sum(t.cls == c for t in every) for c in ("HOUSE", "UTILITY_POLE", "ROAD_SIGN")}
+    assert min(per_cls.values()) >= 4, per_cls
+    plain = ev.predict_withheld_views(ents, fr, intr, ref, max_range_m=40.0, max_tasks=10,
+                                      stratify=False)  # fmt: skip
+    assert {t.cls for t in plain[:4]} == {"HOUSE"}
+    strat = ev.predict_withheld_views(ents, fr, intr, ref, max_range_m=40.0, max_tasks=10)
+    assert len(strat) == 10
+    counts = {c: sum(t.cls == c for t in strat) for c in per_cls}
+    assert min(counts.values()) >= 3, counts
+    assert set(strat) <= set(every)
+
+
+def test_cross_view_agreement_reports_selection_bound():
+    runner = gc.GeminiRunner(ScriptedBackend([True]), max_calls=10, log=lambda *_: None)
+    out = asyncio.run(ev.cross_view_agreement(_pole_tasks(), _blank_render, runner))
+    # the prompt accepts objects in the central third: +-hfov/6 around the prediction
+    assert out["selection_bound_deg"] == pytest.approx(40.0 / 6)
+
+
+def _unlocated(eid):
+    return ent.Entity(eid, "HOUSE", np.full(3, np.nan), math.nan, math.nan, [eid + "_o"],
+                      ["p0"], "unlocated", math.nan, 0.9, {})  # fmt: skip
+
+
+def test_unlocated_entities_have_no_centre_and_are_not_matched():
+    labels, centres = ev.entity_labels([_unlocated("u1")])
+    assert labels == {"u1_o": "u1"} and centres == {}
+    located = ent.Entity("h", "HOUSE", np.array([1.0, 2.0, 0.0]), 0, 0, [], ["p0", "p1"],
+                         "triangulated", 0.1, 0.9, {})  # fmt: skip
+    m = ev.match_passes([located, _unlocated("u1")], [located, _unlocated("u2")])
+    assert m["n_a"] == 1 and m["n_b"] == 1 and m["matched"] == 1
+
+
+def test_cross_view_skips_unrenderable_tasks_and_reports_black_fraction():
+    def render(task):
+        if task.pano_id == "P1":
+            return None  # no camera of this pano covers the predicted bearing
+        view = rosette.PerspectiveView(task.az_deg, task.el_deg, 30.0, 64, 64)
+        return np.zeros((64, 64, 3), np.uint8), view, 0.004
+
+    backend = ScriptedBackend([True])
+    runner = gc.GeminiRunner(backend, max_calls=10, log=lambda *_: None)
+    out = asyncio.run(ev.cross_view_agreement(_pole_tasks(), render, runner))
+    assert backend.calls == 2 and out["n_unrenderable"] == 1
+    assert out["black_fraction_max"] == pytest.approx(0.004)
+    assert out["selection_bound_deg"] == pytest.approx(5.0)
+    assert [t["rendered"] for t in out["per_task"]] == [True, False, True]

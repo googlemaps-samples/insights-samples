@@ -170,7 +170,8 @@ async def detect_panos(
     )
     obs, records = [], []
     for s, im, fd in zip(specs, rendered, replies, strict=True):
-        rec = {"spec": s, "detections": fd}
+        black = rosette.view_black_fraction(intr, s.pose, s.view, s.cam_k)
+        rec = {"spec": s, "detections": fd, "black_fraction": black}
         if keep_images:
             rec["image"] = im
         records.append(rec)
@@ -186,20 +187,36 @@ def task_renderer(
     hfov_deg: float = 40.0,
     size: int = 768,
     lift_m: float = 2.0,
-) -> Callable[[Any], tuple[np.ndarray, rosette.PerspectiveView]]:
-    """Renderer for self-consistency `ViewTask`s: a small world-oriented view centred on the
-    predicted bearing (poles/signs: `lift_m` above the ground point), rendered in code from the
-    task's own frame. `frames` rows need pano_id, cam_k, camera_pose and gcs_uri."""
-    rows = {(r["pano_id"], int(r["cam_k"])): r for r in frames.to_dict("records")}
+    min_hfov_deg: float = 20.0,
+    max_black: float = 0.01,
+) -> Callable[[Any], tuple[np.ndarray, rosette.PerspectiveView, float] | None]:
+    """Renderer for self-consistency `ViewTask`s: a small world-oriented square view centred on
+    the predicted bearing (poles/signs: `lift_m` above the ground point), rendered in code.
 
-    def render(task) -> tuple[np.ndarray, rosette.PerspectiveView]:
-        row = rows[(task.pano_id, int(task.cam_k))]
-        img = images.decode(fetch(row["gcs_uri"]))
+    The view is rendered from whichever ground camera of the task's pano covers it
+    (`rosette.best_camera_for_view`), narrowed from `hfov_deg` if needed so that less than
+    `max_black` of it falls outside the sensor. Returns (image, view, black_fraction), or None
+    when no camera covers even `min_hfov_deg` (the task cannot be checked).
+    `frames` rows need pano_id, cam_k, observation_id, camera_pose and gcs_uri."""
+    by_pano: dict[str, list[dict]] = defaultdict(list)
+    for r in frames.to_dict("records"):
+        by_pano[r["pano_id"]].append(r)
+
+    def render(task) -> tuple[np.ndarray, rosette.PerspectiveView, float] | None:
         lift = lift_m if task.cls in ent.GROUND_CONTACT else 0.0
         el = math.degrees(math.atan(math.tan(math.radians(task.el_deg)) + lift / task.range_m))
-        view = rosette.PerspectiveView(
-            float(task.az_deg), float(np.clip(el, -30.0, 30.0)), hfov_deg, size, size
-        )
-        return rosette.render_perspective(img, intr, row["camera_pose"], view, task.cam_k), view
+        pitch = float(np.clip(el, -30.0, 30.0))
+        choice = rosette.best_camera_for_view(
+            by_pano[task.pano_id], intr, float(task.az_deg), pitch, 1.0,
+            min_hfov=min_hfov_deg, max_black=max_black, hfov_cap=hfov_deg,
+        )  # fmt: skip
+        if choice is None:
+            return None
+        row = choice.row
+        view = rosette.PerspectiveView(float(task.az_deg), pitch, choice.hfov_deg, size, size)
+        img = images.decode(fetch(row["gcs_uri"]))
+        pose = row["camera_pose"]
+        black = rosette.view_black_fraction(intr, pose, view, choice.cam_k)
+        return rosette.render_perspective(img, intr, pose, view, choice.cam_k), view, black
 
     return render
