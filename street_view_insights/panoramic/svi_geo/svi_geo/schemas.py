@@ -303,3 +303,65 @@ def box_2d_to_pixels(box_2d, width: int, height: int) -> tuple[float, float, flo
     """[ymin, xmin, ymax, xmax] (0..1000) -> (x0, y0, x1, y1) pixels in a width x height image."""
     ymin, xmin, ymax, xmax = (float(c) for c in box_2d)
     return (xmin / 1000 * width, ymin / 1000 * height, xmax / 1000 * width, ymax / 1000 * height)
+
+
+class HouseFramingVerdict(BaseModel):
+    """Silver-teacher verdict on house framing and attributes (UC1)."""
+
+    house_visible: bool
+    fully_in_frame: bool
+    truncation: str = Field(description="NONE, LEFT, RIGHT, TOP, BOTTOM, or MULTIPLE")
+    occlusion: Occlusion
+    stories: int | None = Field(default=None, ge=1, le=10)
+    exterior_material: ExteriorMaterial | None = None
+    roof_type: RoofType | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+    visual_evidence: str
+
+
+class EntityConfirm(BaseModel):
+    """Silver-teacher confirmation of a discrete roadside asset at a projected zoom tile (UC2)."""
+
+    target_class: AssetClass
+    confirmed: bool
+    box_2d: list[int] | None = Field(
+        default=None, description="[ymin, xmin, ymax, xmax] in 0..1000 if confirmed"
+    )
+    confidence: float = Field(ge=0.0, le=1.0)
+    visual_evidence: str
+
+    @field_validator("box_2d")
+    @classmethod
+    def _valid_box(cls, v):
+        return _check_box(v)
+
+
+class SurfaceSlotVerdict(BaseModel):
+    """Silver-teacher verdict on one road/sidewalk slot in a high-res crop (UC3)."""
+
+    side: Side
+    present: bool
+    material: SurfaceMaterial | None = None
+    condition: SurfaceCondition | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+    visual_evidence: str
+
+
+class RoofVisibility(BaseModel):
+    """Silver-teacher verdict on whether roof edges are visible or occluded (UC4 M4.1)."""
+
+    roof_visible: bool
+    visible_fraction: float = Field(ge=0.0, le=1.0)
+    edge_50pct_visible: bool = Field(
+        description="True if at least 50% of the primary eave or ridge boundary is unobstructed"
+    )
+    occlusion_reason: str = Field(description="NONE, FOLIAGE, POLE, NEIGHBOR, OUT_OF_FRAME, OTHER")
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class RoofTrace(BaseModel):
+    """Silver-teacher roof polyline trace on high-resolution zoom view (UC4 M4.5)."""
+
+    roof_visible: bool
+    edges: list[RoofEdge] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
