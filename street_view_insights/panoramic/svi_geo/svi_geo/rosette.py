@@ -643,18 +643,25 @@ def view_black_fraction(
     `max_theta_deg` (or the KB4 invertibility limit) or that land outside the sensor.
     Evaluated on a `step`-pixel grid of the view; no image needed."""
     u, v = _view_grid(view, max(1, int(step)))
+    theta, ok = _coverage(intr, pose, view, cam_k, u, v)
+    return float(np.mean(~ok))
+
+
+def _coverage(intr, pose, view, cam_k, u, v):
+    """(incidence angle deg, covered) of view pixels (u, v) in one camera: covered rays are
+    within `max_theta_deg` and the KB4 invertibility limit and land on the sensor."""
     d_cam = view.pixel_dirs(u, v) @ pose_rotation(intr, pose, cam_k)
     theta = np.degrees(np.arccos(np.clip(d_cam[..., 2], -1.0, 1.0)))
     uv = project(intr, d_cam)
     cap = min(intr.max_theta_deg, _invertible_theta_deg(intr))
-    bad = (
-        (theta > cap)
-        | (uv[..., 0] < 0)
-        | (uv[..., 0] > intr.width - 1)
-        | (uv[..., 1] < 0)
-        | (uv[..., 1] > intr.height - 1)
+    ok = (
+        (theta <= cap)
+        & (uv[..., 0] >= 0)
+        & (uv[..., 0] <= intr.width - 1)
+        & (uv[..., 1] >= 0)
+        & (uv[..., 1] <= intr.height - 1)
     )
-    return float(np.mean(bad))
+    return theta, ok
 
 
 def vfov_for(hfov_deg: float, aspect: float) -> float:
@@ -682,13 +689,21 @@ def max_view_fov(
     `max_black`, found by bisection on the analytic `view_black_fraction`.
 
     Returns (0.0, 0.0) if even `min_hfov` is not valid (the target is outside this camera)."""
+
+    def black(view: PerspectiveView) -> float:
+        return view_black_fraction(intr, pose, view, cam_k, step=1)
+
+    return _widest_view(black, yaw_deg, pitch_deg, aspect, max_black, hfov_cap, min_hfov, iters)
+
+
+def _widest_view(black_of, yaw_deg, pitch_deg, aspect, max_black, hfov_cap, min_hfov, iters):
+    """Bisection on hfov for the widest view whose `black_of(view)` is below the target."""
     w = FOV_EVAL_WIDTH
     h = max(8, int(round(w / aspect)))
     target = max_black * FOV_SAFETY
 
     def black(hfov: float) -> float:
-        view = PerspectiveView(float(yaw_deg), float(pitch_deg), float(hfov), w, h)
-        return view_black_fraction(intr, pose, view, cam_k, step=1)
+        return black_of(PerspectiveView(float(yaw_deg), float(pitch_deg), float(hfov), w, h))
 
     if black(hfov_cap) <= target:
         return float(hfov_cap), vfov_for(hfov_cap, aspect)
@@ -760,3 +775,95 @@ def hood_row(
     el = np.degrees(np.arcsin(np.clip(-d_cam[..., 1], -1.0, 1.0)))
     below = np.nonzero(el < hood_elev_deg)[0]
     return int(below[0]) if below.size else int(view.height)
+
+
+# --------------------------------------------------------------------------- multi-camera views
+# A view centred on the seam between two cameras (on the real rosette the travel direction is
+# such a seam) is composited: every view pixel is taken from the covering camera whose optical
+# axis is nearest to it. The camera centres are a few centimetres apart, so objects very close
+# to the vehicle can show a small step at the seam; the road and sidewalk surfaces do not.
+
+
+def _ground_rows(rows: Sequence[Any]) -> list[tuple[Any, int]]:
+    out = []
+    for row in rows:
+        k = camera_index(_row_get(row, "observation_id"))
+        if k is not None and is_ground_camera(k):
+            out.append((row, k))
+    return out
+
+
+def _owners(intr: Intrinsics, rows: Sequence[Any], view: PerspectiveView, u, v):
+    """(ground rows, index of the owning camera per pixel or -1 where no camera covers it)."""
+    ground = _ground_rows(rows)
+    best = np.full(np.shape(u), np.inf)
+    owner = np.full(np.shape(u), -1, dtype=np.int64)
+    for i, (row, k) in enumerate(ground):
+        theta, ok = _coverage(intr, _row_get(row, "camera_pose"), view, k, u, v)
+        better = ok & (theta < best)
+        best = np.where(better, theta, best)
+        owner = np.where(better, i, owner)
+    return ground, owner
+
+
+def view_black_fraction_multi(
+    intr: Intrinsics, rows: Sequence[Any], view: PerspectiveView, step: int = 4
+) -> float:
+    """Share of `view` pixels that no ground camera in `rows` covers (black when composited)."""
+    u, v = _view_grid(view, max(1, int(step)))
+    _, owner = _owners(intr, rows, view, u, v)
+    return float(np.mean(owner < 0))
+
+
+def max_view_fov_multi(
+    intr: Intrinsics,
+    rows: Sequence[Any],
+    yaw_deg: float,
+    pitch_deg: float,
+    aspect: float,
+    max_black: float = 0.01,
+    hfov_cap: float = 90.0,
+    min_hfov: float = 1.0,
+    iters: int = 12,
+) -> tuple[float, float]:
+    """`max_view_fov` for a view composited from all ground cameras in `rows`."""
+
+    def black(view: PerspectiveView) -> float:
+        return view_black_fraction_multi(intr, rows, view, step=1)
+
+    return _widest_view(black, yaw_deg, pitch_deg, aspect, max_black, hfov_cap, min_hfov, iters)
+
+
+def composite_rows(intr: Intrinsics, rows: Sequence[Any], view: PerspectiveView, step: int = 4):
+    """The ground-camera rows that own at least one pixel of the composited `view`."""
+    u, v = _view_grid(view, max(1, int(step)))
+    ground, owner = _owners(intr, rows, view, u, v)
+    used = set(np.unique(owner[owner >= 0]).tolist())
+    return tuple(row for i, (row, _) in enumerate(ground) if i in used)
+
+
+def render_perspective_multi(
+    images: Mapping[int, np.ndarray],
+    intr: Intrinsics,
+    rows: Sequence[Any],
+    view: PerspectiveView,
+    interpolation: int = cv2.INTER_LINEAR,
+) -> np.ndarray:
+    """Composite `view` from several frames of one pano; `images` maps cam_k -> frame. Each
+    pixel comes from the covering camera nearest its optical axis; uncovered pixels are 0."""
+    u, v = np.meshgrid(np.arange(view.width, dtype=np.float64),
+                       np.arange(view.height, dtype=np.float64))  # fmt: skip
+    ground, owner = _owners(intr, rows, view, u, v)
+    out = None
+    for i, (row, k) in enumerate(ground):
+        mask = owner == i
+        if not mask.any():
+            continue
+        img = images[k]
+        part = render_perspective(img, intr, _row_get(row, "camera_pose"), view, k, interpolation)
+        if out is None:
+            out = np.zeros_like(part)
+        out[mask] = part[mask]
+    if out is None:
+        raise ValueError("no camera in rows covers the view")
+    return out

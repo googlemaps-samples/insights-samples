@@ -8,6 +8,7 @@ defaults to a multiple of the spacing *measured* on the same data (`spacing_stat
 from __future__ import annotations
 
 import dataclasses
+import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -178,6 +179,8 @@ class RoadView:
     choice: rosette.CameraChoice
     view: rosette.PerspectiveView
     keep_rows: int  # rows above the vehicle hood; the rest is cropped after rendering
+    rows: tuple = ()  # the frames the view is rendered from (2 when composited on a seam)
+    black: float = math.nan  # analytic share of view pixels without image data
 
 
 def road_view(
@@ -198,21 +201,58 @@ def road_view(
     (`rosette.best_camera_for_view`); the FOV is narrowed from `hfov_deg` if needed so that
     less than `max_black` of the view falls outside the sensor. Rows below the vehicle hood
     are reported in `keep_rows` so `render_road_view` crops them. None if no camera reaches
-    `min_hfov_deg`."""
+    `min_hfov_deg`.
+
+    If no single camera reaches `min_hfov_deg` (the view is centred on the seam between two
+    cameras, as the travel direction is on the real rosette), the view is composited from the
+    ground cameras that cover it (`rosette.render_perspective_multi`); `rows` then lists them
+    and `choice` is the one whose axis is nearest the view centre."""
     w, h = size
     yaw = road_view_yaw(travel_deg, role)
     choice = rosette.best_camera_for_view(
         pano_rows, intr, yaw, pitch_deg, w / h,
         min_hfov=min_hfov_deg, max_black=max_black, hfov_cap=hfov_deg,
     )  # fmt: skip
-    if choice is None:
+    if choice is not None:
+        view = rosette.PerspectiveView(yaw, float(pitch_deg), choice.hfov_deg, w, h)
+        keep = rosette.hood_row(view, _pose(choice.row), intr, hood_elev_deg, choice.cam_k)
+        black = rosette.view_black_fraction(intr, _pose(choice.row), view, choice.cam_k)
+        return RoadView(choice, view, keep, (choice.row,), black)
+    hfov, vfov = rosette.max_view_fov_multi(
+        intr, pano_rows, yaw, pitch_deg, w / h, max_black=max_black, hfov_cap=hfov_deg,
+        min_hfov=min_hfov_deg,
+    )  # fmt: skip
+    if hfov < min_hfov_deg:
         return None
-    view = rosette.PerspectiveView(yaw, float(pitch_deg), choice.hfov_deg, w, h)
-    keep = rosette.hood_row(view, _pose(choice.row), intr, hood_elev_deg, choice.cam_k)
-    return RoadView(choice, view, keep)
+    view = rosette.PerspectiveView(yaw, float(pitch_deg), hfov, w, h)
+    used = rosette.composite_rows(intr, pano_rows, view)
+    ks = [rosette.camera_index(r["observation_id"]) for r in used]
+    centre = [
+        abs(geo.angdiff(_axis_heading(intr, r, k), yaw)) for r, k in zip(used, ks, strict=True)
+    ]
+    i = int(np.argmin(centre))
+    choice = rosette.CameraChoice(used[i], ks[i], hfov, vfov)
+    keep = min(rosette.hood_row(view, _pose(r), intr, hood_elev_deg, k)
+               for r, k in zip(used, ks, strict=True))  # fmt: skip
+    black = rosette.view_black_fraction_multi(intr, used, view)
+    return RoadView(choice, view, keep, used, black)
 
 
-def render_road_view(image: np.ndarray, intr: rosette.Intrinsics, rv: RoadView) -> np.ndarray:
-    """Render `rv` from its camera's frame and crop the rows below the vehicle hood."""
-    out = rosette.render_perspective(image, intr, _pose(rv.choice.row), rv.view, rv.choice.cam_k)
+def _axis_heading(intr: rosette.Intrinsics, row: Any, k: int) -> float:
+    return float(_pose(row)["heading"]) + intr.cam_rot_delta_deg.get(k, (0.0,))[0]
+
+
+def render_road_view(
+    image: np.ndarray | Mapping[int, np.ndarray], intr: rosette.Intrinsics, rv: RoadView
+) -> np.ndarray:
+    """Render `rv` and crop the rows below the vehicle hood. `image` is the frame of
+    `rv.choice`, or a {cam_k: frame} mapping covering every row in `rv.rows` (required when
+    the view is composited from two cameras)."""
+    if len(rv.rows) > 1:
+        if not isinstance(image, Mapping):
+            raise TypeError("a composited road view needs {cam_k: frame} for all of rv.rows")
+        out = rosette.render_perspective_multi(image, intr, rv.rows, rv.view)
+    else:
+        img = image[rv.choice.cam_k] if isinstance(image, Mapping) else image
+        out = rosette.render_perspective(img, intr, _pose(rv.choice.row), rv.view, rv.choice.cam_k)
     return out[: rv.keep_rows]

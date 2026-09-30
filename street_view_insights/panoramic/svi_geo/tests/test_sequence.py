@@ -1,3 +1,4 @@
+import dataclasses
 import math
 
 import numpy as np
@@ -211,3 +212,44 @@ def test_road_view_crops_rows_below_the_hood():
     img = np.full((5472 // 8, 3648 // 8, 3), 90, np.uint8)
     out = sequence.render_road_view(img, INTR, rv)
     assert out.shape[0] == rv.keep_rows
+
+
+# ----------------------------------------------------------------------------- Task 12 (live)
+# On the real rosette the travel direction falls on the seam between two cameras (headings
+# travel +-30 deg), so no single camera can show a 40 deg front view. NARROW limits every
+# camera to a 45 deg cone, like the real sensor's horizontal extent.
+NARROW = dataclasses.replace(INTR, max_theta_deg=45.0)
+
+
+def test_front_view_on_a_camera_seam_is_composited_from_the_two_flanking_cameras():
+    travel = 80.0
+    rows = _rows(travel + 30.0)  # cameras at travel +-30, +-90, +-150
+    single = rosette.best_camera_for_view(rows, NARROW, travel, -22.0, 4 / 3, min_hfov=40.0)
+    assert single is None  # the seam defeats every single camera
+    rv = sequence.road_view(rows, NARROW, travel, "front", pitch_deg=-22.0)
+    assert rv is not None
+    assert rv.view.yaw_deg == pytest.approx(travel) and rv.view.hfov_deg >= 40.0
+    assert sorted(int(r["cam_k"]) for r in rv.rows) == [0, 5]
+    assert rv.black < 0.01
+    assert rv.black == pytest.approx(rosette.view_black_fraction_multi(NARROW, rv.rows, rv.view))
+
+
+def test_composited_road_view_takes_each_half_from_the_nearer_camera():
+    travel = 80.0
+    rv = sequence.road_view(_rows(travel + 30.0), NARROW, travel, "front", pitch_deg=-22.0)
+    imgs = {int(r["cam_k"]): np.full((5472 // 8, 3648 // 8, 3), 20 + 10 * int(r["cam_k"]),
+                                     np.uint8) for r in rv.rows}  # fmt: skip
+    out = sequence.render_road_view(imgs, NARROW, rv)
+    assert out.shape[0] == rv.keep_rows
+    w = out.shape[1]
+    assert np.all(out[: rv.keep_rows // 2, : w // 4] == 70)  # left: camera 5 (travel - 30)
+    assert np.all(out[: rv.keep_rows // 2, 3 * w // 4 :] == 20)  # right: camera 0 (travel + 30)
+    assert np.mean(out == 0) < 0.01
+
+
+def test_road_view_uses_one_camera_when_one_covers_the_view():
+    rv = sequence.road_view(_rows(80.0), NARROW, 80.0, "front", pitch_deg=-22.0)
+    assert len(rv.rows) == 1 and rv.rows[0] is rv.choice.row
+    assert rv.black == pytest.approx(
+        rosette.view_black_fraction(NARROW, rv.choice.row["camera_pose"], rv.view, rv.choice.cam_k)
+    )

@@ -277,3 +277,18 @@ def test_figures_and_maps_carry_imagery_attribution(nb):
 def test_notebooks_state_terms_of_use(nb):
     md = "\n".join(c.source for c in nb.cells if c.cell_type == "markdown").lower()
     assert "terms" in md and "redistribut" in md and "attribution" in md
+
+
+RESULT_PRINTS = {  # the lines scripts/check_executed_notebooks.py looks for
+    "house_image_discovery_with_cost": 'print(f"centred_views=',
+    "analyze_sequential_images": 'print(f"located_entities=',
+    "surface_material_detection": 'print(f"segments=',
+    "roof_edge_tracing": 'print(f"accepted_edges=',
+}
+
+
+@pytest.mark.parametrize("path", NOTEBOOKS, ids=lambda p: p.stem)
+def test_notebooks_print_the_lines_the_live_checker_reads(path):
+    code = _code(nbformat.read(path, as_version=4))
+    assert RESULT_PRINTS[path.stem] in code
+    assert "black_fraction_max=" in code and "runner.cost.summary()" in code
