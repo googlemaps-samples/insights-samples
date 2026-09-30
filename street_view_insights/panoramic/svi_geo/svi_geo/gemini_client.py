@@ -230,7 +230,7 @@ class VertexGeminiBackend:
         code_execution=False,
         validator=None,
         seed: int | None = None,
-        timeout_s: float = 45.0,
+        timeout_s: float = 90.0,
     ) -> RawReply:
         from google.genai import types
 
@@ -241,10 +241,10 @@ class VertexGeminiBackend:
         gen_cfg = types.GenerateContentConfig(**cfg)
         last_err: Exception | None = None
         fallback_models = [m for m in PRICES_BY_MODEL if "2.5" in m and "pro" in m]
-        for attempt in range(2):
+        for attempt in range(3):
             use_model = (
                 fallback_models[0]
-                if (attempt == 1 and "3.1" in self.model and fallback_models)
+                if (attempt >= 1 and "3.1" in self.model and fallback_models)
                 else self.model
             )
             try:
@@ -259,8 +259,8 @@ class VertexGeminiBackend:
                 break
             except TimeoutError as err:
                 last_err = err
-                if attempt == 0:
-                    await asyncio.sleep(1.0)
+                if attempt < 2:
+                    await asyncio.sleep(1.5 * (attempt + 1))
         else:
             assert last_err is not None
             raise last_err

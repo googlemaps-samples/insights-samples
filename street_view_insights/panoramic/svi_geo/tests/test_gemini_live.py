@@ -30,7 +30,7 @@ def rendered_view(svi_project, svi_bucket, tmp_path_factory):
     return img
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def runner(svi_project):
     client = gemini_client.make_vertex_client(svi_project, credentials=auth.get_credentials())
     backend = gemini_client.VertexGeminiBackend(client)

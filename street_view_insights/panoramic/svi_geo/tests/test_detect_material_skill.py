@@ -180,8 +180,10 @@ def test_id_sql_dry_run_under_145gb(dm):
 
     from google.cloud import bigquery
 
+    from svi_geo import auth
+
     project = os.environ.get("PROJECT_ID") or "imagery-insights-sandbox"
-    client = bigquery.Client(project=project)
+    client = bigquery.Client(project=project, credentials=auth.get_credentials())
     sql = dm.render_sql(dm.ID_SQL, project, dm.DEFAULT_DATASET)
     params = [
         bigquery.ScalarQueryParameter("id", "STRING", "o1:test_0:5001ee"),
