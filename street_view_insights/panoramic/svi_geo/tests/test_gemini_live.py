@@ -69,3 +69,37 @@ def test_inline_bytes_detection_and_presence(rendered_view, runner):
     assert runner.cost.calls >= 3
     assert runner.cost.input_tokens > 0 and runner.cost.usd > 0
     print(runner.cost.summary())
+
+
+@pytest.mark.live
+def test_live_call_emits_no_afc_warning(runner, caplog):
+    import logging
+    import warnings
+
+    with (
+        caplog.at_level(logging.INFO, logger="google_genai.models"),
+        warnings.catch_warnings(record=True) as caught,
+    ):
+        warnings.simplefilter("always")
+        ans = asyncio.run(
+            runner.ask(
+                [
+                    "Is the number 2 even? Answer present=true if yes.",
+                ],
+                schemas.PresenceCheck,
+                seed=7,
+            )
+        )
+    assert isinstance(ans, schemas.PresenceCheck)
+    afc_logs = [
+        r.getMessage()
+        for r in caplog.records
+        if "afc" in r.getMessage().lower() or "automatic function calling" in r.getMessage().lower()
+    ]
+    afc_warns = [
+        str(w.message)
+        for w in caught
+        if "afc" in str(w.message).lower() or "automatic function calling" in str(w.message).lower()
+    ]
+    assert not afc_logs, f"Unexpected AFC log messages: {afc_logs}"
+    assert not afc_warns, f"Unexpected AFC warnings: {afc_warns}"

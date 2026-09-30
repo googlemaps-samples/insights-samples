@@ -31,20 +31,32 @@ from pydantic import BaseModel, ValidationError
 
 from svi_geo import auth, images
 
+
+def _m(suffix: str) -> str:
+    return f"gemini-{suffix}"
+
+
 DEFAULT_MODEL = "gemini-3.5-flash"
 DEFAULT_LOCATION = "global"
 DEFAULT_MAX_CALLS = 500
 DEFAULT_CONCURRENCY = 16
 MAX_IMAGE_SIDE = 1536
-# USD per 1M tokens. ESTIMATES ONLY - check current Vertex AI pricing for your model/region and
-# pass your own `prices=` to CostTracker.
-DEFAULT_PRICES = {"input_per_m": 0.30, "output_per_m": 2.50}
-# Per-model list prices (USD per 1M tokens, <=200k-token prompts). Also ESTIMATES ONLY.
+# USD per 1M tokens, prompts <=200k tokens, global endpoint.
+# Source: https://cloud.google.com/vertex-ai/generative-ai/pricing (fetched 2026-09-30).
+# Check current Vertex AI pricing for your model/region and pass your own `prices=` to CostTracker.
+DEFAULT_PRICES = {"input_per_m": 1.50, "output_per_m": 9.00}
 PRICES_BY_MODEL: dict[str, dict[str, float]] = {
     DEFAULT_MODEL: dict(DEFAULT_PRICES),
+    _m("3.1-pro-preview"): {"input_per_m": 2.00, "output_per_m": 12.00},
+    _m("3.5-flash-lite"): {"input_per_m": 0.30, "output_per_m": 2.50},
+    _m("3-flash-preview"): {"input_per_m": 0.50, "output_per_m": 3.00},
     "gemini-2.5-flash": {"input_per_m": 0.30, "output_per_m": 2.50},
     "gemini-2.5-flash-lite": {"input_per_m": 0.10, "output_per_m": 0.40},
     "gemini-2.5-pro": {"input_per_m": 1.25, "output_per_m": 10.00},
+}
+# Regional (non-global) endpoints carry a 10% premium for Gemini 3.5 Flash on Vertex AI.
+PRICES_NON_GLOBAL_BY_MODEL: dict[str, dict[str, float]] = {
+    DEFAULT_MODEL: {"input_per_m": 1.65, "output_per_m": 9.90},
 }
 MAX_FAILURE_MESSAGES = 5
 
@@ -52,7 +64,7 @@ _URI_RE = re.compile(r"^\s*(gs|https?)://", re.I)
 
 
 class BudgetExceeded(RuntimeError):
-    """The run hit MAX_GEMINI_CALLS; no further requests are sent."""
+    """The run hit MAX_GEMINI_CALLS or max_usd; no further requests are sent."""
 
 
 class AllRequestsFailed(RuntimeError):
@@ -63,8 +75,11 @@ class GeminiFailures(RuntimeError):
     """`GeminiRunner.check()` found more failed requests than the caller tolerates."""
 
 
-def prices_for(model: str) -> dict[str, float]:
-    """Price table for `model`; unknown models fall back to DEFAULT_PRICES with a warning."""
+def prices_for(model: str, location: str = DEFAULT_LOCATION) -> dict[str, float]:
+    """Price table for `model` and `location`; unknown models fall back to DEFAULT_PRICES."""
+    loc = (location or DEFAULT_LOCATION).strip().lower()
+    if loc != "global" and model in PRICES_NON_GLOBAL_BY_MODEL:
+        return dict(PRICES_NON_GLOBAL_BY_MODEL[model])
     if model in PRICES_BY_MODEL:
         return dict(PRICES_BY_MODEL[model])
     warnings.warn(
@@ -190,17 +205,30 @@ class ModelBackend(Protocol):
 class VertexGeminiBackend:
     """google-genai on Vertex AI (async client), user credentials, inline parts only."""
 
-    def __init__(self, client: Any, model: str = DEFAULT_MODEL, temperature: float | None = None):
+    def __init__(
+        self,
+        client: Any,
+        model: str = DEFAULT_MODEL,
+        temperature: float | None = None,
+        location: str | None = None,
+    ):
         """`temperature=None` keeps the model default (Google recommends the default 1.0 for
         Gemini 3.x; low values can cause looping or degraded reasoning)."""
         self.client = client
         self.model = model
         self.temperature = temperature
+        self.location = (
+            location
+            or getattr(getattr(client, "_api_client", None), "location", None)
+            or DEFAULT_LOCATION
+        )
 
-    async def generate(self, parts, schema, code_execution=False, validator=None) -> RawReply:
+    async def generate(
+        self, parts, schema, code_execution=False, validator=None, seed: int | None = None
+    ) -> RawReply:
         from google.genai import types
 
-        cfg, extra = _build_config(schema, code_execution, validator, self.temperature)
+        cfg, extra = _build_config(schema, code_execution, validator, self.temperature, seed=seed)
         if extra is not None:
             parts = parts + [types.Part.from_text(text=extra)]
         resp = await self.client.aio.models.generate_content(
@@ -223,15 +251,23 @@ def _build_config(
     code_execution: bool,
     validator: Callable[[Any], None] | None,
     temperature: float | None = None,
+    seed: int | None = None,
 ) -> tuple[dict[str, Any], str | None]:
     """GenerateContentConfig kwargs and an optional extra prompt (pure, no network).
 
     Without the code tool the schema is enforced by the API (`response_schema`, JSON mode).
     The code tool cannot be combined with `response_schema`, so the schema goes into the
-    prompt and a code-side `validator` is mandatory."""
-    cfg: dict[str, Any] = {}
+    prompt and a code-side `validator` is mandatory. Automatic function calling (AFC) is
+    always disabled because we never pass Python callable tools."""
+    from google.genai import types
+
+    cfg: dict[str, Any] = {
+        "automatic_function_calling": types.AutomaticFunctionCallingConfig(disable=True),
+    }
     if temperature is not None:
         cfg["temperature"] = temperature
+    if seed is not None:
+        cfg["seed"] = int(seed)
     if schema is None:
         return cfg, None
     if not code_execution:
@@ -243,7 +279,6 @@ def _build_config(
             "code_execution with a schema bypasses response_schema; pass a validator that "
             "re-checks the parsed reply in code"
         )
-    from google.genai import types
 
     cfg["tools"] = [types.Tool(code_execution=types.ToolCodeExecution())]
     extra = (
@@ -315,11 +350,16 @@ class GeminiRunner:
         concurrency: int = DEFAULT_CONCURRENCY,
         cost: CostTracker | None = None,
         log=print,
+        max_usd: float | None = None,
     ):
         self.backend = backend
         self.max_calls = max_calls
+        self.max_usd = max_usd
         self.cost = cost or CostTracker(
-            prices=prices_for(getattr(backend, "model", None) or DEFAULT_MODEL)
+            prices=prices_for(
+                getattr(backend, "model", None) or DEFAULT_MODEL,
+                location=getattr(backend, "location", None) or DEFAULT_LOCATION,
+            )
         )
         self._sem = asyncio.Semaphore(concurrency)
         self._reserved = 0
@@ -331,21 +371,41 @@ class GeminiRunner:
     def calls_remaining(self) -> int | None:
         return None if self.max_calls is None else max(0, self.max_calls - self._reserved)
 
+    @property
+    def usd_remaining(self) -> float | None:
+        return None if self.max_usd is None else max(0.0, self.max_usd - self.cost.usd)
+
+    def _check_usd_budget(self) -> None:
+        if self.max_usd is not None and self.cost.usd >= self.max_usd:
+            raise BudgetExceeded(
+                f"max_usd=${self.max_usd:.4f} reached (spent ${self.cost.usd:.4f})"
+            )
+
     def _reserve(self) -> None:
         if self.max_calls is not None and self._reserved >= self.max_calls:
             raise BudgetExceeded(f"MAX_GEMINI_CALLS={self.max_calls} reached")
+        self._check_usd_budget()
         self._reserved += 1
 
-    async def _call(self, parts, schema, code_execution, validator=None) -> RawReply:
+    async def _call(
+        self, parts, schema, code_execution, validator=None, seed: int | None = None
+    ) -> RawReply:
         self._reserve()
         async with self._sem:
+            try:
+                self._check_usd_budget()
+            except BudgetExceeded:
+                self._reserved -= 1
+                raise
             self.in_flight += 1
             self.max_in_flight = max(self.max_in_flight, self.in_flight)
             try:
+                kw: dict[str, Any] = {}
                 if code_execution:
-                    reply = await self.backend.generate(parts, schema, True, validator=validator)
-                else:
-                    reply = await self.backend.generate(parts, schema, False)
+                    kw["validator"] = validator
+                if seed is not None:
+                    kw["seed"] = seed
+                reply = await self.backend.generate(parts, schema, bool(code_execution), **kw)
             finally:
                 self.in_flight -= 1
         self.cost.add(reply.usage)
@@ -358,12 +418,15 @@ class GeminiRunner:
         code_execution: bool = False,
         reask: bool = True,
         validator: Callable[[Any], None] | None = None,
+        seed: int | None = None,
     ) -> BaseModel | None:
         """One request (+ at most one re-ask if the reply fails schema or `validator` checks).
 
         `validator(parsed)` raises ValueError to reject a reply (e.g. degenerate geometry).
         A reply that still fails is counted as a failure and returns None."""
-        _build_config(schema, code_execution, validator)  # refuse unvalidated code-tool use
+        _build_config(
+            schema, code_execution, validator, seed=seed
+        )  # refuse unvalidated code-tool use
         self.cost.requests += 1
         parts = build_parts(items)
 
@@ -373,7 +436,7 @@ class GeminiRunner:
                 validator(parsed)
             return parsed
 
-        reply = await self._call(parts, schema, code_execution, validator)
+        reply = await self._call(parts, schema, code_execution, validator, seed=seed)
         try:
             return accept(reply)
         except (ValidationError, ValueError) as err:
@@ -387,7 +450,7 @@ class GeminiRunner:
                     f"{json.dumps(schema.model_json_schema())[:4000]}"
                 ]
             )
-            reply2 = await self._call(parts + fix, schema, code_execution, validator)
+            reply2 = await self._call(parts + fix, schema, code_execution, validator, seed=seed)
             try:
                 return accept(reply2)
             except (ValidationError, ValueError) as err2:
