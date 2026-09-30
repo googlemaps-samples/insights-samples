@@ -260,3 +260,88 @@ def render_road_view(
         img = image[rv.choice.cam_k] if isinstance(image, Mapping) else image
         out = rosette.render_perspective(img, intr, _pose(rv.choice.row), rv.view, rv.choice.cam_k)
     return out[: rv.keep_rows]
+
+
+def repeat_pairs(
+    seqs: pd.DataFrame,
+    max_sep_m: float = 15.0,
+    min_overlap_m: float = 80.0,
+    min_matched_panos: int = 3,
+) -> list[dict[str, Any]]:
+    """Find pairs of sequences captured on different UTC calendar days whose paths overlap.
+
+    Two sequences (sid_a, sid_b) captured on distinct UTC calendar days (`capture_time.dt.date`)
+    form a repeat pair when:
+      1. At least `min_matched_panos` panos of sequence A lie within `max_sep_m` of a pano in
+         sequence B, and
+      2. The path length along sequence A covered by those matched panos is `>= min_overlap_m`.
+    """
+    if seqs.empty:
+        return []
+    df = seqs.drop_duplicates("pano_id").copy()
+    df["capture_time"] = pd.to_datetime(df["capture_time"], utc=True)
+    df["_date"] = df["capture_time"].dt.date
+    lat0, lng0 = float(df["lat"].mean()), float(df["lng"].mean())
+    e, n, _ = geo.lla_to_enu(df["lat"].to_numpy(), df["lng"].to_numpy(), 0.0, lat0, lng0, 0.0)
+    df["_e"], df["_n"] = e, n
+    df = df.sort_values(["seq_id", "seq_idx"]).reset_index(drop=True)
+
+    groups = {sid: g.reset_index(drop=True) for sid, g in df.groupby("seq_id", sort=True)}
+    sids = sorted(groups.keys())
+    pairs: list[dict[str, Any]] = []
+    for i, sid_a in enumerate(sids):
+        ga = groups[sid_a]
+        dates_a = set(ga["_date"])
+        xy_a = np.column_stack([ga["_e"].to_numpy(), ga["_n"].to_numpy()])
+        if len(xy_a) < min_matched_panos:
+            continue
+        for sid_b in sids[i + 1 :]:
+            gb = groups[sid_b]
+            dates_b = set(gb["_date"])
+            if dates_a & dates_b:
+                continue
+            xy_b = np.column_stack([gb["_e"].to_numpy(), gb["_n"].to_numpy()])
+            if len(xy_b) < min_matched_panos:
+                continue
+            diff = xy_a[:, None, :] - xy_b[None, :, :]
+            dists = np.hypot(diff[:, :, 0], diff[:, :, 1])
+            min_d = dists.min(axis=1)
+            nearest_b = dists.argmin(axis=1)
+            matched_idx = np.flatnonzero(min_d <= max_sep_m)
+            if matched_idx.size < min_matched_panos:
+                continue
+            lo_idx, hi_idx = int(matched_idx[0]), int(matched_idx[-1])
+            seg = xy_a[lo_idx : hi_idx + 1]
+            overlap_m = float(np.sum(np.hypot(np.diff(seg[:, 0]), np.diff(seg[:, 1]))))
+            if overlap_m < min_overlap_m:
+                continue
+            pairs.append(
+                {
+                    "seq_a": str(sid_a),
+                    "seq_b": str(sid_b),
+                    "date_a": str(min(dates_a)),
+                    "date_b": str(min(dates_b)),
+                    "overlap_m": overlap_m,
+                    "median_sep_m": float(np.median(min_d[matched_idx])),
+                    "pano_pairs": [
+                        (
+                            str(ga.loc[int(k), "pano_id"]),
+                            str(gb.loc[int(nearest_b[k]), "pano_id"]),
+                        )
+                        for k in matched_idx
+                    ],
+                }
+            )
+    return pairs
+
+
+def blocks(seqs: pd.DataFrame, block_size: int = 5) -> dict[str, str]:
+    """Assign each `pano_id` in `seqs` to a deterministic spatial block of `block_size` consecutive panos."""
+    if block_size <= 0:
+        raise ValueError("block_size must be >= 1")
+    df = seqs.drop_duplicates("pano_id").sort_values(["seq_id", "seq_idx"]).reset_index(drop=True)
+    out: dict[str, str] = {}
+    for sid, g in df.groupby("seq_id", sort=True):
+        for pos, pid in enumerate(g["pano_id"].tolist()):
+            out[str(pid)] = f"{sid}:b{pos // block_size:03d}"
+    return out

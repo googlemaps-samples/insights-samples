@@ -22,8 +22,12 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from scipy import stats as sp_stats
 from sklearn.metrics import cohen_kappa_score
+
+from svi_geo import geo, sequence
+from svi_geo import triangulate as tri
 
 TEACHER_DISCLOSURE = (
     "agreement with Gemini 3.1 Pro Preview (same model family as student Gemini 3.5 Flash; "
@@ -596,3 +600,145 @@ def render_summary(results: Mapping[str, Any]) -> str:
             f"{val_str} | {doc['measures']} | {doc['does_not_measure']} |"
         )
     return "\n".join(lines) + "\n"
+
+
+def _extract_ray(item: Any) -> tri.Ray:
+    """Extract a `tri.Ray` from either a `tri.Ray` or an `ent.Observation`-like object."""
+    return item.ray if hasattr(item, "ray") else item
+
+
+def heldout_reprojection(
+    by_obj: Mapping[str, Sequence[Any]],
+    tol_deg: float = 2.0,
+    test_bias_deg: float = 0.0,
+    bias_fraction: float = 0.0,
+    max_range_m: float = 60.0,
+    max_rms_m: float = 6.0,
+) -> dict[str, Any]:
+    """Leave-one-out bearing reprojection across multi-view object observations.
+
+    For each object with `>= 3` observations, holds out the `k`-th ray, triangulates the
+    3D/2D position from the remaining `m - 1` rays via `tri.intersect_rays`, and measures
+    the angular residual (degrees) between the reprojected azimuth from the held-out camera
+    origin to the triangulated point and the held-out ray's observed azimuth.
+
+    If `test_bias_deg != 0.0` and `bias_fraction > 0.0`, deterministic synthetic bias is
+    injected into a fraction `bias_fraction` of held-out evaluations (for unit testing
+    sensitivity).
+    """
+    errors: list[float] = []
+    hits: list[int] = []
+    eval_idx = 0
+    for obj_id in sorted(by_obj.keys()):
+        obs_list = list(by_obj[obj_id])
+        if len(obs_list) < 3:
+            continue
+        rays = [_extract_ray(o) for o in obs_list]
+        for k in range(len(rays)):
+            train_rays = rays[:k] + rays[k + 1 :]
+            res = tri.intersect_rays(train_rays, max_range_m=max_range_m, max_rms_m=max_rms_m)
+            if not res.ok or res.point is None:
+                continue
+            target_ray = rays[k]
+            vec = res.point[:2] - target_ray.origin[:2]
+            if float(np.linalg.norm(vec)) < 1e-3:
+                continue
+            pred_az = float(geo.enu_bearing_deg(float(vec[0]), float(vec[1])))
+            obs_az = float(target_ray.az_deg)
+            if test_bias_deg != 0.0 and bias_fraction > 0.0:
+                # Deterministic staggered selection achieving exact fraction on even counts
+                stride = max(1, round(1.0 / bias_fraction))
+                if (eval_idx % stride) == 0:
+                    obs_az = (obs_az + test_bias_deg) % 360.0
+            eval_idx += 1
+            err = abs(float(geo.angdiff(pred_az, obs_az)))
+            errors.append(err)
+            hits.append(1 if err <= tol_deg else 0)
+    if not errors:
+        return {
+            "n_evals": 0,
+            "hit_rate": float("nan"),
+            "median_error_deg": float("nan"),
+            "p90_error_deg": float("nan"),
+            "errors_deg": [],
+        }
+    arr = np.asarray(errors, dtype=float)
+    return {
+        "n_evals": len(errors),
+        "hit_rate": float(np.mean(hits)),
+        "median_error_deg": float(np.median(arr)),
+        "p90_error_deg": float(np.percentile(arr, 90)),
+        "errors_deg": errors,
+    }
+
+
+def split_half_location(
+    objects_rays: Sequence[Sequence[Any]],
+    max_range_m: float = 60.0,
+    max_rms_m: float = 8.0,
+) -> dict[str, Any]:
+    """Split each object's `>= 4` rays into even (`0::2`) and odd (`1::2`) subsets, triangulate
+    both independently, and compute the horizontal distance (metres) between the two estimates."""
+    dists: list[float] = []
+    for item_seq in objects_rays:
+        rays = [_extract_ray(r) for r in item_seq]
+        if len(rays) < 4:
+            continue
+        even = rays[0::2]
+        odd = rays[1::2]
+        res_e = tri.intersect_rays(even, max_range_m=max_range_m, max_rms_m=max_rms_m)
+        res_o = tri.intersect_rays(odd, max_range_m=max_range_m, max_rms_m=max_rms_m)
+        if not (res_e.ok and res_o.ok and res_e.point is not None and res_o.point is not None):
+            continue
+        d = float(np.linalg.norm(res_e.point[:2] - res_o.point[:2]))
+        dists.append(d)
+    if not dists:
+        return {
+            "n_valid": 0,
+            "p50_m": float("nan"),
+            "p90_m": float("nan"),
+            "distances_m": [],
+        }
+    arr = np.asarray(dists, dtype=float)
+    return {
+        "n_valid": len(dists),
+        "p50_m": float(np.median(arr)),
+        "p90_m": float(np.percentile(arr, 90)),
+        "distances_m": dists,
+    }
+
+
+def repeat_pairs(
+    seqs: pd.DataFrame,
+    max_sep_m: float = 15.0,
+    min_overlap_m: float = 80.0,
+    min_matched_panos: int = 3,
+) -> list[dict[str, Any]]:
+    """Delegate to `sequence.repeat_pairs` for cross-day overlapping drive sequences."""
+    return sequence.repeat_pairs(
+        seqs,
+        max_sep_m=max_sep_m,
+        min_overlap_m=min_overlap_m,
+        min_matched_panos=min_matched_panos,
+    )
+
+
+def blocks(seqs: pd.DataFrame, block_size: int = 5) -> dict[str, str]:
+    """Delegate to `sequence.blocks` for spatial block assignment."""
+    return sequence.blocks(seqs, block_size=block_size)
+
+
+def perturbations(seed: int = 0, n: int = 3) -> list[dict[str, Any]]:
+    """Deterministic view/prompt perturbation specs for test-retest repeatability (signal e)."""
+    rng = np.random.default_rng(seed)
+    out: list[dict[str, Any]] = []
+    for i in range(n):
+        out.append(
+            {
+                "idx": i,
+                "yaw_delta_deg": float(rng.uniform(-3.0, 3.0)),
+                "hfov_scale": float(rng.uniform(0.90, 1.10)),
+                "gemini_seed": int(rng.integers(1, 2**31 - 1)),
+            }
+        )
+    return out
