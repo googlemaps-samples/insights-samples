@@ -321,3 +321,17 @@ def test_notebooks_print_the_lines_the_live_checker_reads(path):
 def test_notebooks_measure_dark_pixels_of_sent_views_besides_sensor_coverage(path):
     code = _code(nbformat.read(path, as_version=4))
     assert "images.dark_pixel_fraction(" in code and "dark_pixel_max=" in code
+
+
+def _division_of_labour(nb) -> str:
+    return next(c.source for c in nb.cells
+                if c.cell_type == "markdown" and "Division of labour" in c.source).lower()  # fmt: skip
+
+
+def test_division_of_labour_lists_only_steps_the_notebook_runs():
+    uc2, uc3 = _division_of_labour(_uc2()), _division_of_labour(_uc3())
+    assert "smoothing" not in uc2  # UC2 has no smoothing step
+    assert "triangulation" in uc2 and "deduplication" in uc2
+    for step in ("triangulation", "deduplication", "box -> bearing"):
+        assert step not in uc3, step  # UC3 labels surfaces; it locates no objects
+    assert "smoothing" in uc3 and "segments" in uc3
