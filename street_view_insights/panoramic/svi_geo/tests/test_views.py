@@ -362,3 +362,18 @@ def test_wall_box_spans_eave_to_wall_base_under_the_roof_box():
     x0, y0, x1, y1 = views.wall_box(row, view)
     assert (x0, x1, y0) == pytest.approx((rx0, rx1, y_eave))
     assert y1 == pytest.approx(views.roof_decoys(row, view)["wall_base"][0][0][1])
+
+
+def test_occlusion_screen_rejects_low_sky_contact_when_min_sky_contact_set():
+    img, box = _roof_scene(0.0)
+    # Clear sky above box -> sky_contact >= 0.30 -> not rejected
+    s_clear = views.occlusion_screen(img, box, min_sky_contact=0.25)
+    assert s_clear["sky_contact"] >= 0.30 and not s_clear["rejected"]
+
+    # Overhanging palm/wall blocking sky above box (rows 0..150 inside x0..x1)
+    img_blocked = img.copy()
+    x0, y0, x1, _ = box
+    leaves = np.array((55, 80, 60), np.float32) * _texture(img.shape[:2], 99, 0.45, 2)[..., None]
+    img_blocked[:y0, x0:x1] = np.clip(leaves[:y0, x0:x1], 0, 255).astype(np.uint8)
+    s_blocked = views.occlusion_screen(img_blocked, box, min_sky_contact=0.25)
+    assert s_blocked["sky_contact"] < 0.25 and s_blocked["rejected"]

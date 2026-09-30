@@ -368,20 +368,37 @@ def vegetation_mask(img: np.ndarray) -> np.ndarray:
 
 
 def occlusion_screen(
-    img: np.ndarray, centre_box: Sequence[float], max_foliage: float = FOLIAGE_REJECT
+    img: np.ndarray,
+    centre_box: Sequence[float],
+    max_foliage: float = FOLIAGE_REJECT,
+    min_sky_contact: float = 0.0,
 ) -> dict[str, Any]:
     """Vegetation and texture shares inside `centre_box` (x0, y0, x1, y1 pixels); `rejected`
-    when vegetation (`vegetation_mask`) covers at least `max_foliage` of it."""
+    when vegetation (`vegetation_mask`) covers at least `max_foliage` of it, or when
+    `min_sky_contact > 0` and `cvchecks.sky_contact(img, centre_box)` is below `min_sky_contact`."""
+    from svi_geo import cvchecks as cvc
+
     h, w = img.shape[:2]
     x0, y0, x1, y1 = (int(round(v)) for v in centre_box)
     x0, x1 = max(0, x0), min(w, x1)
     y0, y1 = max(0, y0), min(h, y1)
     crop = img[y0:y1, x0:x1]
     if crop.size == 0:
-        return {"foliage_frac": math.nan, "texture_frac": math.nan, "rejected": True}
+        return {
+            "foliage_frac": math.nan,
+            "texture_frac": math.nan,
+            "sky_contact": math.nan,
+            "rejected": True,
+        }
     fol = float(np.mean(vegetation_mask(crop)))
-    return {"foliage_frac": fol, "texture_frac": float(np.mean(rosette.textured_mask(crop))),
-            "rejected": fol >= max_foliage}  # fmt: skip
+    sc = float(cvc.sky_contact(img, centre_box))
+    sky_fail = bool(min_sky_contact > 0.0 and (not math.isfinite(sc) or sc < min_sky_contact))
+    return {
+        "foliage_frac": fol,
+        "texture_frac": float(np.mean(rosette.textured_mask(crop))),
+        "sky_contact": sc,
+        "rejected": bool(fol >= max_foliage or sky_fail),
+    }
 
 
 def roof_box(row: Mapping[str, Any], view: rosette.PerspectiveView) -> tuple[float, ...]:
