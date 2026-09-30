@@ -224,18 +224,40 @@ class VertexGeminiBackend:
         )
 
     async def generate(
-        self, parts, schema, code_execution=False, validator=None, seed: int | None = None
+        self,
+        parts,
+        schema,
+        code_execution=False,
+        validator=None,
+        seed: int | None = None,
+        timeout_s: float = 45.0,
     ) -> RawReply:
         from google.genai import types
 
         cfg, extra = _build_config(schema, code_execution, validator, self.temperature, seed=seed)
         if extra is not None:
             parts = parts + [types.Part.from_text(text=extra)]
-        resp = await self.client.aio.models.generate_content(
-            model=self.model,
-            contents=[types.Content(role="user", parts=parts)],
-            config=types.GenerateContentConfig(**cfg),
-        )
+        contents = [types.Content(role="user", parts=parts)]
+        gen_cfg = types.GenerateContentConfig(**cfg)
+        last_err: Exception | None = None
+        for attempt in range(2):
+            try:
+                resp = await asyncio.wait_for(
+                    self.client.aio.models.generate_content(
+                        model=self.model,
+                        contents=contents,
+                        config=gen_cfg,
+                    ),
+                    timeout=timeout_s,
+                )
+                break
+            except TimeoutError as err:
+                last_err = err
+                if attempt == 0:
+                    await asyncio.sleep(1.0)
+        else:
+            assert last_err is not None
+            raise last_err
         texts, code_out = [], []
         for cand in resp.candidates or []:
             for p in (cand.content.parts if cand.content else None) or []:

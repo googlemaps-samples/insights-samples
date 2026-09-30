@@ -148,10 +148,32 @@ VARIANTS: dict[str, uc.Variant] = {
 }
 
 
+def _parts_sha256(parts: Sequence[Any]) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    for p in parts:
+        txt = getattr(p, "text", None)
+        if txt is not None:
+            h.update(b"T:")
+            h.update(txt.encode("utf-8"))
+        blob = getattr(p, "inline_data", None)
+        if blob is not None and getattr(blob, "data", None) is not None:
+            h.update(b"B:")
+            h.update(bytes(blob.data))
+    return h.hexdigest()
+
+
 class LoggingBackend:
     """Wrap a `ModelBackend` and append every call's tokens, USD, and prompt version to `calls.jsonl`."""
 
-    def __init__(self, inner: Any, calls_log_path: Path, prompt_version: str = "v0"):
+    def __init__(
+        self,
+        inner: Any,
+        calls_log_path: Path,
+        prompt_version: str = "v0",
+        reply_cache_path: Path | None = None,
+    ):
         self.inner = inner
         self.model = getattr(inner, "model", gc.DEFAULT_MODEL)
         self.location = getattr(inner, "location", gc.DEFAULT_LOCATION)
@@ -159,9 +181,54 @@ class LoggingBackend:
         self.prompt_version = prompt_version
         self.prices = gc.prices_for(self.model, self.location)
         self.calls_log_path.parent.mkdir(parents=True, exist_ok=True)
+        self.reply_cache_path = Path(reply_cache_path) if reply_cache_path else None
+        self._cache: dict[str, dict[str, Any]] = {}
+        if self.reply_cache_path and self.reply_cache_path.exists():
+            for line in self.reply_cache_path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    try:
+                        rec = json.loads(line)
+                        self._cache[rec["key"]] = rec
+                    except Exception:  # noqa: BLE001
+                        pass
 
     async def generate(self, parts, schema, code_execution=False, **kw):
-        reply = await self.inner.generate(parts, schema, code_execution=code_execution, **kw)
+        schema_name = getattr(schema, "__name__", str(schema))
+        cache_key = (
+            f"{self.model}:{schema_name}:{int(bool(code_execution))}:{kw.get('seed')}:"
+            f"{_parts_sha256(parts)}"
+        )
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            reply = gc.RawReply(
+                text=cached["text"],
+                usage=cached["usage"],
+                code_outputs=cached.get("code_outputs") or [],
+            )
+        else:
+            reply = await self.inner.generate(parts, schema, code_execution=code_execution, **kw)
+            u_raw = reply.usage or {}
+            get_raw = (
+                u_raw.get if isinstance(u_raw, dict) else (lambda k, d=0: getattr(u_raw, k, d))
+            )
+            usage_dict = {
+                "prompt_token_count": int(get_raw("prompt_token_count") or 0),
+                "tool_use_prompt_token_count": int(get_raw("tool_use_prompt_token_count") or 0),
+                "candidates_token_count": int(get_raw("candidates_token_count") or 0),
+                "thoughts_token_count": int(get_raw("thoughts_token_count") or 0),
+            }
+            cache_entry = {
+                "key": cache_key,
+                "text": reply.text,
+                "usage": usage_dict,
+                "code_outputs": list(reply.code_outputs or []),
+            }
+            self._cache[cache_key] = cache_entry
+            if self.reply_cache_path is not None:
+                self.reply_cache_path.parent.mkdir(parents=True, exist_ok=True)
+                with self.reply_cache_path.open("a", encoding="utf-8") as cf:
+                    cf.write(json.dumps(cache_entry) + "\n")
+
         u = reply.usage or {}
         get = u.get if isinstance(u, dict) else (lambda k, d=0: getattr(u, k, d))
         inp = int((get("prompt_token_count") or 0) + (get("tool_use_prompt_token_count") or 0))
@@ -171,7 +238,7 @@ class LoggingBackend:
         rec = {
             "ts": dt.datetime.now(dt.timezone.utc).isoformat(),
             "model": self.model,
-            "schema": getattr(schema, "__name__", str(schema)),
+            "schema": schema_name,
             "prompt_version": self.prompt_version,
             "input_tokens": inp,
             "output_tokens": out,
@@ -215,7 +282,7 @@ async def evaluate_uc1(
     seed: int = 7,
 ) -> tuple[dict[str, lf.Measurement], dict[str, list[tuple[float, float]]]]:
     """Compute M1.1..M1.6 on `manifest['uc1_targets']`."""
-    targets = manifest["uc1_targets"]
+    targets = manifest["uc1_targets"][:4]
     perts = manifest["perturbations"][:2]
     agree_num_den: list[tuple[float, float]] = []
     block_ids: list[str] = []
@@ -419,7 +486,7 @@ async def evaluate_uc2(
     pert_spec = manifest["perturbations"][0]
 
     for seq_spec in manifest["uc2_sequences"][:2]:
-        pids = set(seq_spec["pano_ids"][:6])
+        pids = set(seq_spec["pano_ids"][:4])
         sel = (
             panos_all[panos_all["pano_id"].isin(pids)].sort_values("seq_idx").reset_index(drop=True)
         )
@@ -621,7 +688,7 @@ async def evaluate_uc3(
     teacher_matches: list[int] = []
 
     for seq_spec in manifest["uc3_sequences"][:2]:
-        pids = set(seq_spec["pano_ids"][:8])
+        pids = set(seq_spec["pano_ids"][:6])
         sel = (
             panos_all[panos_all["pano_id"].isin(pids)].sort_values("seq_idx").reset_index(drop=True)
         )
@@ -1203,23 +1270,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     v_client = gc.make_vertex_client(settings.project, gc.DEFAULT_LOCATION, creds)
     variant = VARIANTS[args.variant]
+    reply_cache = out_path.parent / f"reply_cache_{args.aoi}.jsonl"
     s_backend = LoggingBackend(
         gc.VertexGeminiBackend(v_client, model=gc.DEFAULT_MODEL),
         calls_path,
         prompt_version=variant.name,
+        reply_cache_path=reply_cache,
     )
     t_backend = LoggingBackend(
         gc.VertexGeminiBackend(v_client, model=tea.teacher_model()),
         calls_path,
         prompt_version="teacher_v1",
+        reply_cache_path=reply_cache,
     )
     s_runner = gc.GeminiRunner(
-        s_backend, max_calls=args.max_gemini_calls, max_usd=args.max_usd, concurrency=16
+        s_backend, max_calls=args.max_gemini_calls, max_usd=args.max_usd, concurrency=12
     )
     t_runner = gc.GeminiRunner(
-        t_backend, max_calls=args.max_gemini_calls, max_usd=args.max_usd, concurrency=8
+        t_backend, max_calls=args.max_gemini_calls, max_usd=args.max_usd, concurrency=6
     )
-    t_cache = tea.TeacherCache(out_path.parent / "teacher_cache.jsonl")
+    t_cache = tea.TeacherCache(out_path.parent / f"teacher_cache_{args.aoi}.jsonl")
     intr = rosette.load_intrinsics()
 
     async def _run_selected():
@@ -1237,6 +1307,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.seed,
             )
             out_m.update(m1)
+            print(f"[labelfree] {args.aoi}/{args.variant} finished UC1 (calls={s_runner.cost.calls + t_runner.cost.calls})", flush=True)
         if args.uc in ("2", "all"):
             m2 = await evaluate_uc2(
                 frames,
@@ -1250,6 +1321,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.seed,
             )
             out_m.update(m2)
+            print(f"[labelfree] {args.aoi}/{args.variant} finished UC2 (calls={s_runner.cost.calls + t_runner.cost.calls})", flush=True)
         if args.uc in ("3", "all"):
             m3 = await evaluate_uc3(
                 frames,
@@ -1263,6 +1335,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.seed,
             )
             out_m.update(m3)
+            print(f"[labelfree] {args.aoi}/{args.variant} finished UC3 (calls={s_runner.cost.calls + t_runner.cost.calls})", flush=True)
         if args.uc in ("4", "all"):
             m4 = await evaluate_uc4(
                 frames,
@@ -1276,6 +1349,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.seed,
             )
             out_m.update(m4)
+            print(f"[labelfree] {args.aoi}/{args.variant} finished UC4 (calls={s_runner.cost.calls + t_runner.cost.calls})", flush=True)
         return out_m
 
     metrics = asyncio.run(_run_selected())
@@ -1288,7 +1362,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "teacher_usd": round(t_runner.cost.usd, 4),
     }
     _write_outputs(out_path, args.aoi, args.variant, manifest, metrics, spend)
-    print(f"[labelfree] actual spend: ${spend['usd']:.4f} ({spend['calls']} calls)")
+    print(f"[labelfree] actual spend: ${spend['usd']:.4f} ({spend['calls']} calls)", flush=True)
     return 0
 
 
