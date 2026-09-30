@@ -137,7 +137,9 @@ def test_every_gemini_cell_checks_failures_and_asserts_results(nb):
     assert cells, "expected at least one Gemini cell"
     for src in cells:
         assert "runner.check(" in src, f"Gemini cell without runner.check():\n{src[:200]}"
-        assert re.search(r"\bassert (len|any)\(", src), f"Gemini cell without assert:\n{src[:200]}"
+        assert re.search(r"\bassert (len|any)\(|\bassert \w+\[[^\]]+\] > 0", src), (
+            f"Gemini cell without assert:\n{src[:200]}"
+        )
 
 
 @pytest.mark.parametrize("schema", ["schemas.HouseView", "schemas.RoofEdges"])
@@ -228,6 +230,14 @@ def test_uc2_counts_unlocated_detections_separately_from_entities():
     assert "{len(entities)} entities" not in code  # unlocated are not entities on the map
     assert 'print(f"located_entities={len(located)} unlocated_detections={len(unlocated)}' in code
     assert "houses_located=" in code and "houses_unlocated=" in code
+
+
+def test_uc2_does_not_claim_a_residential_street_and_fails_when_no_check_ran():
+    nb = _uc2()
+    assert "residential" not in _all(nb).lower()
+    code = _code(nb)
+    assert "len(tasks_df) == 0 or" not in code  # passed silently with zero checks
+    assert 'assert cv["n_asked"] > 0' in code
 
 
 def test_uc2_self_check_is_labelled_consistency_with_bound_and_black_fraction():
