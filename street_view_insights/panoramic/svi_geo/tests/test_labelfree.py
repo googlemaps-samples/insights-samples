@@ -215,3 +215,123 @@ def test_metric_docs_cover_every_metric_and_render_summary():
     assert "$1.23" in summary
     assert "missing: no repeat pass in AOI" in summary
     assert lf.METRIC_DOCS["M1.1"]["does_not_measure"] in summary
+
+
+def test_run_labelfree_eval_repeat_pairs_constant_kappa_and_teacher_tiles(tmp_path, monkeypatch):
+    """Regression test for F1, F2, F3:
+    - M2.3 and M3.3 are computed from cross-day repeat_pairs (no 0.75/0.8 fallback or M2.2/M3.2 copy).
+    - Constant-label M3.1 and M3.5 preserve status='missing' (never overwritten with 1.0 or 0.0).
+    - ask_teacher receives 4 zoom tiles via extra_images from tea.tiles().
+    """
+    import asyncio
+    import datetime as dt
+    import sys
+    from pathlib import Path
+
+    import pandas as pd
+
+    from svi_geo import data, rosette
+    from svi_geo import gemini_client as gc
+    from svi_geo import manifest as mf
+    from svi_geo import simulate as sim
+    from svi_geo import teacher as tea
+    from svi_geo import usecases as uc
+
+    scripts_dir = Path(__file__).resolve().parents[1] / "scripts"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    import run_labelfree_eval as rle
+
+    t1 = dt.datetime(2024, 5, 1, 12, 0, tzinfo=dt.timezone.utc)
+    t2 = dt.datetime(2024, 6, 15, 14, 0, tzinfo=dt.timezone.utc)
+    fr1 = sim.synthetic_frames(12, 10.0, 28.0500, -81.9600, travel_deg=0.0, seq_id="S1", t0=t1)
+    fr2 = sim.synthetic_frames(12, 10.0, 28.0500, -81.95998, travel_deg=0.0, seq_id="S2", t0=t2)
+    fr = pd.concat([fr1, fr2], ignore_index=True)
+    fr["gcs_uri"] = [
+        data.gcs_uri_for("test-bucket", s, o)
+        for s, o in zip(fr["snapshot_id"], fr["observation_id"], strict=True)
+    ]
+    manifest = mf.build_manifest(fr, aoi="tune", seed=7)
+    assert len(manifest["repeat_pairs"]) >= 1
+
+    # Spy on tea.ask_teacher to verify extra_images contains 4 zoom tiles from tea.tiles()
+    seen_extra_counts: list[int] = []
+    orig_ask_teacher = tea.ask_teacher
+
+    async def _spy_ask_teacher(*args, **kwargs):
+        extra = kwargs.get("extra_images")
+        seen_extra_counts.append(len(extra) if extra is not None else 0)
+        return await orig_ask_teacher(*args, **kwargs)
+
+    monkeypatch.setattr(tea, "ask_teacher", _spy_ask_teacher)
+
+    class _ConstantSurfaceBackend(rle._OfflineSmokeBackend):
+        async def generate(self, parts, schema, code_execution=False, **kw):
+            if getattr(schema, "__name__", "") == "WindowLabel":
+                txt = (
+                    '{"observations": ['
+                    '{"asset": "ROAD", "side": "CENTER", "present": false, "material": null, "condition": null, "confidence": 0.95},'
+                    '{"asset": "SIDEWALK", "side": "LEFT", "present": false, "material": null, "condition": null, "confidence": 0.9},'
+                    '{"asset": "SIDEWALK", "side": "RIGHT", "present": false, "material": null, "condition": null, "confidence": 0.9}'
+                    "]}"
+                )
+                return gc.RawReply(
+                    text=txt,
+                    usage={"prompt_token_count": 50, "candidates_token_count": 20},
+                )
+            return await super().generate(parts, schema, code_execution=code_execution, **kw)
+
+    s_runner = gc.GeminiRunner(_ConstantSurfaceBackend(gc.DEFAULT_MODEL))
+    t_runner = gc.GeminiRunner(rle._OfflineSmokeBackend(tea.teacher_model()))
+    t_cache = tea.TeacherCache(tmp_path / "teacher_cache.jsonl")
+    intr = rosette.DEFAULT_INTRINSICS
+
+    # 1. With constant ABSENT labels on both sides, Cohen's kappa is undefined and MUST remain 'missing'.
+    m3 = asyncio.run(
+        rle.evaluate_uc3(
+            fr,
+            manifest,
+            rle._synthetic_frame_bytes,
+            s_runner,
+            t_runner,
+            t_cache,
+            intr,
+            uc.Variant(name="baseline"),
+            seed=7,
+        )
+    )
+    assert m3["M3.1"].status == "missing"
+    assert m3["M3.1"].value is None
+    assert m3["M3.5"].status == "missing"
+    assert m3["M3.5"].value is None
+    assert m3["M3.3"].status == "ok"
+    assert seen_extra_counts and all(c == 4 for c in seen_extra_counts)
+
+    # 2. When uc2_sequences is empty (so retest_recalls is empty) and repeat_pairs has panos with
+    # no detections, M2.3 MUST be 'missing' (never fallback literal 0.75).
+    class _EmptyDetBackend(rle._OfflineSmokeBackend):
+        async def generate(self, parts, schema, code_execution=False, **kw):
+            if getattr(schema, "__name__", "") == "FrameDetections":
+                return gc.RawReply(
+                    text='{"detections": []}',
+                    usage={"prompt_token_count": 10, "candidates_token_count": 5},
+                )
+            return await super().generate(parts, schema, code_execution=code_execution, **kw)
+
+    empty_runner = gc.GeminiRunner(_EmptyDetBackend(gc.DEFAULT_MODEL))
+    m2_empty = asyncio.run(
+        rle.evaluate_uc2(
+            fr,
+            manifest,
+            rle._synthetic_frame_bytes,
+            empty_runner,
+            t_runner,
+            t_cache,
+            intr,
+            uc.Variant(name="baseline"),
+            seed=7,
+        )
+    )
+    assert m2_empty["M2.2"].status == "missing"
+    assert m2_empty["M2.3"].status == "missing"
+    assert m2_empty["M2.3"].value is None

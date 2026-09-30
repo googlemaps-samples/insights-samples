@@ -270,6 +270,46 @@ def _polyline_min_dist(pts_a: Sequence[Sequence[float]], pts_b: Sequence[Sequenc
     return float(0.5 * (dists.min(axis=1).mean() + dists.min(axis=0).mean()))
 
 
+def _add_cluster(
+    clusters: dict[str, tuple[float, float]], key: str, num: float, den: float = 1.0
+) -> None:
+    prev_num, prev_den = clusters.get(key, (0.0, 0.0))
+    clusters[key] = (prev_num + float(num), prev_den + float(den))
+
+
+def _ratio_measurement(
+    per_cluster: Mapping[str, tuple[float, float]],
+    *,
+    seed: int = 7,
+    placebo: float | None = None,
+    disclosure: str = "",
+    missing_reason: str = "no observations",
+) -> lf.Measurement:
+    """Compute block-bootstrap CI via `lf.block_ratio_ci` when >= 5 clusters exist,
+    or exact ratio `Measurement.ok` when 1..4 clusters exist, or `Measurement.missing` when empty."""
+    valid = {k: (float(v[0]), float(v[1])) for k, v in per_cluster.items() if float(v[1]) > 0}
+    if not valid:
+        return lf.Measurement.missing(missing_reason, disclosure=disclosure)
+    if len(valid) >= 5:
+        return lf.block_ratio_ci(
+            valid,
+            seed=seed,
+            min_clusters=5,
+            placebo=placebo,
+            disclosure=disclosure,
+        )
+    tot_num = sum(v[0] for v in valid.values())
+    tot_den = sum(v[1] for v in valid.values())
+    if tot_den <= 0:
+        return lf.Measurement.missing(missing_reason, disclosure=disclosure)
+    return lf.Measurement.ok(
+        float(tot_num / tot_den),
+        n_clusters=len(valid),
+        placebo=placebo,
+        disclosure=disclosure,
+    )
+
+
 async def evaluate_uc1(
     frames: pd.DataFrame,
     manifest: Mapping[str, Any],
@@ -284,17 +324,20 @@ async def evaluate_uc1(
     """Compute M1.1..M1.6 on `manifest['uc1_targets']`."""
     targets = manifest["uc1_targets"][:4]
     perts = manifest["perturbations"][:2]
+    blocks_map = manifest.get("blocks", {})
     agree_num_den: list[tuple[float, float]] = []
     block_ids: list[str] = []
     loc_dists: list[float] = []
     split_rays_all: list[list[tri.Ray]] = []
     by_obj_reproj: dict[str, list[tri.Ray]] = {}
-    trunc_flags: list[int] = []
+    reproj_by_block: dict[str, tuple[float, float]] = {}
+    non_trunc_by_block: dict[str, tuple[float, float]] = {}
     sky_scores: list[float] = []
     teacher_in_frame: list[int] = []
     prev_locs: list[views.HouseLocation] = []
     pert_locs: list[views.HouseLocation] = []
-    repeat_agree: list[int] = []
+    loc_blocks: list[str] = []
+    repeat_by_block: dict[str, tuple[float, float]] = {}
 
     for idx_t, t in enumerate(targets):
         _, ranked = uc.uc1_select_views(
@@ -343,6 +386,7 @@ async def evaluate_uc1(
             loc_dists.append(d_m)
             prev_locs.append(loc0)
             pert_locs.append(loc1)
+            loc_blocks.append(t["block_id"])
 
         sights = base_out["sightings"]
         if len(sights) >= 3:
@@ -357,24 +401,33 @@ async def evaluate_uc1(
                 for s in sights
             ]
             by_obj_reproj[t["target_id"]] = rays
+            rep_t = lf.heldout_reprojection({t["target_id"]: rays}, tol_deg=3.5)
+            for s_obj, err_deg in zip(sights, rep_t["errors_deg"], strict=False):
+                s_pid = str(getattr(s_obj, "pano_id", "") or t["anchor_pano_id"])
+                s_blk = blocks_map.get(s_pid, f"{t['block_id']}:{s_pid}")
+                _add_cluster(reproj_by_block, s_blk, 1.0 if err_deg <= 3.5 else 0.0, 1.0)
             if len(rays) >= 4:
                 split_rays_all.append(rays)
 
         # M1.4 framing: truncation, sky contact, and teacher fully_in_frame on top view
         res_df = base_out["res"]
         vis_df = res_df[res_df["visible"].fillna(False)]
-        for tr_val in vis_df["truncated"].tolist():
-            trunc_flags.append(int(bool(tr_val)))
+        for row_idx, r_row in vis_df.iterrows():
+            r_pid = str(r_row.get("pano_id", f"r_{row_idx}"))
+            r_blk = blocks_map.get(r_pid, f"{t['block_id']}:{r_pid}")
+            _add_cluster(non_trunc_by_block, r_blk, 0.0 if bool(r_row["truncated"]) else 1.0, 1.0)
         for sc_val in vis_df["sky_contact"].dropna().tolist():
             if math.isfinite(float(sc_val)):
                 sky_scores.append(float(sc_val))
 
         if base_out["crops"]:
+            top_crop = base_out["crops"][0]
             t_rec = await tea.ask_teacher(
                 teacher_runner,
                 cache=teacher_cache,
                 task="house_framing",
-                image=base_out["crops"][0],
+                image=top_crop,
+                extra_images=[zt["image"] for zt in tea.tiles(top_crop)],
                 schema=schemas.HouseFramingVerdict,
                 seed=seed,
             )
@@ -383,15 +436,14 @@ async def evaluate_uc1(
                 t_mat = t_rec["result"].get("exterior_material")
                 s_mat = base_out["attrs"]["exterior_material"][0]
                 if t_mat and s_mat and t_mat != "UNKNOWN":
-                    repeat_agree.append(1 if t_mat == s_mat else 0)
+                    _add_cluster(
+                        repeat_by_block, t["block_id"], 1.0 if t_mat == s_mat else 0.0, 1.0
+                    )
 
     per_cluster: dict[str, tuple[float, float]] = {}
     for b, (num, den) in zip(block_ids, agree_num_den, strict=True):
-        prev_num, prev_den = per_cluster.get(b, (0.0, 0.0))
-        per_cluster[b] = (prev_num + num, prev_den + den)
-    m1_1 = lf.block_ratio_ci(
-        per_cluster, seed=seed, min_clusters=max(2, min(5, len(per_cluster)))
-    )
+        _add_cluster(per_cluster, b, num, den)
+    m1_1 = lf.block_ratio_ci(per_cluster, seed=seed, min_clusters=max(2, min(5, len(per_cluster))))
     sh = lf.split_half_location(split_rays_all)
     if loc_dists:
         m1_2 = lf.Measurement(
@@ -406,49 +458,42 @@ async def evaluate_uc1(
     else:
         m1_2 = lf.Measurement(status="missing", reason="fewer than 2 located house reruns")
 
-    reproj = lf.heldout_reprojection(by_obj_reproj, tol_deg=3.5)
-    if reproj["n_evals"] > 0:
-        m1_3 = lf.Measurement(
-            status="ok",
-            value=reproj["hit_rate"],
-            n_clusters=len(by_obj_reproj),
-        )
-    else:
-        m1_3 = lf.Measurement(status="missing", reason="no house with >= 3 centred sightings")
+    m1_3 = _ratio_measurement(
+        reproj_by_block,
+        seed=seed,
+        missing_reason="no house with >= 3 centred sightings",
+    )
 
-    if trunc_flags:
-        non_trunc_rate = 1.0 - float(np.mean(trunc_flags))
-        t_rate = float(np.mean(teacher_in_frame)) if teacher_in_frame else None
-        m1_4 = lf.Measurement(
-            status="ok",
-            value=non_trunc_rate,
-            placebo=t_rate,
-            n_clusters=len(trunc_flags),
-            disclosure=lf.TEACHER_DISCLOSURE,
-        )
-    else:
-        m1_4 = lf.Measurement(status="missing", reason="no visible house detections")
+    t_rate = float(np.mean(teacher_in_frame)) if teacher_in_frame else None
+    m1_4 = _ratio_measurement(
+        non_trunc_by_block,
+        seed=seed,
+        placebo=t_rate,
+        disclosure=lf.TEACHER_DISCLOSURE,
+        missing_reason="no visible house detections",
+    )
 
     if prev_locs and pert_locs:
         matched_ids = views.match_house_ids(prev_locs, pert_locs, max_m=3.0)
-        carry = sum(
-            m_id == p_loc.entity_id for m_id, p_loc in zip(matched_ids, prev_locs, strict=True)
-        ) / len(prev_locs)
-        m1_5 = lf.Measurement(status="ok", value=float(carry), n_clusters=len(prev_locs))
+        carry_by_block: dict[str, tuple[float, float]] = {}
+        for m_id, p_loc, b_id in zip(matched_ids, prev_locs, loc_blocks, strict=True):
+            _add_cluster(carry_by_block, b_id, 1.0 if m_id == p_loc.entity_id else 0.0, 1.0)
+        m1_5 = _ratio_measurement(
+            carry_by_block,
+            seed=seed,
+            missing_reason="no paired house locations for ID carry-over",
+        )
     else:
         m1_5 = lf.Measurement(
             status="missing", reason="no paired house locations for ID carry-over"
         )
 
-    if repeat_agree:
-        m1_6 = lf.Measurement(
-            status="ok",
-            value=float(np.mean(repeat_agree)),
-            n_clusters=len(repeat_agree),
-            disclosure=lf.TEACHER_DISCLOSURE,
-        )
-    else:
-        m1_6 = lf.Measurement(status="missing", reason="no multi-pass house attribute pairs")
+    m1_6 = _ratio_measurement(
+        repeat_by_block,
+        seed=seed,
+        disclosure=lf.TEACHER_DISCLOSURE,
+        missing_reason="no multi-pass house attribute pairs",
+    )
 
     return {
         "M1.1": m1_1,
@@ -471,17 +516,17 @@ async def evaluate_uc2(
     variant: uc.Variant,
     seed: int = 7,
 ) -> dict[str, lf.Measurement]:
-    """Compute M2.1..M2.6 on `manifest['uc2_sequences']`."""
-    reproj_hits: list[int] = []
-    reproj_blocks: list[str] = []
-    retest_recalls: list[float] = []
-    cv_support_real: list[float] = []
+    """Compute M2.1..M2.6 on `manifest['uc2_sequences']` and `manifest['repeat_pairs']`."""
+    blocks_map = manifest.get("blocks", {})
+    reproj_by_block: dict[str, tuple[float, float]] = {}
+    retest_by_block: dict[str, tuple[float, float]] = {}
+    repeat_by_block: dict[str, tuple[float, float]] = {}
+    cv_support_by_block: dict[str, tuple[float, float]] = {}
     cv_support_placebo: list[float] = []
-    located_counts = 0
-    total_counts = 0
+    loc_share_by_block: dict[str, tuple[float, float]] = {}
     house_unloc = 0
     house_tot = 0
-    teacher_confirms: list[int] = []
+    teacher_by_block: dict[str, tuple[float, float]] = {}
 
     panos_all = sequence.build_sequences(data.panos_from_frames(frames))
     panos_all["travel_deg"] = sequence.travel_bearing(panos_all)
@@ -532,22 +577,28 @@ async def evaluate_uc2(
             if len(e.obs_ids) >= 3:
                 by_ent[e.entity_id] = [obs_by_id[oid] for oid in e.obs_ids if oid in obs_by_id]
         rep = lf.heldout_reprojection(by_ent, tol_deg=3.5)
-        for err in rep["errors_deg"]:
-            reproj_hits.append(1 if err <= 3.5 else 0)
-            reproj_blocks.append(f"{seq_spec['seq_id']}:b{len(reproj_hits) % 5:03d}")
+        for idx_err, err in enumerate(rep["errors_deg"]):
+            _add_cluster(
+                reproj_by_block,
+                f"{seq_spec['seq_id']}:b{idx_err % 5:03d}",
+                1.0 if err <= 3.5 else 0.0,
+                1.0,
+            )
         if out0["self_consistency"] is not None:
             cv_res = out0["self_consistency"]["cross_view"]
             for idx_t, t_row in enumerate(cv_res.get("per_task", [])):
                 if t_row.get("answered"):
-                    reproj_hits.append(1 if t_row.get("present") else 0)
-                    reproj_blocks.append(f"{seq_spec['seq_id']}:sc{idx_t % 5:03d}")
+                    t_pid = str(t_row.get("pano_id", ""))
+                    t_blk = blocks_map.get(t_pid, f"{seq_spec['seq_id']}:sc{idx_t % 5:03d}")
+                    _add_cluster(reproj_by_block, t_blk, 1.0 if t_row.get("present") else 0.0, 1.0)
 
         # M2.2 test-retest recall via eval.match_passes
         loc0 = out0["located"]
         loc1 = out1["located"]
         if loc0 and loc1:
             mp = ev.match_passes(loc0, loc1)
-            retest_recalls.append(0.5 * (mp["recall_a_in_b"] + mp["recall_b_in_a"]))
+            rec_val = 0.5 * (mp["recall_a_in_b"] + mp["recall_b_in_a"])
+            _add_cluster(retest_by_block, str(seq_spec["seq_id"]), rec_val, 1.0)
 
         # M2.4 OpenCV vertical-structure support vs placebo
         img_by_view = {
@@ -565,13 +616,17 @@ async def evaluate_uc2(
                     sup = cvc.vertical_post_support(im, box)
                     if o.cls == "ROAD_SIGN":
                         sup = max(sup, cvc.sign_post_support(im, box))
-                    cv_support_real.append(sup)
+                    o_blk = blocks_map.get(str(o.pano_id), f"{seq_spec['seq_id']}:{o.pano_id}")
+                    _add_cluster(cv_support_by_block, o_blk, 1.0 if sup >= 0.35 else 0.0, 1.0)
                     p_boxes = cvc.placebo_boxes(1, im.shape[1], im.shape[0], seed=seed)
                     cv_support_placebo.append(cvc.vertical_post_support(im, p_boxes[0]))
 
         # M2.5 located share & house unlocated share
-        located_counts += len(out0["located"])
-        total_counts += len(out0["entities"])
+        loc_ids = {e.entity_id for e in out0["located"]}
+        for e in out0["entities"]:
+            e_pid = str(e.pano_ids[0]) if e.pano_ids else str(seq_spec["seq_id"])
+            e_blk = blocks_map.get(e_pid, f"{seq_spec['seq_id']}:{e_pid}")
+            _add_cluster(loc_share_by_block, e_blk, 1.0 if e.entity_id in loc_ids else 0.0, 1.0)
         house_unloc += out0["houses_unlocated"]
         house_tot += out0["houses_located"] + out0["houses_unlocated"]
 
@@ -579,80 +634,140 @@ async def evaluate_uc2(
         if out0["run"].records and out0["observations"]:
             first_rec = out0["run"].records[0]
             if first_rec.get("image") is not None:
+                first_im = first_rec["image"]
                 t_ans = await tea.ask_teacher(
                     teacher_runner,
                     cache=teacher_cache,
                     task="entity_confirm",
-                    image=first_rec["image"],
+                    image=first_im,
+                    extra_images=[zt["image"] for zt in tea.tiles(first_im)],
                     schema=schemas.EntityConfirm,
                     seed=seed,
                     target_class=out0["observations"][0].cls,
                 )
                 if t_ans["result"] is not None:
-                    teacher_confirms.append(1 if t_ans["result"].get("confirmed") else 0)
+                    _add_cluster(
+                        teacher_by_block,
+                        str(seq_spec["seq_id"]),
+                        1.0 if t_ans["result"].get("confirmed") else 0.0,
+                        1.0,
+                    )
 
-    if reproj_hits:
-        m2_1 = lf.Measurement(
-            status="ok",
-            value=float(np.mean(reproj_hits)),
-            n_clusters=max(1, len(set(reproj_blocks))),
+    # M2.3 true cross-day repeat-pass entity recall across manifest['repeat_pairs']
+    for rp_idx, rp in enumerate(manifest.get("repeat_pairs", [])[:2]):
+        pairs_ab = rp.get("pano_pairs", [])
+        pids_a: list[str] = []
+        pids_b: list[str] = []
+        for pa, pb in pairs_ab:
+            if pa not in pids_a and len(pids_a) < 4:
+                pids_a.append(str(pa))
+            if pb not in pids_b and len(pids_b) < 4:
+                pids_b.append(str(pb))
+        sel_a = (
+            panos_all[panos_all["pano_id"].isin(pids_a)]
+            .sort_values("seq_idx")
+            .reset_index(drop=True)
         )
-    else:
-        m2_1 = lf.Measurement(
-            status="missing", reason="no multi-view entities for reprojection check"
+        sel_b = (
+            panos_all[panos_all["pano_id"].isin(pids_b)]
+            .sort_values("seq_idx")
+            .reset_index(drop=True)
         )
+        if len(sel_a) < 2 or len(sel_b) < 2:
+            continue
+        frames_a = frames[frames["pano_id"].isin(sel_a["pano_id"])].merge(
+            sel_a[["pano_id", "seq_idx", "travel_deg"]], on="pano_id"
+        )
+        frames_b = frames[frames["pano_id"].isin(sel_b["pano_id"])].merge(
+            sel_b[["pano_id", "seq_idx", "travel_deg"]], on="pano_id"
+        )
+        both_panos = pd.concat([sel_a, sel_b], ignore_index=True)
+        cam_alts_ab = [
+            float(p["altitude"])
+            for p in pd.concat(
+                [frames_a["camera_pose"], frames_b["camera_pose"]], ignore_index=True
+            )
+        ]
+        ref_ab = (
+            float(both_panos["lat"].mean()),
+            float(both_panos["lng"].mean()),
+            float(np.median(cam_alts_ab)) - 2.5,
+        )
+        out_a = await uc.uc2_run(
+            frames_a,
+            fetch,
+            student_runner,
+            intr,
+            ref_ab,
+            max_presence_checks=0,
+            variant=variant,
+        )
+        out_b = await uc.uc2_run(
+            frames_b,
+            fetch,
+            student_runner,
+            intr,
+            ref_ab,
+            max_presence_checks=0,
+            variant=variant,
+        )
+        loc_a = out_a["located"]
+        loc_b = out_b["located"]
+        if loc_a and loc_b:
+            mp_rep = ev.match_passes(
+                loc_a,
+                loc_b,
+                eps_by_class={"UTILITY_POLE": 4.0, "ROAD_SIGN": 4.0, "HOUSE": 8.0},
+            )
+            rep_recall = 0.5 * (mp_rep["recall_a_in_b"] + mp_rep["recall_b_in_a"])
+            _add_cluster(
+                repeat_by_block,
+                f"{rp.get('seq_a', 'a')}:{rp.get('seq_b', 'b')}:{rp_idx}",
+                rep_recall,
+                1.0,
+            )
 
-    if retest_recalls:
-        m2_2 = lf.Measurement(
-            status="ok",
-            value=float(np.mean(retest_recalls)),
-            n_clusters=len(retest_recalls),
-        )
-    else:
-        m2_2 = lf.Measurement(
-            status="missing", reason="no located entities in both test and retest"
-        )
-
-    if manifest["repeat_pairs"]:
-        m2_3 = lf.Measurement(
-            status="ok",
-            value=float(np.mean(retest_recalls)) if retest_recalls else 0.75,
-            n_clusters=len(manifest["repeat_pairs"]),
-        )
-    else:
-        m2_3 = lf.Measurement(status="missing", reason="no cross-day repeat pairs in AOI")
-
-    if cv_support_real:
-        m2_4 = lf.Measurement(
-            status="ok",
-            value=float(np.mean([s >= 0.35 for s in cv_support_real])),
-            placebo=float(np.mean([s >= 0.35 for s in cv_support_placebo])),
-            n_clusters=len(cv_support_real),
-        )
-    else:
-        m2_4 = lf.Measurement(status="missing", reason="no pole or sign observations")
-
-    if total_counts > 0:
-        loc_share = located_counts / total_counts
-        h_unloc_share = house_unloc / house_tot if house_tot > 0 else 0.0
-        m2_5 = lf.Measurement(
-            status="ok",
-            value=float(loc_share),
-            placebo=float(h_unloc_share),
-            n_clusters=total_counts,
-        )
-    else:
-        m2_5 = lf.Measurement(status="missing", reason="no entities clustered")
-
-    if teacher_confirms:
-        m2_6 = lf.Measurement(
-            status="ok",
-            value=float(np.mean(teacher_confirms)),
-            n_clusters=len(teacher_confirms),
-            disclosure=lf.TEACHER_DISCLOSURE,
-        )
-    else:
-        m2_6 = lf.Measurement(status="missing", reason="no teacher confirmation tasks run")
+    m2_1 = _ratio_measurement(
+        reproj_by_block,
+        seed=seed,
+        missing_reason="no multi-view entities for reprojection check",
+    )
+    m2_2 = _ratio_measurement(
+        retest_by_block,
+        seed=seed,
+        missing_reason="no located entities in both test and retest",
+    )
+    m2_3 = _ratio_measurement(
+        repeat_by_block,
+        seed=seed,
+        missing_reason=(
+            "no located entities in cross-day repeat passes"
+            if manifest.get("repeat_pairs")
+            else "no cross-day repeat pairs in AOI"
+        ),
+    )
+    placebo_2_4 = (
+        float(np.mean([s >= 0.35 for s in cv_support_placebo])) if cv_support_placebo else None
+    )
+    m2_4 = _ratio_measurement(
+        cv_support_by_block,
+        seed=seed,
+        placebo=placebo_2_4,
+        missing_reason="no pole or sign observations",
+    )
+    h_unloc_share = float(house_unloc / house_tot) if house_tot > 0 else None
+    m2_5 = _ratio_measurement(
+        loc_share_by_block,
+        seed=seed,
+        placebo=h_unloc_share,
+        missing_reason="no entities clustered",
+    )
+    m2_6 = _ratio_measurement(
+        teacher_by_block,
+        seed=seed,
+        disclosure=lf.TEACHER_DISCLOSURE,
+        missing_reason="no teacher confirmation tasks run",
+    )
 
     return {
         "M2.1": m2_1,
@@ -675,19 +790,22 @@ async def evaluate_uc3(
     variant: uc.Variant,
     seed: int = 7,
 ) -> dict[str, lf.Measurement]:
-    """Compute M3.1..M3.6 on `manifest['uc3_sequences']`."""
+    """Compute M3.1..M3.6 on `manifest['uc3_sequences']` and `manifest['repeat_pairs']`."""
+    blocks_map = manifest.get("blocks", {})
     panos_all = sequence.build_sequences(data.panos_from_frames(frames))
     panos_all["travel_deg"] = sequence.travel_bearing(panos_all)
     pert_spec = manifest["perturbations"][0]
 
     labels_base: list[str] = []
     labels_pert: list[str] = []
-    adj_vals: list[float] = []
+    adj_by_block: dict[str, tuple[float, float]] = {}
     shuf_vals: list[float] = []
+    repeat_bin_by_block: dict[str, tuple[float, float]] = {}
     within_tex: list[float] = []
     kerb_preds: list[str] = []
     sidewalk_preds: list[str] = []
-    teacher_matches: list[int] = []
+    teacher_by_block: dict[str, tuple[float, float]] = {}
+    cached_uc3_runs: dict[tuple[str, ...], dict[str, Any]] = {}
 
     for seq_spec in manifest["uc3_sequences"][:2]:
         pids = set(seq_spec["pano_ids"][:6])
@@ -700,6 +818,7 @@ async def evaluate_uc3(
             sel[["pano_id", "seq_idx", "travel_deg"]], on="pano_id"
         )
         out0 = await uc.uc3_run(sel, sel_frames, fetch, student_runner, intr, variant=variant)
+        cached_uc3_runs[tuple(sel["pano_id"].tolist())] = out0
         pert_var = dataclasses.replace(
             variant,
             yaw_delta_deg=pert_spec["yaw_delta_deg"],
@@ -707,19 +826,31 @@ async def evaluate_uc3(
         )
         out1 = await uc.uc3_run(sel, sel_frames, fetch, student_runner, intr, variant=pert_var)
 
+        sel_pids = sel["pano_id"].tolist()
         for side in ("CENTER", "LEFT", "RIGHT"):
-            s0 = [str(x) for x in out0["smooth_by_slot"][side] if x is not None]
-            s1 = [str(x) for x in out1["smooth_by_slot"][side] if x is not None]
+            raw0 = out0["smooth_by_slot"][side]
+            raw1 = out1["smooth_by_slot"][side]
+            s0 = [str(x) for x in raw0 if x is not None]
+            s1 = [str(x) for x in raw1 if x is not None]
             n_min = min(len(s0), len(s1))
             labels_base.extend(s0[:n_min])
             labels_pert.extend(s1[:n_min])
             if len(s0) >= 2:
-                adj_vals.append(lf.adjacent_agreement(s0))
                 shuf_vals.append(lf.shuffle_baseline(s0, seed=seed))
+                for idx_pair in range(len(raw0) - 1):
+                    if raw0[idx_pair] is not None and raw0[idx_pair + 1] is not None:
+                        p_curr = str(sel_pids[min(idx_pair + 1, len(sel_pids) - 1)])
+                        p_blk = blocks_map.get(p_curr, f"{seq_spec['seq_id']}:{p_curr}")
+                        _add_cluster(
+                            adj_by_block,
+                            p_blk,
+                            1.0 if str(raw0[idx_pair]) == str(raw0[idx_pair + 1]) else 0.0,
+                            1.0,
+                        )
 
         # M3.4 & M3.5 OpenCV texture + kerb evidence
         descs = []
-        for idx_p, pid in enumerate(sel["pano_id"].tolist()):
+        for idx_p, pid in enumerate(sel_pids):
             v_dict = out0["views"].get(pid, {})
             rv_dict = out0["road_views"].get(pid, {})
             if "front" in v_dict:
@@ -739,7 +870,7 @@ async def evaluate_uc3(
             within_tex.append(cvc.descriptor_distance(d_a, d_b))
 
         # M3.6 teacher slot check on first pano front view
-        first_pid = sel["pano_id"].iloc[0]
+        first_pid = sel_pids[0]
         front_im = out0["views"].get(first_pid, {}).get("front")
         if front_im is not None:
             t_ans = await tea.ask_teacher(
@@ -747,6 +878,7 @@ async def evaluate_uc3(
                 cache=teacher_cache,
                 task="surface_slot",
                 image=front_im,
+                extra_images=[zt["image"] for zt in tea.tiles(front_im)],
                 schema=schemas.SurfaceSlotVerdict,
                 seed=seed,
                 side="CENTER",
@@ -755,31 +887,141 @@ async def evaluate_uc3(
                 t_mat = t_ans["result"].get("material")
                 s_mat = out0["smooth_by_slot"]["CENTER"][0]
                 if t_mat and s_mat:
-                    teacher_matches.append(1 if t_mat == s_mat else 0)
+                    _add_cluster(
+                        teacher_by_block,
+                        str(seq_spec["seq_id"]),
+                        1.0 if t_mat == s_mat else 0.0,
+                        1.0,
+                    )
+
+    # M3.3 true cross-day 20 m bin agreement across manifest['repeat_pairs']
+    for rp_idx, rp in enumerate(manifest.get("repeat_pairs", [])[:2]):
+        pairs_ab = rp.get("pano_pairs", [])
+        pids_a: list[str] = []
+        pids_b: list[str] = []
+        for pa, pb in pairs_ab:
+            if pa not in pids_a and len(pids_a) < 6:
+                pids_a.append(str(pa))
+            if pb not in pids_b and len(pids_b) < 6:
+                pids_b.append(str(pb))
+        sel_a = (
+            panos_all[panos_all["pano_id"].isin(pids_a)]
+            .sort_values("seq_idx")
+            .reset_index(drop=True)
+        )
+        sel_b = (
+            panos_all[panos_all["pano_id"].isin(pids_b)]
+            .sort_values("seq_idx")
+            .reset_index(drop=True)
+        )
+        if len(sel_a) < 2 or len(sel_b) < 2:
+            continue
+
+        key_a = tuple(sel_a["pano_id"].tolist())
+        if key_a in cached_uc3_runs:
+            out_a = cached_uc3_runs[key_a]
+        else:
+            frames_a = frames[frames["pano_id"].isin(sel_a["pano_id"])].merge(
+                sel_a[["pano_id", "seq_idx", "travel_deg"]], on="pano_id"
+            )
+            out_a = await uc.uc3_run(sel_a, frames_a, fetch, student_runner, intr, variant=variant)
+            cached_uc3_runs[key_a] = out_a
+
+        key_b = tuple(sel_b["pano_id"].tolist())
+        if key_b in cached_uc3_runs:
+            out_b = cached_uc3_runs[key_b]
+        else:
+            frames_b = frames[frames["pano_id"].isin(sel_b["pano_id"])].merge(
+                sel_b[["pano_id", "seq_idx", "travel_deg"]], on="pano_id"
+            )
+            out_b = await uc.uc3_run(sel_b, frames_b, fetch, student_runner, intr, variant=variant)
+            cached_uc3_runs[key_b] = out_b
+
+        # Project sel_a and sel_b onto the along-road axis of sel_a in 20 m bins
+        lat0, lng0 = float(sel_a["lat"].iloc[0]), float(sel_a["lng"].iloc[0])
+        ea, na, _ = geo.lla_to_enu(
+            sel_a["lat"].to_numpy(), sel_a["lng"].to_numpy(), 0.0, lat0, lng0, 0.0
+        )
+        eb, nb, _ = geo.lla_to_enu(
+            sel_b["lat"].to_numpy(), sel_b["lng"].to_numpy(), 0.0, lat0, lng0, 0.0
+        )
+        axis = np.array([ea[-1] - ea[0], na[-1] - na[0]], dtype=float)
+        norm_axis = float(np.hypot(axis[0], axis[1]))
+        if norm_axis > 1e-3:
+            axis /= norm_axis
+        else:
+            axis = np.array([0.0, 1.0], dtype=float)
+        s_a = ea * axis[0] + na * axis[1]
+        s_b = eb * axis[0] + nb * axis[1]
+        s_min = float(min(np.min(s_a), np.min(s_b)))
+        bins_a = [int(math.floor((float(x) - s_min) / 20.0)) for x in s_a]
+        bins_b = [int(math.floor((float(x) - s_min) / 20.0)) for x in s_b]
+
+        t_deg_a = (
+            float(sel_a["travel_deg"].iloc[0]) if np.isfinite(sel_a["travel_deg"].iloc[0]) else 0.0
+        )
+        t_deg_b = (
+            float(sel_b["travel_deg"].iloc[0]) if np.isfinite(sel_b["travel_deg"].iloc[0]) else 0.0
+        )
+        opp_dir = abs(float(geo.angdiff(t_deg_a, t_deg_b))) > 90.0
+        side_map_b = {
+            "CENTER": "CENTER",
+            "LEFT": "RIGHT" if opp_dir else "LEFT",
+            "RIGHT": "LEFT" if opp_dir else "RIGHT",
+        }
+
+        shared_bins = sorted(set(bins_a) & set(bins_b))
+        for b_idx in shared_bins:
+            idx_in_a = [i for i, b_val in enumerate(bins_a) if b_val == b_idx]
+            idx_in_b = [i for i, b_val in enumerate(bins_b) if b_val == b_idx]
+            for side in ("CENTER", "LEFT", "RIGHT"):
+                side_b = side_map_b[side]
+                labs_a = [
+                    str(out_a["smooth_by_slot"][side][i])
+                    for i in idx_in_a
+                    if out_a["smooth_by_slot"][side][i] is not None
+                ]
+                labs_b = [
+                    str(out_b["smooth_by_slot"][side_b][i])
+                    for i in idx_in_b
+                    if out_b["smooth_by_slot"][side_b][i] is not None
+                ]
+                if labs_a and labs_b:
+                    mode_a = max(set(labs_a), key=labs_a.count)
+                    mode_b = max(set(labs_b), key=labs_b.count)
+                    _add_cluster(
+                        repeat_bin_by_block,
+                        f"{rp.get('seq_a', 'a')}:{rp_idx}:bin{b_idx:03d}",
+                        1.0 if mode_a == mode_b else 0.0,
+                        1.0,
+                    )
 
     m3_1 = lf.kappa(labels_base, labels_pert)
-    if m3_1.status == "missing" and labels_base and labels_base == labels_pert:
-        # Constant agreement across all slots in a homogeneous drive -> report raw agreement 1.0
-        m3_1 = lf.Measurement(status="ok", value=1.0, n_clusters=len(labels_base))
-
-    if adj_vals:
-        m3_2 = lf.Measurement(
-            status="ok",
-            value=float(np.mean(adj_vals)),
-            placebo=float(np.mean(shuf_vals)),
-            n_clusters=len(adj_vals),
+    if m3_1.status == "missing" and labels_base:
+        raw_agree = sum(a == b for a, b in zip(labels_base, labels_pert, strict=True)) / len(
+            labels_base
         )
-    else:
-        m3_2 = lf.Measurement(status="missing", reason="no sequences with >= 2 panos")
-
-    if manifest["repeat_pairs"]:
-        m3_3 = lf.Measurement(
-            status="ok",
-            value=float(np.mean(adj_vals)) if adj_vals else 0.8,
-            n_clusters=len(manifest["repeat_pairs"]),
+        m3_1 = lf.Measurement.missing(
+            f"{m3_1.reason} (raw_agreement={raw_agree:.3f})",
+            n_clusters=len(labels_base),
         )
-    else:
-        m3_3 = lf.Measurement(status="missing", reason="no cross-day repeat pairs in AOI")
+
+    m3_2 = _ratio_measurement(
+        adj_by_block,
+        seed=seed,
+        placebo=float(np.mean(shuf_vals)) if shuf_vals else None,
+        missing_reason="no sequences with >= 2 panos",
+    )
+
+    m3_3 = _ratio_measurement(
+        repeat_bin_by_block,
+        seed=seed,
+        missing_reason=(
+            "no overlapping 20 m bins in cross-day repeat pairs"
+            if manifest.get("repeat_pairs")
+            else "no cross-day repeat pairs in AOI"
+        ),
+    )
 
     if within_tex:
         m3_4 = lf.Measurement(
@@ -795,17 +1037,17 @@ async def evaluate_uc3(
         raw_match = sum(a == b for a, b in zip(kerb_preds, sidewalk_preds, strict=True)) / len(
             kerb_preds
         )
-        m3_5 = lf.Measurement(status="ok", value=float(raw_match), n_clusters=len(kerb_preds))
-
-    if teacher_matches:
-        m3_6 = lf.Measurement(
-            status="ok",
-            value=float(np.mean(teacher_matches)),
-            n_clusters=len(teacher_matches),
-            disclosure=lf.TEACHER_DISCLOSURE,
+        m3_5 = lf.Measurement.missing(
+            f"{m3_5.reason} (raw_agreement={raw_match:.3f})",
+            n_clusters=len(kerb_preds),
         )
-    else:
-        m3_6 = lf.Measurement(status="missing", reason="no teacher slot verdicts")
+
+    m3_6 = _ratio_measurement(
+        teacher_by_block,
+        seed=seed,
+        disclosure=lf.TEACHER_DISCLOSURE,
+        missing_reason="no teacher slot verdicts",
+    )
 
     return {
         "M3.1": m3_1,
@@ -829,12 +1071,12 @@ async def evaluate_uc4(
     seed: int = 7,
 ) -> dict[str, lf.Measurement]:
     """Compute M4.1..M4.6 on `manifest['uc4_targets']`."""
-    screen_correct: list[int] = []
-    decoy_rates_all: list[float] = []
+    screen_by_block: dict[str, tuple[float, float]] = {}
+    decoy_by_block: dict[str, tuple[float, float]] = {}
     random_rates_all: list[float] = []
-    retained_fractions: list[float] = []
-    retest_edge_hits: list[int] = []
-    teacher_trace_f1s: list[float] = []
+    retained_by_block: dict[str, tuple[float, float]] = {}
+    retest_by_block: dict[str, tuple[float, float]] = {}
+    teacher_trace_by_block: dict[str, tuple[float, float]] = {}
     eave_rays_by_target: dict[str, list[tri.Ray]] = {}
 
     pert_spec = manifest["perturbations"][0]
@@ -850,19 +1092,26 @@ async def evaluate_uc4(
             height=600,
             variant=variant,
         )
-        for srec in screen_recs[:2]:
+        for s_idx, srec in enumerate(screen_recs[:2]):
+            s_im = srec["image"]
             t_vis = await tea.ask_teacher(
                 teacher_runner,
                 cache=teacher_cache,
                 task="roof_visibility",
-                image=srec["image"],
+                image=s_im,
+                extra_images=[zt["image"] for zt in tea.tiles(s_im)],
                 schema=schemas.RoofVisibility,
                 seed=seed,
             )
             if t_vis["result"] is not None:
                 vis_ok = bool(t_vis["result"].get("edge_50pct_visible"))
                 scr_rej = bool(srec["screen"]["rejected"])
-                screen_correct.append(1 if (scr_rej == (not vis_ok)) else 0)
+                _add_cluster(
+                    screen_by_block,
+                    f"{t['block_id']}:s{s_idx}",
+                    1.0 if (scr_rej == (not vis_ok)) else 0.0,
+                    1.0,
+                )
 
         if not chosen:
             continue
@@ -870,25 +1119,27 @@ async def evaluate_uc4(
         pert_var = dataclasses.replace(variant, gemini_seed=pert_spec["gemini_seed"])
         out1 = await uc.uc4_run(chosen, student_runner, width=800, height=600, variant=pert_var)
 
-        for res0, dec0, res1, c_view in zip(
-            out0["results"], out0["decoy_rates"], out1["results"], chosen, strict=True
+        for v_idx, (res0, dec0, res1, c_view) in enumerate(
+            zip(out0["results"], out0["decoy_rates"], out1["results"], chosen, strict=True)
         ):
+            v_blk = f"{t['block_id']}:v{v_idx}"
             if dec0:
-                decoy_rates_all.append(float(np.mean(list(dec0.values()))))
+                _add_cluster(decoy_by_block, v_blk, float(np.mean(list(dec0.values()))), 1.0)
             if math.isfinite(res0.random_acceptance):
                 random_rates_all.append(float(res0.random_acceptance))
             n_tot = len(res0.valid_edges) + len(res0.rejected_edges)
             if n_tot > 0:
-                retained_fractions.append(len(res0.valid_edges) / n_tot)
+                _add_cluster(retained_by_block, v_blk, float(len(res0.valid_edges)), float(n_tot))
 
             # M4.4 test-retest polyline agreement within 5 px
-            for e0 in res0.valid_edges:
+            for e_idx, e0 in enumerate(res0.valid_edges):
                 same_type = [e1 for e1 in res1.valid_edges if e1.edge_type == e0.edge_type]
                 if same_type:
                     d_px = min(_polyline_min_dist(e0.points, e1.points) for e1 in same_type)
-                    retest_edge_hits.append(1 if d_px <= 5.0 else 0)
+                    hit_val = 1.0 if d_px <= 5.0 else 0.0
                 else:
-                    retest_edge_hits.append(0)
+                    hit_val = 0.0
+                _add_cluster(retest_by_block, f"{v_blk}:e{e_idx}", hit_val, 1.0)
 
             # Collect eave midpoint bearing for M4.6
             eaves = [e0 for e0 in res0.valid_edges if e0.edge_type == "EAVE"]
@@ -902,11 +1153,13 @@ async def evaluate_uc4(
                 eave_rays_by_target.setdefault(t["target_id"], []).append(tri.Ray(orig, az, el))
 
         # M4.5 teacher roof trace F1 on first chosen view
+        c0_im = chosen[0]["image"]
         t_tr = await tea.ask_teacher(
             teacher_runner,
             cache=teacher_cache,
             task="roof_trace",
-            image=chosen[0]["image"],
+            image=c0_im,
+            extra_images=[zt["image"] for zt in tea.tiles(c0_im)],
             schema=schemas.RoofTrace,
             seed=seed,
         )
@@ -925,55 +1178,35 @@ async def evaluate_uc4(
                 prec = hits / len(s_edges)
                 rec = min(1.0, hits / len(t_pts_list))
                 f1 = 2 * prec * rec / max(1e-6, prec + rec)
-                teacher_trace_f1s.append(float(f1))
+                _add_cluster(teacher_trace_by_block, t["block_id"], float(f1), 1.0)
 
-    m4_1 = (
-        lf.Measurement(
-            status="ok",
-            value=float(np.mean(screen_correct)),
-            n_clusters=len(screen_correct),
-            disclosure=lf.TEACHER_DISCLOSURE,
-        )
-        if screen_correct
-        else lf.Measurement(status="missing", reason="no candidate roof views screened")
+    m4_1 = _ratio_measurement(
+        screen_by_block,
+        seed=seed,
+        disclosure=lf.TEACHER_DISCLOSURE,
+        missing_reason="no candidate roof views screened",
     )
-    m4_2 = (
-        lf.Measurement(
-            status="ok",
-            value=float(np.mean(decoy_rates_all)),
-            placebo=float(np.mean(random_rates_all)) if random_rates_all else None,
-            n_clusters=len(decoy_rates_all),
-        )
-        if decoy_rates_all
-        else lf.Measurement(status="missing", reason="no wall decoys evaluated")
+    m4_2 = _ratio_measurement(
+        decoy_by_block,
+        seed=seed,
+        placebo=float(np.mean(random_rates_all)) if random_rates_all else None,
+        missing_reason="no wall decoys evaluated",
     )
-    m4_3 = (
-        lf.Measurement(
-            status="ok",
-            value=float(np.mean(retained_fractions)),
-            n_clusters=len(retained_fractions),
-        )
-        if retained_fractions
-        else lf.Measurement(status="missing", reason="no proposed roof edges to retain")
+    m4_3 = _ratio_measurement(
+        retained_by_block,
+        seed=seed,
+        missing_reason="no proposed roof edges to retain",
     )
-    m4_4 = (
-        lf.Measurement(
-            status="ok",
-            value=float(np.mean(retest_edge_hits)),
-            n_clusters=len(retest_edge_hits),
-        )
-        if retest_edge_hits
-        else lf.Measurement(status="missing", reason="no valid roof edges for test-retest check")
+    m4_4 = _ratio_measurement(
+        retest_by_block,
+        seed=seed,
+        missing_reason="no valid roof edges for test-retest check",
     )
-    m4_5 = (
-        lf.Measurement(
-            status="ok",
-            value=float(np.mean(teacher_trace_f1s)),
-            n_clusters=len(teacher_trace_f1s),
-            disclosure=lf.TEACHER_DISCLOSURE,
-        )
-        if teacher_trace_f1s
-        else lf.Measurement(status="missing", reason="no overlapping student/teacher roof traces")
+    m4_5 = _ratio_measurement(
+        teacher_trace_by_block,
+        seed=seed,
+        disclosure=lf.TEACHER_DISCLOSURE,
+        missing_reason="no overlapping student/teacher roof traces",
     )
     eave_rep = lf.heldout_reprojection(eave_rays_by_target, tol_deg=5.0)
     m4_6 = (
@@ -1309,7 +1542,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.seed,
             )
             out_m.update(m1)
-            print(f"[labelfree] {args.aoi}/{args.variant} finished UC1 (calls={s_runner.cost.calls + t_runner.cost.calls})", flush=True)
+            print(
+                f"[labelfree] {args.aoi}/{args.variant} finished UC1 (calls={s_runner.cost.calls + t_runner.cost.calls})",
+                flush=True,
+            )
         if args.uc in ("2", "all"):
             m2 = await evaluate_uc2(
                 frames,
@@ -1323,7 +1559,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.seed,
             )
             out_m.update(m2)
-            print(f"[labelfree] {args.aoi}/{args.variant} finished UC2 (calls={s_runner.cost.calls + t_runner.cost.calls})", flush=True)
+            print(
+                f"[labelfree] {args.aoi}/{args.variant} finished UC2 (calls={s_runner.cost.calls + t_runner.cost.calls})",
+                flush=True,
+            )
         if args.uc in ("3", "all"):
             m3 = await evaluate_uc3(
                 frames,
@@ -1337,7 +1576,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.seed,
             )
             out_m.update(m3)
-            print(f"[labelfree] {args.aoi}/{args.variant} finished UC3 (calls={s_runner.cost.calls + t_runner.cost.calls})", flush=True)
+            print(
+                f"[labelfree] {args.aoi}/{args.variant} finished UC3 (calls={s_runner.cost.calls + t_runner.cost.calls})",
+                flush=True,
+            )
         if args.uc in ("4", "all"):
             m4 = await evaluate_uc4(
                 frames,
@@ -1351,7 +1593,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.seed,
             )
             out_m.update(m4)
-            print(f"[labelfree] {args.aoi}/{args.variant} finished UC4 (calls={s_runner.cost.calls + t_runner.cost.calls})", flush=True)
+            print(
+                f"[labelfree] {args.aoi}/{args.variant} finished UC4 (calls={s_runner.cost.calls + t_runner.cost.calls})",
+                flush=True,
+            )
         return out_m
 
     metrics = asyncio.run(_run_selected())
