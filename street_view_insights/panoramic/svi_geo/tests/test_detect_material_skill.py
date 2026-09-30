@@ -138,10 +138,12 @@ def test_road_view_docstring_matches_the_code(dm):
     assert "25 deg" not in doc or dm.ROAD_PITCH_DEG == -25
 
 
-def test_skill_selects_the_full_pose_and_documents_capture_id(dm):
+def test_skill_selects_the_full_pose_and_excludes_capture_id(dm):
     assert "camera_pose.pitch" in dm._FIELDS and "camera_pose.roll" in dm._FIELDS
+    assert "capture_id" not in dm.ID_SQL
+    assert "capture_id" not in dm.COORDS_SQL
     md = SKILL.parents[1].joinpath("SKILL.md").read_text()
-    assert "capture_id" in md
+    assert "capture_id" not in md
 
 
 # ----------------------------------------------------------------------------- round 2 partial
@@ -153,6 +155,42 @@ def test_id_sql_looks_up_the_id_once_and_filters_by_that_location(dm):
     assert "WITH hit AS" in sql and "LIMIT 1" in sql
     assert "ST_GEOGPOINT(hit.lng, hit.lat)" in sql and "@radius_m" in sql
     assert "@id" in sql and not re.search(r"\bgcs_uri\b", sql)
+    assert "capture_id" not in sql
+    assert "observation_id = @id OR pano_id = @id" in sql
+
+
+def test_render_sql_validates_dataset_allowlist(dm):
+    with pytest.raises(ValueError, match="dataset"):
+        dm.render_sql(dm.COORDS_SQL, "my-proj", "not_allowed_dataset")
+
+
+def test_pano_id_and_observation_id_are_separate_or_aliased_flags(dm):
+    env = {"PROJECT_ID": "p", "GCS_BUCKET": "b"}
+    a1 = dm.parse_args(["--observation-id", "o1:abc_0:5001ee"], env=env)
+    assert a1.observation_id == "o1:abc_0:5001ee"
+    a2 = dm.parse_args(["--pano-id", "pano123"], env=env)
+    assert a2.pano_id == "pano123"
+    with pytest.raises(SystemExit):
+        dm.parse_args(["--observation-id", "x", "--pano-id", "y"], env=env)
+
+
+@pytest.mark.live
+def test_id_sql_dry_run_under_145gb(dm):
+    import os
+    from google.cloud import bigquery
+
+    project = os.environ.get("PROJECT_ID") or "imagery-insights-sandbox"
+    client = bigquery.Client(project=project)
+    sql = dm.render_sql(dm.ID_SQL, project, dm.DEFAULT_DATASET)
+    params = [
+        bigquery.ScalarQueryParameter("id", "STRING", "o1:test_0:5001ee"),
+        bigquery.ScalarQueryParameter("radius_m", "FLOAT64", 30.0),
+    ]
+    dry = client.query(
+        sql, job_config=bigquery.QueryJobConfig(dry_run=True, query_parameters=params)
+    )
+    gb = dry.total_bytes_processed / 1e9
+    assert gb <= 1.45, f"expected ID_SQL dry run <= 1.45 GB, got {gb:.3f} GB"
 
 
 def _rosette_rows(heading0):

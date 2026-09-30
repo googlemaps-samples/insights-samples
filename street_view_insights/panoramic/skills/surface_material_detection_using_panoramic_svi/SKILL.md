@@ -12,10 +12,10 @@ using the Street View Insights **panoramic** tables only (`pano_observations_lat
 
 1.  **Metadata lookup (code).** A parameterised, dry-run-checked BigQuery query (capped at
     2 GB billed) reads frame metadata for panos within `--radius-m` of the point, or around the
-    given id. `--observation-id` accepts an `observation_id`, a `pano_id` or a `capture_id`
-    (each pano has one `capture_id`). It never selects `gcs_uri`: that column alone scans
-    ~1.9 GB, so the frame path is derived as
-    `gs://<bucket>/<snapshot_id>/v0/<observation_id>.jpg`.
+    given id. `--observation-id` accepts an `observation_id` or a `pano_id` (or use `--pano-id`
+    directly); the id lookup scans ~1.40 GB (note: a miss still scans and bills ~1.40 GB). It
+    never selects `gcs_uri`: that column alone scans ~1.9 GB, so the frame path is derived from
+    `<bucket>/<snapshot_id>/v0/<observation_id>.jpg`.
 2.  **Travel direction (code).** Measured from the neighbouring panos of the same drive
     (same snapshot, within 5 s). If it cannot be measured the script stops and asks for
     `--travel-deg`; it never guesses a camera.
@@ -53,9 +53,11 @@ export PROJECT_ID=YOUR_PROJECT_ID GCS_BUCKET=YOUR_FRAME_BUCKET
 python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py \
   --coordinates <lat,lng>
 
-# By observation id, pano id or capture id
+# By observation id or pano id
 python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py \
-  --observation-id <observation_pano_or_capture_id>
+  --observation-id <observation_id>
+python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py \
+  --pano-id <pano_id>
 
 # By a local image you already downloaded (no bucket needed)
 python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py \

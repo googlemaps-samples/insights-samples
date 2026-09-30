@@ -100,15 +100,14 @@ WHERE pano_id IS NOT NULL
 """
 )
 
-# Frames of the pano identified by @id (observation, pano or capture id) plus its neighbours:
+# Frames of the pano identified by @id (observation_id or pano_id) plus its neighbours:
 # the id is looked up once (LIMIT 1) and the frames are filtered by distance to that location.
-# The table is not clustered, so BigQuery bills the referenced columns in full; the dry run
-# measured 1.63 GB (COORDS_SQL: 1.40 GB), both under the 2 GB cap.
+# Dropping capture_id keeps the dry run at ~1.40 GB (down from 1.63 GB).
 ID_SQL = (
     """WITH hit AS (
   SELECT capture_location.latitude AS lat, capture_location.longitude AS lng
   FROM `__PROJECT__.__DATASET__.pano_observations_latest`
-  WHERE pano_id IS NOT NULL AND (observation_id = @id OR pano_id = @id OR capture_id = @id)
+  WHERE pano_id IS NOT NULL AND (observation_id = @id OR pano_id = @id)
   LIMIT 1
 )
 SELECT hit.lat AS hit_lat, hit.lng AS hit_lng,"""
@@ -124,12 +123,32 @@ WHERE pano_id IS NOT NULL
 _IDENT = re.compile(r"^[A-Za-z0-9_\-.]+$")
 
 
+def _allowed_datasets() -> set[str]:
+    try:
+        from svi_geo import data
+
+        return set(data.allowed_datasets())
+    except ImportError:
+        raw = os.environ.get("SVI_ALLOWED_DATASETS", "")
+        extra = {x.strip() for x in raw.split(",") if x.strip()}
+        return {DEFAULT_DATASET} | extra
+
+
 def render_sql(template: str, project: str, dataset: str) -> str:
     """Substitute validated identifiers (values always go through query parameters)."""
     for v in (project, dataset):
         if not _IDENT.match(v or ""):
             raise ValueError(f"invalid BigQuery identifier: {v!r}")
-    return template.replace("__PROJECT__", project).replace("__DATASET__", dataset)
+    allowed = _allowed_datasets()
+    if dataset not in allowed:
+        raise ValueError(f"dataset {dataset!r} is not in allowed_datasets {sorted(allowed)}")
+    try:
+        from svi_geo import data
+
+        table = data.pano_table(project, dataset, "pano_observations_latest")
+    except ImportError:
+        table = f"{project}.{dataset}.pano_observations_latest"
+    return template.replace("__PROJECT__.__DATASET__.pano_observations_latest", table)
 
 
 def run_query(client, sql: str, params: list) -> list:
@@ -331,7 +350,8 @@ def parse_args(argv=None, env=None):
     p = argparse.ArgumentParser(description="Surface material detection (panoramic SVI).")
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--image", help="Path to a local image file (already downloaded).")
-    g.add_argument("--observation-id", "--pano-id", dest="observation_id")
+    g.add_argument("--observation-id", dest="observation_id", help="Panoramic observation_id.")
+    g.add_argument("--pano-id", dest="pano_id", help="Panoramic pano_id.")
     g.add_argument("--coordinates", help="'lat,lng' - nearest pano within --radius-m")
     p.add_argument("--radius-m", type=float, default=30.0)
     p.add_argument(
@@ -410,19 +430,24 @@ def fetch_view(args) -> tuple[np.ndarray, dict]:
             raise ValueError(f"no pano within {args.radius_m} m of {lat},{lng}")
         near = min(rows, key=lambda r: _dist_m(lat, lng, r["lat"], r["lng"]))
     else:
+        target_id = args.observation_id or args.pano_id
+        print(
+            "[bigquery] note: ID lookup scans ~1.40 GB even on a miss; prefer --coordinates when known.",
+            file=sys.stderr,
+        )
         params = [
-            bigquery.ScalarQueryParameter("id", "STRING", args.observation_id),
+            bigquery.ScalarQueryParameter("id", "STRING", target_id),
             bigquery.ScalarQueryParameter("radius_m", "FLOAT64", args.radius_m),
         ]
         rows = run_query(bq, render_sql(ID_SQL, project, args.dataset), params)
         if not rows:
-            raise ValueError(f"no pano observation found for {args.observation_id}")
-        # An observation or pano id names its row; a capture id is resolved by the location
-        # of the matched row (hit_lat/hit_lng), i.e. the pano at distance 0.
+            raise ValueError(
+                f"no pano observation found for {target_id} (note: a miss still billed ~1.40 GB; consider --coordinates)"
+            )
         near = min(
             rows,
             key=lambda r: (
-                args.observation_id not in (r["observation_id"], r["pano_id"]),
+                target_id not in (r["observation_id"], r["pano_id"]),
                 _dist_m(r["hit_lat"], r["hit_lng"], r["lat"], r["lng"]),
             ),
         )
