@@ -590,3 +590,152 @@ def frame_edge_theta_deg(intr: Intrinsics) -> float:
     lim = _theta_d_limit(intr.k1, intr.k2, intr.k3, intr.k4, 110.0)
     theta = _theta_from_theta_d(intr, np.array([min(r_d, lim)]))
     return float(np.degrees(theta[0]))
+
+
+# --------------------------------------------------------------------------- field of view
+
+
+def _invertible_theta_deg(intr: Intrinsics, search_deg: float = 110.0) -> float:
+    """Largest incidence angle (deg) up to which the KB4 polynomial is monotonic."""
+    lim = _theta_d_limit(intr.k1, intr.k2, intr.k3, intr.k4, search_deg)
+    return float(np.degrees(_theta_from_theta_d(intr, np.array([lim]))[0]))
+
+
+def sensor_edge_theta_deg(intr: Intrinsics) -> dict[str, float]:
+    """Incidence angle (deg) at the midpoint of each sensor edge, capped by `max_theta_deg`
+    and by the KB4 invertibility limit.
+
+    The principal point is not centred, so the left and right limits differ: a view turned
+    towards the nearer edge runs out of sensor sooner. Use these (or `max_view_fov`) instead
+    of a single symmetric half-FOV."""
+    cap = min(intr.max_theta_deg, _invertible_theta_deg(intr))
+    lim = _theta_d_limit(intr.k1, intr.k2, intr.k3, intr.k4, 110.0)
+    mids = {
+        "left": (0.0, intr.cy),
+        "right": (intr.width - 1.0, intr.cy),
+        "top": (intr.cx, 0.0),
+        "bottom": (intr.cx, intr.height - 1.0),
+    }
+    out = {}
+    for side, (u, v) in mids.items():
+        r_d = math.hypot((u - intr.cx) / intr.fx, (v - intr.cy) / intr.fy)
+        theta = _theta_from_theta_d(intr, np.array([min(r_d, lim)]))[0]
+        out[side] = float(min(cap, math.degrees(theta)))
+    return out
+
+
+def _view_grid(view: PerspectiveView, step: int):
+    us = np.minimum(np.arange(0, view.width, step, dtype=np.float64) + (step - 1) / 2.0,
+                    view.width - 1)  # fmt: skip
+    vs = np.minimum(np.arange(0, view.height, step, dtype=np.float64) + (step - 1) / 2.0,
+                    view.height - 1)  # fmt: skip
+    return np.meshgrid(us, vs)
+
+
+def view_black_fraction(
+    intr: Intrinsics,
+    pose: Mapping[str, Any],
+    view: PerspectiveView,
+    cam_k: int | None = None,
+    step: int = 4,
+) -> float:
+    """Analytic share of `view` pixels that `render_perspective` leaves black: rays beyond
+    `max_theta_deg` (or the KB4 invertibility limit) or that land outside the sensor.
+    Evaluated on a `step`-pixel grid of the view; no image needed."""
+    u, v = _view_grid(view, max(1, int(step)))
+    d_cam = view.pixel_dirs(u, v) @ pose_rotation(intr, pose, cam_k)
+    theta = np.degrees(np.arccos(np.clip(d_cam[..., 2], -1.0, 1.0)))
+    uv = project(intr, d_cam)
+    cap = min(intr.max_theta_deg, _invertible_theta_deg(intr))
+    bad = (
+        (theta > cap)
+        | (uv[..., 0] < 0)
+        | (uv[..., 0] > intr.width - 1)
+        | (uv[..., 1] < 0)
+        | (uv[..., 1] > intr.height - 1)
+    )
+    return float(np.mean(bad))
+
+
+def vfov_for(hfov_deg: float, aspect: float) -> float:
+    """Vertical FOV (deg) of a pinhole view with horizontal FOV `hfov_deg`, aspect = w / h."""
+    return float(np.degrees(2 * math.atan(math.tan(math.radians(hfov_deg) / 2) / aspect)))
+
+
+FOV_EVAL_WIDTH = 96  # grid used by max_view_fov (the black fraction is resolution-independent)
+FOV_SAFETY = 0.8  # aim below max_black so a full-resolution render stays under it
+
+
+def max_view_fov(
+    intr: Intrinsics,
+    pose: Mapping[str, Any],
+    cam_k: int | None,
+    yaw_deg: float,
+    pitch_deg: float,
+    aspect: float,
+    max_black: float = 0.01,
+    hfov_cap: float = 90.0,
+    min_hfov: float = 1.0,
+    iters: int = 12,
+) -> tuple[float, float]:
+    """Widest (hfov, vfov) of a view centred at (yaw, pitch) whose black share is below
+    `max_black`, found by bisection on the analytic `view_black_fraction`.
+
+    Returns (0.0, 0.0) if even `min_hfov` is not valid (the target is outside this camera)."""
+    w = FOV_EVAL_WIDTH
+    h = max(8, int(round(w / aspect)))
+    target = max_black * FOV_SAFETY
+
+    def black(hfov: float) -> float:
+        view = PerspectiveView(float(yaw_deg), float(pitch_deg), float(hfov), w, h)
+        return view_black_fraction(intr, pose, view, cam_k, step=1)
+
+    if black(hfov_cap) <= target:
+        return float(hfov_cap), vfov_for(hfov_cap, aspect)
+    if black(min_hfov) > target:
+        return 0.0, 0.0
+    lo, hi = float(min_hfov), float(hfov_cap)
+    for _ in range(iters):
+        mid = 0.5 * (lo + hi)
+        if black(mid) <= target:
+            lo = mid
+        else:
+            hi = mid
+    return lo, vfov_for(lo, aspect)
+
+
+@dataclasses.dataclass(frozen=True)
+class CameraChoice:
+    row: Any
+    cam_k: int
+    hfov_deg: float
+    vfov_deg: float
+
+
+def best_camera_for_view(
+    pano_rows: Sequence[Any],
+    intr: Intrinsics,
+    yaw_deg: float,
+    pitch_deg: float,
+    aspect: float,
+    min_hfov: float,
+    max_black: float = 0.01,
+    hfov_cap: float = 90.0,
+) -> CameraChoice | None:
+    """The ground camera of one pano that can render the widest valid view at (yaw, pitch).
+
+    Every ground camera is checked with `max_view_fov`, so a target near the seam between two
+    cameras is rendered from whichever camera actually covers it. None if no camera reaches
+    `min_hfov`."""
+    best: CameraChoice | None = None
+    for row in pano_rows:
+        k = camera_index(_row_get(row, "observation_id"))
+        if k is None or not is_ground_camera(k):
+            continue
+        hfov, vfov = max_view_fov(
+            intr, _row_get(row, "camera_pose"), k, yaw_deg, pitch_deg, aspect,
+            max_black=max_black, hfov_cap=hfov_cap,
+        )  # fmt: skip
+        if hfov >= min_hfov and (best is None or hfov > best.hfov_deg):
+            best = CameraChoice(row, k, hfov, vfov)
+    return best

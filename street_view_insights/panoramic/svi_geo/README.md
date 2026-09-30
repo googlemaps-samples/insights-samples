@@ -47,9 +47,12 @@ no training panorama shares a drive with a held-out one.
 k = (0.0322, −0.0368, −0.0282, 0). The rosette radius is 0.084 m, measured
 from `camera_pose`.
 
-**`max_theta` (deviation).** The fit gave `max_theta` = 48.9°. After the fit
-it was raised to the frame-edge angle, 58.2°, so that renders cover the whole
-frame (see the JSON `notes`).
+**`max_theta` (deviation).** In the fit, the 99.5th-percentile feature angle
+was 48.9°. `max_theta` was then set to the frame-edge angle, 58.2°, so that
+renders cover the whole frame (see the JSON `notes`). Neither number is a safe
+crop cone: the horizontal sensor edges are at 38.1° (left) and 34.9° (right).
+Size views with `rosette.max_view_fov` / `rosette.best_camera_for_view`, which
+check each side of the sensor.
 
 Held-out metrics:
 

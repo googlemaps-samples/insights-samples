@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 import cv2
 import numpy as np
 
-from svi_geo import geo, rosette
+from svi_geo import rosette
 
 
 @dataclasses.dataclass
@@ -19,6 +19,9 @@ class RoofValidationResult:
     corner_foldover_rate: float
 
 
+MIN_ROOF_HFOV_DEG = 8.0  # narrower views carry too little context to trace a roof
+
+
 def render_roof_view(
     image: np.ndarray,
     intr: rosette.Intrinsics,
@@ -29,30 +32,37 @@ def render_roof_view(
     hfov_deg: float = 65.0,
     width: int = 1200,
     height: int = 900,
-) -> tuple[np.ndarray, rosette.PerspectiveView]:
-    heading = rosette._pose_get(camera_pose, "heading")
-    if (
-        intr is not None
-        and getattr(intr, "cam_rot_delta_deg", None)
-        and cam_k in intr.cam_rot_delta_deg
-    ):
-        heading += intr.cam_rot_delta_deg[cam_k][0]
+    max_black: float = 0.01,
+) -> tuple[np.ndarray, rosette.PerspectiveView, float]:
+    """Render a pinhole view towards `target_bearing_deg` from one rosette frame.
 
-    off_axis = abs(float(geo.angdiff(heading, target_bearing_deg)))
+    The requested `hfov_deg` is narrowed with `rosette.max_view_fov` so that less than
+    `max_black` of the view falls outside the sensor or the lens model (the limit is
+    per side, not a symmetric half-FOV). Returns (image, view, black_fraction), the black
+    fraction being the analytic share of view pixels without image data.
 
-    max_hfov = 2.0 * (48.9 - off_axis)
-    clamped_hfov = max(min(hfov_deg, max_hfov), 10.0)
-
+    Raises ValueError if this camera cannot show even a `MIN_ROOF_HFOV_DEG` view of the
+    target; use `rosette.best_camera_for_view` to pick the camera first."""
+    max_hfov, _ = rosette.max_view_fov(
+        intr, camera_pose, cam_k, target_bearing_deg, pitch_deg, width / height,
+        max_black=max_black, hfov_cap=max(hfov_deg, MIN_ROOF_HFOV_DEG),
+    )  # fmt: skip
+    if max_hfov < MIN_ROOF_HFOV_DEG:
+        raise ValueError(
+            f"camera {cam_k} cannot render a {MIN_ROOF_HFOV_DEG} deg view at bearing "
+            f"{target_bearing_deg:.1f}, pitch {pitch_deg:.1f}; choose another camera"
+        )
     view = rosette.PerspectiveView(
         width=width,
         height=height,
-        hfov_deg=clamped_hfov,
+        hfov_deg=min(hfov_deg, max_hfov),
         yaw_deg=target_bearing_deg,
         pitch_deg=pitch_deg,
         roll_deg=0.0,
     )
     rendered = rosette.render_perspective(image, intr, camera_pose, view, cam_k=cam_k)
-    return rendered, view
+    black = rosette.view_black_fraction(intr, camera_pose, view, cam_k, step=4)
+    return rendered, view, black
 
 
 def point_line_dist(pt, p1, p2):
