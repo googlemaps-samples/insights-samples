@@ -235,3 +235,81 @@ def test_ghost_conf_is_a_parameter_for_same_key_ghosts():
     kept = ent.cluster([*obs, weak], REF, cam_height_m=CAM_H, ghost_conf=0.0)
     assert len(kept) == len(default) + 1
     assert any("weak" in e.obs_ids and e.method != "triangulated" for e in kept)
+
+
+# ----------------------------------------------------------------------------- round 2 (F2)
+
+
+def _observe_extended(facades, panos, sigma_deg=1.0, seed=0, max_range=40.0, min_visible=1.0):
+    """Houses as facades parallel to the street (x = const, y0..y1), not points. A detector's
+    box spans the visible part of the facade, so each ray points at the angular midpoint of
+    that part and the box bottom at the ground under that direction. With `min_visible` < 1
+    each view sees a random sub-interval (trees, parked vehicles, the image border) of at
+    least that share of the facade, so the rays of one house do not meet in one point."""
+    rng = np.random.default_rng(seed)
+    obs, truth = [], {}
+    for pid, c in panos:
+        for oi, (x, fy0, fy1) in enumerate(facades):
+            vis = rng.uniform(min_visible, 1.0) * (fy1 - fy0)
+            y0 = fy0 + rng.uniform(0.0, (fy1 - fy0) - vis)
+            y1 = y0 + vis
+            az0 = math.degrees(math.atan2(x - c[0], y0 - c[1]))
+            az1 = math.degrees(math.atan2(x - c[0], y1 - c[1]))
+            az = (az0 + az1) / 2
+            # facade point in that direction (x fixed), and its ground range
+            t = (x - c[0]) / math.sin(math.radians(az))
+            if t < 3 or t > max_range:
+                continue
+            el_b = -math.degrees(math.atan2(c[2], t))
+            az += rng.normal(0, sigma_deg)
+            el_b += rng.normal(0, sigma_deg)
+            oid = f"{pid}_{oi}"
+            obs.append(ent.Observation(oid, pid, "HOUSE", tri.Ray(c, az, el_b), 0.9,
+                                       el_bottom_deg=el_b))  # fmt: skip
+            truth[oid] = oi
+    return obs, truth
+
+
+def test_extended_houses_are_triangulated_despite_facade_misfit():
+    """Two 10 m facades 10 m apart, each view seeing a random 40-100 % of each facade.
+
+    Measured: 19 of 20 seeds give exactly two pure triangulated houses. In the other seed
+    (seed 2) three rays of each house cross in the front yard (rms 1.7 m) and form one
+    mixed triangulation; the angles alone cannot reject it, whatever the RMS limit (probed
+    with 3, 5, 6 and 7 m). The test pins that rate instead of hiding the failure."""
+    facades = [(14.0, 5.0, 15.0), (14.0, 25.0, 35.0)]
+    exact, failures = 0, []
+    for seed in range(20):
+        panos = [(f"P{i}", np.array([0.0, 8.0 * i, CAM_H])) for i in range(6)]
+        obs, truth = _observe_extended(facades, panos, seed=seed, min_visible=0.4)
+        out = ent.cluster(obs, REF, cam_height_m=CAM_H)
+        tri_h = [e for e in out if e.method == "triangulated"]
+        ok = len(tri_h) == 2 and len(out) == 2 and _purity(out, truth) == 1.0
+        for e in tri_h if ok else []:
+            x, y0, y1 = facades[truth[e.obs_ids[0]]]
+            ok = ok and abs(e.point_enu[1] - (y0 + y1) / 2) < 5.0  # within the facade
+        exact += ok
+        if not ok:
+            failures.append((seed, [(e.method, e.n_panos, round(e.rms_m, 1)) for e in out]))
+    assert exact >= 19, failures
+
+
+def test_max_triangulation_rms_is_separate_from_eps():
+    assert ent.MAX_TRIANGULATION_RMS_M["HOUSE"] > ent.CLUSTER_EPS["HOUSE"]
+    assert ent.MAX_TRIANGULATION_RMS_M["POST_GROUP"] == ent.CLUSTER_EPS["POST_GROUP"]
+
+
+@pytest.mark.parametrize(("range_m", "located"), [(20.0, True), (29.0, True), (45.0, False)])
+def test_single_view_house_is_only_placed_within_the_house_range_cap(range_m, located):
+    el_b = -math.degrees(math.atan2(CAM_H, range_m))
+    (e,) = ent.cluster([_single_house(el_b)], REF, cam_height_m=CAM_H)
+    assert e.located is located
+    assert e.method == ("single_view_ground_contact" if located else "unlocated")
+
+
+def test_single_view_pole_keeps_the_longer_range_cap():
+    c = np.array([0.0, 0.0, CAM_H])
+    el_b = -math.degrees(math.atan2(CAM_H, 45.0))
+    o = ent.Observation("p", "P0", "UTILITY_POLE", tri.Ray(c, 90.0, el_b), 0.8, el_bottom_deg=el_b)
+    (e,) = ent.cluster([o], REF, cam_height_m=CAM_H)
+    assert e.method == "single_view_ground_contact"

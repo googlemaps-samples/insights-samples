@@ -58,11 +58,20 @@ GROUND_CONTACT = {"UTILITY_POLE", "ROAD_SIGN", "STREET_LIGHT", "FIRE_HYDRANT", "
 # only; their rays are not elevation-gated during clustering.
 SINGLE_VIEW_RANGE = GROUND_CONTACT | {"HOUSE", "BUILDING"}
 MAX_SINGLE_VIEW_RANGE_M = 60.0
-# Clustering eps (m) per cluster key: post-like classes share the key POST_GROUP. eps is
-# also the max triangulation RMS, so for buildings it must stay below the spacing of
-# neighbouring houses: at 8 m, rays of two houses 20 m apart (1 deg noise) formed ghost
-# centres in 18/20 synthetic trials, at 5 m in 0/20 (tests/test_entities.py).
+# A single-view range r = h / tan(-el) moves by about r^2 / h per radian of box-bottom error:
+# with the camera 2.5 m up that is 6 m/deg at 30 m but 19 m/deg at 52 m. A house box bottom
+# is a soft edge (lawn, hedges, shadow), so houses and buildings are placed from one view
+# only within 30 m; farther ones are reported as unlocated.
+MAX_SINGLE_VIEW_RANGE_BY_CLASS = {"HOUSE": 30.0, "BUILDING": 30.0}
+# Clustering eps (m) per cluster key: post-like classes share the key POST_GROUP. eps is the
+# DBSCAN radius for pair votes and the merge distance; it stays below the spacing of
+# neighbouring houses (tests/test_entities.py: two houses 20 m apart).
 CLUSTER_EPS = {"POST_GROUP": 3.0, "GATE": 3.0, "HOUSE": 5.0, "BUILDING": 5.0}
+# Max RMS (m) of a triangulation, separate from eps: a house or building is an extended
+# object whose box centre moves along the facade with the viewing angle and with partial
+# occlusion, so its rays miss a common point by up to about half its width (SIZE_M / 2 + 1 m
+# of noise). Point-like classes keep RMS = eps.
+MAX_TRIANGULATION_RMS_M = {"POST_GROUP": 3.0, "GATE": 3.0, "HOUSE": 6.0, "BUILDING": 7.0}
 GHOST_CONF = 0.65  # single-view detections below this confidence near a same-key entity
 # Physical extent that widens the angular gate (box reference points move across views).
 SIZE_M = {"HOUSE": 10.0, "BUILDING": 12.0, "ROAD_SIGN": 0.8, "GATE": 3.0}
@@ -147,7 +156,7 @@ def _single_view_range(o: Observation, cam_height_m: float) -> float | None:
     if o.cls not in SINGLE_VIEW_RANGE or o.el_bottom_deg is None:
         return None
     r = tri.single_view_range(o.el_bottom_deg, cam_height_m)
-    if r is None or r > MAX_SINGLE_VIEW_RANGE_M:
+    if r is None or r > MAX_SINGLE_VIEW_RANGE_BY_CLASS.get(o.cls, MAX_SINGLE_VIEW_RANGE_M):
         return None
     return r
 
@@ -265,7 +274,9 @@ def _ground(centre: np.ndarray, obs: Sequence[Observation], cam_height_m: float)
     return centre
 
 
-def _cluster_class(obs, eps, cam_height_m, max_range_m, sigma_deg, gate=3.0, rounds=3):
+def _cluster_class(obs, eps, cam_height_m, max_range_m, sigma_deg, gate=3.0, rounds=3,
+                   max_rms=None):  # fmt: skip
+    max_rms = eps if max_rms is None else max_rms
     free = set(range(len(obs)))
     accepted: list[tuple[np.ndarray, list[int], float]] = []
     for _ in range(rounds):
@@ -288,14 +299,14 @@ def _cluster_class(obs, eps, cam_height_m, max_range_m, sigma_deg, gate=3.0, rou
             idx = _gate_pick(obs, free, centre, 2 * gate, sigma_deg, max_range_m, cam_height_m)
             if len({obs[i].pano_id for i in idx}) < 2:
                 continue
-            res = _refine(obs, idx, max_range_m, eps, cam_height_m)
+            res = _refine(obs, idx, max_range_m, max_rms, cam_height_m)
             if not res.ok:
                 continue
             # re-gate tightly around the refined point and refine once more
             idx2 = _gate_pick(obs, free, res.point, gate, sigma_deg, max_range_m, cam_height_m)
             if len({obs[i].pano_id for i in idx2}) < 2:
                 continue
-            res2 = _refine(obs, idx2, max_range_m, eps, cam_height_m)
+            res2 = _refine(obs, idx2, max_range_m, max_rms, cam_height_m)
             if not res2.ok:
                 continue
             accepted.append((res2.point, idx2, res2.rms_m))
@@ -327,7 +338,7 @@ def _cluster_class(obs, eps, cam_height_m, max_range_m, sigma_deg, gate=3.0, rou
     for c, (_pt, idx0, _rms0) in enumerate(accepted):
         idx = sorted(assign.get(c, []))
         if len({obs[i].pano_id for i in idx}) >= 2:
-            res = _refine(obs, idx, max_range_m, eps, cam_height_m)
+            res = _refine(obs, idx, max_range_m, max_rms, cam_height_m)
             if res.ok:
                 refined.append((res.point, idx, res.rms_m))
                 continue
@@ -335,17 +346,17 @@ def _cluster_class(obs, eps, cam_height_m, max_range_m, sigma_deg, gate=3.0, rou
         taken = {i for cc, ii in assign.items() if cc != c for i in ii}
         keep = [i for i in idx0 if i not in taken]
         if len({obs[i].pano_id for i in keep}) >= 2:
-            res = _refine(obs, keep, max_range_m, eps, cam_height_m)
+            res = _refine(obs, keep, max_range_m, max_rms, cam_height_m)
             if res.ok:
                 refined.append((res.point, keep, res.rms_m))
         # otherwise the centre is dropped and its rays return to the leftovers
-    refined = _merge_split(obs, refined, eps, cam_height_m, max_range_m, sigma_deg, gate)
-    refined = _dissolve_ghosts(obs, refined, eps, cam_height_m, max_range_m, sigma_deg, gate)
+    refined = _merge_split(obs, refined, eps, cam_height_m, max_range_m, sigma_deg, gate, max_rms)
+    refined = _dissolve_ghosts(obs, refined, max_rms, cam_height_m, max_range_m, sigma_deg, gate)
     used = {i for _, idx, _ in refined for i in idx}
     return refined, sorted(set(range(len(obs))) - used)
 
 
-def _dissolve_ghosts(obs, groups, eps, cam_height_m, max_range_m, sigma_deg, gate):
+def _dissolve_ghosts(obs, groups, max_rms, cam_height_m, max_range_m, sigma_deg, gate):
     """Remove ghost centres: intersections of rays that belong to different real objects.
 
     A weakly supported centre is a ghost when all but at most one of its rays also fit a
@@ -379,7 +390,7 @@ def _dissolve_ghosts(obs, groups, eps, cam_height_m, max_range_m, sigma_deg, gat
                 groups[h][1].append(i)
             for h in set(moves.values()):
                 idx = sorted(groups[h][1])
-                res = _refine(obs, idx, max_range_m, eps, cam_height_m)
+                res = _refine(obs, idx, max_range_m, max_rms, cam_height_m)
                 groups[h] = (
                     (res.point, idx, res.rms_m) if res.ok else (groups[h][0], idx, groups[h][2])
                 )
@@ -389,7 +400,8 @@ def _dissolve_ghosts(obs, groups, eps, cam_height_m, max_range_m, sigma_deg, gat
     return groups
 
 
-def _merge_split(obs, groups, eps, cam_height_m, max_range_m, sigma_deg, gate):
+def _merge_split(obs, groups, eps, cam_height_m, max_range_m, sigma_deg, gate, max_rms=None):
+    max_rms = eps if max_rms is None else max_rms
     """Merge triangulated centres that are one object split across disjoint pano sets.
 
     With many near-collinear panos, noisy pair votes spread along the viewing direction and
@@ -410,7 +422,7 @@ def _merge_split(obs, groups, eps, cam_height_m, max_range_m, sigma_deg, gate):
                 if pa & {obs[i].pano_id for i in groups[b][1]}:
                     continue
                 idx = sorted(groups[a][1] + groups[b][1])
-                res = _refine(obs, idx, max_range_m, eps, cam_height_m)
+                res = _refine(obs, idx, max_range_m, max_rms, cam_height_m)
                 if not res.ok:
                     continue
                 costs = [
@@ -433,16 +445,21 @@ def cluster(
     merge_single_view: bool = True,
     bearing_sigma_deg: float = 1.0,
     ghost_conf: float = GHOST_CONF,
+    max_rms_by_class: Mapping[str, float] | None = None,
 ) -> list[Entity]:
     """Deduplicate observations into entities (see module docstring). ENU is relative to ref.
 
     `eps_by_class` overrides `CLUSTER_EPS` and is keyed by cluster key (POST_GROUP, GATE,
     HOUSE, BUILDING); any other key raises ValueError. A single-view detection with
     confidence below `ghost_conf` within eps of a triangulated entity of the same cluster
-    key is dropped as a ghost. Single views without a usable ground contact are returned
-    with method "unlocated" and NaN position (see `located_entities`)."""
+    key is dropped as a ghost. Single views without a usable ground contact (or, for houses
+    and buildings, farther than `MAX_SINGLE_VIEW_RANGE_BY_CLASS`) are returned with method
+    "unlocated" and NaN position (see `located_entities`). `max_rms_by_class` overrides
+    `MAX_TRIANGULATION_RMS_M` (same keys as `eps_by_class`)."""
     _check_eps_keys(eps_by_class or {})
+    _check_eps_keys(max_rms_by_class or {})
     eps_map = {**CLUSTER_EPS, **(eps_by_class or {})}
+    rms_map = {**MAX_TRIANGULATION_RMS_M, **(max_rms_by_class or {})}
     # deterministic processing order regardless of input order
     obs_all = sorted(observations, key=lambda o: o.obs_id)
     out: list[Entity] = []
@@ -452,7 +469,10 @@ def cluster(
     for cls in sorted(by_cls):
         obs = by_cls[cls]
         eps = eps_map.get(cls, DEFAULT_EPS)
-        accepted, leftovers = _cluster_class(obs, eps, cam_height_m, max_range_m, bearing_sigma_deg)
+        max_rms = rms_map.get(cls, eps)
+        accepted, leftovers = _cluster_class(
+            obs, eps, cam_height_m, max_range_m, bearing_sigma_deg, max_rms=max_rms
+        )
         groups = [(pt, list(idx), rms, "triangulated", math.nan) for pt, idx, rms in accepted]
         n_tri = len(groups)
         for i in leftovers:

@@ -223,6 +223,13 @@ def test_uc2_uses_default_eps_merges_single_views_and_maps_located_only():
     assert "range_m" in code  # single-view range provenance on the map
 
 
+def test_uc2_counts_unlocated_detections_separately_from_entities():
+    code = _code(_uc2())
+    assert "{len(entities)} entities" not in code  # unlocated are not entities on the map
+    assert 'print(f"located_entities={len(located)} unlocated_detections={len(unlocated)}' in code
+    assert "houses_located=" in code and "houses_unlocated=" in code
+
+
 def test_uc2_self_check_is_labelled_consistency_with_bound_and_black_fraction():
     nb = _uc2()
     md = "\n".join(c.source for c in nb.cells if c.cell_type == "markdown").lower()
