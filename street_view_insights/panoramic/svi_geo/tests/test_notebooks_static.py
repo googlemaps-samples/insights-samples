@@ -261,6 +261,12 @@ def test_uc3_absent_state_gap_breaks_and_travel_centred_views():
     assert "black_fraction_max" in code
 
 
+def test_uc3_reports_black_fraction_of_the_cropped_images_sent_to_gemini():
+    code = _code(_uc3())
+    assert "rv.black_sent" in code and "blacks.append(rv.black)" not in code
+    assert "sent_zero_pixel_max=" in code  # measured on the images actually sent
+
+
 def test_uc3_reports_smoothing_effect_not_flicker_as_quality():
     nb = _uc3()
     code = _code(nb)

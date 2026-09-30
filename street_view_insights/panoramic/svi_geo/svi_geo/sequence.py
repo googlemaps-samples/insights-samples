@@ -181,6 +181,7 @@ class RoadView:
     keep_rows: int  # rows above the vehicle hood; the rest is cropped after rendering
     rows: tuple = ()  # the frames the view is rendered from (2 when composited on a seam)
     black: float = math.nan  # analytic share of view pixels without image data
+    black_sent: float = math.nan  # the same share in the hood-cropped image sent to Gemini
 
 
 def road_view(
@@ -216,8 +217,10 @@ def road_view(
     if choice is not None:
         view = rosette.PerspectiveView(yaw, float(pitch_deg), choice.hfov_deg, w, h)
         keep = rosette.hood_row(view, _pose(choice.row), intr, hood_elev_deg, choice.cam_k)
-        black = rosette.view_black_fraction(intr, _pose(choice.row), view, choice.cam_k)
-        return RoadView(choice, view, keep, (choice.row,), black)
+        pose = _pose(choice.row)
+        black = rosette.view_black_fraction(intr, pose, view, choice.cam_k)
+        sent = rosette.view_black_fraction(intr, pose, view, choice.cam_k, max_row=keep)
+        return RoadView(choice, view, keep, (choice.row,), black, sent)
     hfov, vfov = rosette.max_view_fov_multi(
         intr, pano_rows, yaw, pitch_deg, w / h, max_black=max_black, hfov_cap=hfov_deg,
         min_hfov=min_hfov_deg,
@@ -235,7 +238,8 @@ def road_view(
     keep = min(rosette.hood_row(view, _pose(r), intr, hood_elev_deg, k)
                for r, k in zip(used, ks, strict=True))  # fmt: skip
     black = rosette.view_black_fraction_multi(intr, used, view)
-    return RoadView(choice, view, keep, used, black)
+    sent = rosette.view_black_fraction_multi(intr, used, view, max_row=keep)
+    return RoadView(choice, view, keep, used, black, sent)
 
 
 def _axis_heading(intr: rosette.Intrinsics, row: Any, k: int) -> float:

@@ -253,3 +253,22 @@ def test_road_view_uses_one_camera_when_one_covers_the_view():
     assert rv.black == pytest.approx(
         rosette.view_black_fraction(NARROW, rv.choice.row["camera_pose"], rv.view, rv.choice.cam_k)
     )
+
+
+# ----------------------------------------------------------------------------- F5
+@pytest.mark.parametrize(("offset", "n_rows"), [(30.0, 2), (0.0, 1)], ids=["seam", "single"])
+def test_black_sent_is_the_black_share_of_the_cropped_image(offset, n_rows):
+    travel = 80.0
+    rv = sequence.road_view(_rows(travel + offset), NARROW, travel, "front", pitch_deg=-22.0,
+                            hood_elev_deg=-32.0)  # fmt: skip
+    assert len(rv.rows) == n_rows and 0 < rv.keep_rows < rv.view.height
+    full = np.full((NARROW.height, NARROW.width, 3), 200, np.uint8)
+    out = sequence.render_road_view({int(r["cam_k"]): full for r in rv.rows}, NARROW, rv)
+    measured = float(np.mean(out.max(axis=2) == 0))
+    assert rv.black_sent == pytest.approx(measured, abs=0.005)
+    if n_rows == 2:
+        expect = rosette.view_black_fraction_multi(NARROW, rv.rows, rv.view, max_row=rv.keep_rows)
+    else:
+        expect = rosette.view_black_fraction(NARROW, rv.choice.row["camera_pose"], rv.view,
+                                             rv.choice.cam_k, max_row=rv.keep_rows)  # fmt: skip
+    assert rv.black_sent == pytest.approx(expect)

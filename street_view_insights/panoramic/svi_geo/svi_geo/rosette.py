@@ -624,11 +624,12 @@ def sensor_edge_theta_deg(intr: Intrinsics) -> dict[str, float]:
     return out
 
 
-def _view_grid(view: PerspectiveView, step: int):
+def _view_grid(view: PerspectiveView, step: int, max_row: int | None = None):
+    h = view.height if max_row is None else max(1, min(int(max_row), view.height))
     us = np.minimum(np.arange(0, view.width, step, dtype=np.float64) + (step - 1) / 2.0,
                     view.width - 1)  # fmt: skip
-    vs = np.minimum(np.arange(0, view.height, step, dtype=np.float64) + (step - 1) / 2.0,
-                    view.height - 1)  # fmt: skip
+    vs = np.minimum(np.arange(0, h, step, dtype=np.float64) + (step - 1) / 2.0,
+                    h - 1)  # fmt: skip
     return np.meshgrid(us, vs)
 
 
@@ -638,11 +639,16 @@ def view_black_fraction(
     view: PerspectiveView,
     cam_k: int | None = None,
     step: int = 4,
+    max_row: int | None = None,
 ) -> float:
     """Analytic share of `view` pixels that `render_perspective` leaves black: rays beyond
     `max_theta_deg` (or the KB4 invertibility limit) or that land outside the sensor.
-    Evaluated on a `step`-pixel grid of the view; no image needed."""
-    u, v = _view_grid(view, max(1, int(step)))
+    Evaluated on a `step`-pixel grid of the view (rows above `max_row` only, i.e. the image
+    that remains after cropping to `[:max_row]`); no image needed.
+
+    This is sensor coverage only: it does not count pixels the dataset itself redacted
+    (black privacy blobs inside the frame), which are image content."""
+    u, v = _view_grid(view, max(1, int(step)), max_row)
     theta, ok = _coverage(intr, pose, view, cam_k, u, v)
     return float(np.mean(~ok))
 
@@ -808,10 +814,15 @@ def _owners(intr: Intrinsics, rows: Sequence[Any], view: PerspectiveView, u, v):
 
 
 def view_black_fraction_multi(
-    intr: Intrinsics, rows: Sequence[Any], view: PerspectiveView, step: int = 4
+    intr: Intrinsics,
+    rows: Sequence[Any],
+    view: PerspectiveView,
+    step: int = 4,
+    max_row: int | None = None,
 ) -> float:
-    """Share of `view` pixels that no ground camera in `rows` covers (black when composited)."""
-    u, v = _view_grid(view, max(1, int(step)))
+    """Share of `view` pixels (rows above `max_row` when given) that no ground camera in
+    `rows` covers (black when composited). Sensor coverage only, like `view_black_fraction`."""
+    u, v = _view_grid(view, max(1, int(step)), max_row)
     _, owner = _owners(intr, rows, view, u, v)
     return float(np.mean(owner < 0))
 
