@@ -780,8 +780,9 @@ def hood_row(
 # --------------------------------------------------------------------------- multi-camera views
 # A view centred on the seam between two cameras (on the real rosette the travel direction is
 # such a seam) is composited: every view pixel is taken from the covering camera whose optical
-# axis is nearest to it. The camera centres are a few centimetres apart, so objects very close
-# to the vehicle can show a small step at the seam; the road and sidewalk surfaces do not.
+# axis is nearest to it. Adjacent camera centres are about 8 cm apart (rosette radius 0.084 m),
+# so objects very close to the vehicle can show a small step at the seam; at road-view
+# distances the parallax is a few pixels.
 
 
 def _ground_rows(rows: Sequence[Any]) -> list[tuple[Any, int]]:
