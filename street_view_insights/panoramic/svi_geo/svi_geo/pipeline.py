@@ -44,15 +44,23 @@ def views_for_pano(
     intr: rosette.Intrinsics,
     hfov_deg: float = VIEW_HFOV_DEG,
     size: tuple[int, int] = VIEW_SIZE,
+    *,
+    yaw_delta_deg: float = 0.0,
+    hfov_scale: float = 1.0,
 ) -> list[ViewSpec]:
     """One level view per ground camera, centred on the camera's (calibrated) heading."""
     out = []
+    eff_hfov = float(np.clip(hfov_deg * hfov_scale, 20.0, 110.0))
     for r in sorted(rows, key=lambda r: int(r["cam_k"])):
         k = int(r["cam_k"])
         if not rosette.is_ground_camera(k):
             continue
-        yaw = float(r["camera_pose"]["heading"]) + intr.cam_rot_delta_deg.get(k, (0.0,))[0]
-        view = rosette.PerspectiveView(yaw % 360.0, 0.0, hfov_deg, size[0], size[1])
+        yaw = (
+            float(r["camera_pose"]["heading"])
+            + intr.cam_rot_delta_deg.get(k, (0.0,))[0]
+            + yaw_delta_deg
+        )
+        view = rosette.PerspectiveView(yaw % 360.0, 0.0, eff_hfov, size[0], size[1])
         out.append(
             ViewSpec(
                 r["pano_id"], k, r["observation_id"], r.get("gcs_uri", ""), r["camera_pose"], view
@@ -149,6 +157,10 @@ async def detect_panos(
     keep_images: bool = False,
     min_confidence: float = 0.3,
     raise_if_all_failed: bool = True,
+    *,
+    yaw_delta_deg: float = 0.0,
+    hfov_scale: float = 1.0,
+    seed: int | None = None,
 ) -> DetectionRun:
     """Render every ground view of every pano in code, ask Gemini for boxes, convert to rays.
 
@@ -157,16 +169,24 @@ async def detect_panos(
     specs = [
         s
         for _, g in frames.groupby("pano_id", sort=True)
-        for s in views_for_pano(g.to_dict("records"), intr)
+        for s in views_for_pano(
+            g.to_dict("records"),
+            intr,
+            yaw_delta_deg=yaw_delta_deg,
+            hfov_scale=hfov_scale,
+        )
     ]
     prompt = detection_prompt(classes)
     rendered = []
     for s in specs:
         img = images.decode(fetch(s.gcs_uri))
         rendered.append(render_view(img, intr, s))
+    ask_kw: dict[str, Any] = {"raise_if_all_failed": raise_if_all_failed}
+    if seed is not None:
+        ask_kw["seed"] = seed
     replies = await runner.ask_many(
         [([prompt, im], schemas.FrameDetections) for im in rendered],
-        raise_if_all_failed=raise_if_all_failed,
+        **ask_kw,
     )
     obs, records = [], []
     for s, im, fd in zip(specs, rendered, replies, strict=True):
