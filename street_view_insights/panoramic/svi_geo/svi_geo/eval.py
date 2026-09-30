@@ -638,9 +638,17 @@ def bootstrap_ci(
     n_boot: int = 1000,
     seed: int = 0,
     alpha: float = 0.05,
+    clusters: Mapping[str, str] | None = None,
 ) -> tuple[float, float, float]:
     """(point, lo, hi) of the ratio sum(num) / sum(den) with a percentile bootstrap that
-    resamples panos (views of one pano are correlated). NaNs when there is no data."""
+    resamples panos (or `clusters` when provided). NaNs when there is no data."""
+    if clusters is not None:
+        grouped: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
+        for k, (n_val, d_val) in per_pano.items():
+            cid = str(clusters.get(k, k))
+            grouped[cid][0] += float(n_val)
+            grouped[cid][1] += float(d_val)
+        per_pano = {cid: (v[0], v[1]) for cid, v in grouped.items()}
     keys = sorted(per_pano)
     if not keys:
         return math.nan, math.nan, math.nan
