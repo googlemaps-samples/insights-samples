@@ -150,10 +150,16 @@ def view_for(cand: Mapping[str, Any], width: int = 1024, height: int = 768):
 
 
 def rank_house_views(
-    cands: pd.DataFrame, max_per_seq: int = 3, n: int | None = None
+    cands: pd.DataFrame,
+    max_per_seq: int = 3,
+    n: int | None = None,
+    *,
+    diversify_days: bool = False,
 ) -> pd.DataFrame:
     """Candidates with a camera, ordered by `dist/dist_max + off_axis/off_max` (lower is
     better, ties by pano_id), at most `max_per_seq` per drive sequence, then the first `n`.
+    When `diversify_days=True` and a `capture_day` column is present, interleaves views
+    round-robin across capture days so multi-day passes are represented first.
 
     Always returns a DataFrame with the input columns plus `score`, even when empty."""
     cols = list(cands.columns) + (["score"] if "score" not in cands.columns else [])
@@ -166,6 +172,12 @@ def rank_house_views(
     ok = ok.sort_values(["score", "pano_id"], kind="stable")
     seq = ok["seq_id"].fillna(ok["pano_id"])
     ok = ok[seq.groupby(seq).cumcount() < max_per_seq]
+    if diversify_days and "capture_day" in ok.columns:
+        day_key = ok["capture_day"].fillna(ok["pano_id"]).astype(str)
+        ok = ok.assign(_day_round=day_key.groupby(day_key).cumcount())
+        ok = ok.sort_values(["_day_round", "score", "pano_id"], kind="stable").drop(
+            columns=["_day_round"]
+        )
     if n is not None:
         ok = ok.head(n)
     return ok.reset_index(drop=True)[cols]
@@ -197,14 +209,14 @@ def triangulate_house(
     sightings: Sequence[HouseSighting],
     max_rms_m: float = HOUSE_MAX_RMS_M,
     max_range_m: float = 100.0,
+    *,
+    use_facade_edges: bool = False,
 ) -> tuple[HouseLocation | None, str]:
     """Intersect the box-centre bearings of >= 2 panos; the id hashes the intersection.
 
-    The id is run-local: it is the 2 m grid cell of the triangulated point, so box noise
-    (about 0.5 m per degree here) can move the point into a neighbouring cell and change the
-    id on a re-run. Use `match_house_ids` to carry ids from a previous run. Returns
-    (None, "unlocated") with fewer than 2 distinct panos or when the rays do not intersect
-    cleanly (parallel, behind, misfit)."""
+    When `use_facade_edges=True`, intersects the left-edge bearings and right-edge bearings
+    across panos as well and takes the footprint midpoint when both edges converge, falling
+    back to the centre-ray intersection otherwise."""
     by_pano: dict[str, HouseSighting] = {}
     for s in sightings:
         by_pano.setdefault(s.pano_id, s)
@@ -213,11 +225,30 @@ def triangulate_house(
     first = next(iter(by_pano.values())).camera_pose
     ref = (float(first["latitude"]), float(first["longitude"]), 0.0)
     rays = []
+    left_rays = []
+    right_rays = []
     for s in by_pano.values():
         b = s.view.box_to_bearings(s.box_px)
         origin = rosette.camera_center_enu(s.camera_pose, ref)
         rays.append(tri.Ray(origin, b["az"], b["el"]))
-    hit = tri.intersect_rays(rays, max_range_m=max_range_m, max_rms_m=max_rms_m)
+        if use_facade_edges:
+            ymid = 0.5 * (float(s.box_px[1]) + float(s.box_px[3]))
+            az_l, el_l = s.view.pixel_to_bearing(float(s.box_px[0]), ymid)
+            az_r, el_r = s.view.pixel_to_bearing(float(s.box_px[2]), ymid)
+            left_rays.append(tri.Ray(origin, float(az_l), float(el_l)))
+            right_rays.append(tri.Ray(origin, float(az_r), float(el_r)))
+    eff_max_rms = (
+        max(max_rms_m, 0.5 * ent.SIZE_M.get("HOUSE", 10.0)) if use_facade_edges else max_rms_m
+    )
+    hit = tri.intersect_rays(rays, max_range_m=max_range_m, max_rms_m=eff_max_rms)
+    if use_facade_edges:
+        hit_l = tri.intersect_rays(left_rays, max_range_m=max_range_m, max_rms_m=eff_max_rms)
+        hit_r = tri.intersect_rays(right_rays, max_range_m=max_range_m, max_rms_m=eff_max_rms)
+        if hit_l.ok and hit_l.point is not None and hit_r.ok and hit_r.point is not None:
+            mid_pt = 0.5 * (hit_l.point + hit_r.point)
+            mid_rms = 0.5 * (hit_l.rms_m + hit_r.rms_m)
+            if not hit.ok or mid_rms <= hit.rms_m + 1.0:
+                hit = dataclasses.replace(hit_l, point=mid_pt, rms_m=mid_rms, ok=True)
     if not hit.ok or hit.point is None:
         return None, "unlocated"
     lat, lng, _ = geo.enu_to_lla(float(hit.point[0]), float(hit.point[1]), 0.0, *ref)

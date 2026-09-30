@@ -377,3 +377,25 @@ def test_occlusion_screen_rejects_low_sky_contact_when_min_sky_contact_set():
     img_blocked[:y0, x0:x1] = np.clip(leaves[:y0, x0:x1], 0, 255).astype(np.uint8)
     s_blocked = views.occlusion_screen(img_blocked, box, min_sky_contact=0.25)
     assert s_blocked["sky_contact"] < 0.25 and s_blocked["rejected"]
+
+
+def test_rank_house_views_diversifies_capture_days():
+    c = pd.DataFrame(
+        [
+            ("p0", "S0", 1, 12.0, 2.0, "2024-01-10"),
+            ("p1", "S1", 1, 13.0, 2.0, "2024-01-10"),
+            ("p2", "S2", 1, 14.0, 2.0, "2024-01-10"),
+            ("p3", "S3", 1, 16.0, 4.0, "2025-05-15"),
+        ],
+        columns=["pano_id", "seq_id", "cam_k", "dist_m", "off_axis_deg", "capture_day"],
+    )
+    out = views.rank_house_views(c, max_per_seq=4, n=2, diversify_days=True)
+    assert set(out["pano_id"]) == {"p0", "p3"}
+
+
+def test_triangulate_house_with_facade_edges_locates_midpoint():
+    true_ll = _house_latlng(offset_e=18.0, along_n=40.0)
+    s = _sightings(true_ll, noise_deg=0.5, n=3, seed=4)
+    loc, status = views.triangulate_house(s, use_facade_edges=True)
+    assert status == "triangulated" and loc is not None
+    assert geo.haversine_m(loc.lat, loc.lng, *true_ll) < 1.5

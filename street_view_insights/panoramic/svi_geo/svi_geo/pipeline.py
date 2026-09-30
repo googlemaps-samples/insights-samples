@@ -102,6 +102,9 @@ def detections_to_observations(
             continue
         box = schemas.box_2d_to_pixels(d.box_2d, w, h)
         b = spec.view.box_to_bearings(box)
+        ymid = 0.5 * (box[1] + box[3])
+        az_l, _ = spec.view.pixel_to_bearing(box[0], ymid)
+        az_r, _ = spec.view.pixel_to_bearing(box[2], ymid)
         truncated = box[3] >= h - 2  # bottom cut by the view border: no ground contact
         el_bottom = None if truncated else b["el_bottom"]
         el = el_bottom if (cls in ent.GROUND_CONTACT and el_bottom is not None) else b["el"]
@@ -110,7 +113,17 @@ def detections_to_observations(
                 obs_id=f"{spec.observation_id}#{i}",
                 pano_id=spec.pano_id,
                 cls=cls,
-                ray=tri.Ray(origin, b["az"], el, meta={"cam_k": spec.cam_k, "box": box}),
+                ray=tri.Ray(
+                    origin,
+                    b["az"],
+                    el,
+                    meta={
+                        "cam_k": spec.cam_k,
+                        "box": box,
+                        "az_left": float(az_l),
+                        "az_right": float(az_r),
+                    },
+                ),
                 confidence=float(d.confidence),
                 el_bottom_deg=el_bottom,
                 el_top_deg=b["el_top"],
