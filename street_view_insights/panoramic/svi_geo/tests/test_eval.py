@@ -231,3 +231,34 @@ def test_two_pass_matching_multiview_only():
     m = ev.match_passes(a, b, multi_view_only=True)
     assert m["n_a"] == 2 and m["n_b"] == 2 and m["matched"] == 2
     assert m["recall_a_in_b"] == pytest.approx(1.0)
+
+
+class UnauthorizedBackend:
+    async def generate(self, parts, schema, code_execution=False):
+        raise PermissionError("401 UNAUTHENTICATED")
+
+
+def _pole_tasks(n=3):
+    return [
+        ev.ViewTask(f"e{i}", "UTILITY_POLE", f"P{i}", 0, 10.0 * i, -5.0, 12.0, f"o{i}")
+        for i in range(n)
+    ]
+
+
+def _blank_render(task):
+    view = rosette.PerspectiveView(task.az_deg, task.el_deg, 40.0, 64, 64)
+    return np.zeros((64, 64, 3), np.uint8), view
+
+
+def test_cross_view_agreement_raises_when_every_request_fails():
+    runner = gc.GeminiRunner(UnauthorizedBackend(), max_calls=10, log=lambda *_: None)
+    with pytest.raises(gc.AllRequestsFailed, match="401"):
+        asyncio.run(ev.cross_view_agreement(_pole_tasks(), _blank_render, runner))
+
+
+def test_cross_view_agreement_can_opt_out_of_raising():
+    runner = gc.GeminiRunner(UnauthorizedBackend(), max_calls=10, log=lambda *_: None)
+    out = asyncio.run(
+        ev.cross_view_agreement(_pole_tasks(), _blank_render, runner, raise_if_all_failed=False)
+    )
+    assert out["n_asked"] == 0 and runner.cost.failures == 3

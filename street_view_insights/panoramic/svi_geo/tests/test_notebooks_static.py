@@ -127,3 +127,14 @@ def test_auth_options_are_documented(nb):
         "roles/",
     ):
         assert s in md, s
+
+
+GEMINI_CALL = re.compile(r"\b(ask_many|detect_panos|self_consistency)\(")
+
+
+def test_every_gemini_cell_checks_failures_and_asserts_results(nb):
+    cells = [c.source for c in nb.cells if c.cell_type == "code" and GEMINI_CALL.search(c.source)]
+    assert cells, "expected at least one Gemini cell"
+    for src in cells:
+        assert "runner.check(" in src, f"Gemini cell without runner.check():\n{src[:200]}"
+        assert re.search(r"\bassert (len|any)\(", src), f"Gemini cell without assert:\n{src[:200]}"

@@ -148,6 +148,7 @@ async def detect_panos(
     classes: Sequence[str] = DETECT_CLASSES,
     keep_images: bool = False,
     min_confidence: float = 0.3,
+    raise_if_all_failed: bool = True,
 ) -> DetectionRun:
     """Render every ground view of every pano in code, ask Gemini for boxes, convert to rays.
 
@@ -163,7 +164,10 @@ async def detect_panos(
     for s in specs:
         img = images.decode(fetch(s.gcs_uri))
         rendered.append(render_view(img, intr, s))
-    replies = await runner.ask_many([([prompt, im], schemas.FrameDetections) for im in rendered])
+    replies = await runner.ask_many(
+        [([prompt, im], schemas.FrameDetections) for im in rendered],
+        raise_if_all_failed=raise_if_all_failed,
+    )
     obs, records = [], []
     for s, im, fd in zip(specs, rendered, replies, strict=True):
         rec = {"spec": s, "detections": fd}

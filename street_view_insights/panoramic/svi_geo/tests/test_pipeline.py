@@ -137,3 +137,30 @@ def test_task_renderer_centres_a_small_view_on_the_predicted_bearing():
     # poles/signs are centred ~2 m above the ground point, so the view looks up from -10 deg
     assert -10.0 < view.pitch_deg < 10.0
     assert fetched == [row.gcs_uri]
+
+
+class UnauthorizedBackend:
+    async def generate(self, parts, schema, code_execution=False):
+        raise PermissionError("401 UNAUTHENTICATED")
+
+
+def _fetch_grey(uri):
+    return images.encode_jpeg(np.full((INTR.height // 8, INTR.width // 8, 3), 120, np.uint8))
+
+
+def test_detect_panos_raises_when_every_gemini_request_fails():
+    fr = _frames()
+    runner = gc.GeminiRunner(UnauthorizedBackend(), max_calls=100, log=lambda *_: None)
+    with pytest.raises(gc.AllRequestsFailed, match="401"):
+        asyncio.run(pipeline.detect_panos(fr, _fetch_grey, runner, INTR, sim.scene_ref(fr)))
+
+
+def test_detect_panos_can_opt_out_of_raising():
+    fr = _frames()
+    runner = gc.GeminiRunner(UnauthorizedBackend(), max_calls=100, log=lambda *_: None)
+    run = asyncio.run(
+        pipeline.detect_panos(
+            fr, _fetch_grey, runner, INTR, sim.scene_ref(fr), raise_if_all_failed=False
+        )
+    )
+    assert run.observations == [] and runner.cost.failures == 12

@@ -169,3 +169,109 @@ async def test_live_code_execution_with_schema():
     out = await runner.ask(["find edges", _img(200, 200)], EdgeSchema, code_execution=True)
     assert out.found is True
     assert out.edge_count == 3
+
+
+# --------------------------------------------------------------------------- loud failures
+
+
+class AlwaysRaisingBackend(FakeBackend):
+    """Every request fails, e.g. a 401 from bad credentials."""
+
+    def __init__(self, message="401 UNAUTHENTICATED: invalid credentials"):
+        super().__init__([])
+        self.message = message
+
+    async def generate(self, parts, schema, code_execution=False):
+        self.seen.append((parts, schema, code_execution))
+        raise PermissionError(f"{self.message} #{len(self.seen)}")
+
+
+def test_ask_many_raises_when_every_request_fails():
+    runner = gc.GeminiRunner(AlwaysRaisingBackend(), max_calls=10, log=None)
+    reqs = [([f"q{i}"], schemas.PresenceCheck) for i in range(3)]
+    with pytest.raises(gc.AllRequestsFailed) as info:
+        asyncio.run(runner.ask_many(reqs))
+    assert "PermissionError" in str(info.value)
+    assert "401 UNAUTHENTICATED" in str(info.value)
+    assert runner.cost.failures == 3
+
+
+def test_ask_many_can_opt_out_of_raising_when_all_fail():
+    runner = gc.GeminiRunner(AlwaysRaisingBackend(), max_calls=10, log=None)
+    out = asyncio.run(
+        runner.ask_many([(["q"], schemas.PresenceCheck)] * 2, raise_if_all_failed=False)
+    )
+    assert out == [None, None]
+    assert runner.cost.failures == 2
+
+
+def test_failure_messages_keep_the_first_five():
+    runner = gc.GeminiRunner(AlwaysRaisingBackend(), max_calls=None, log=None)
+    asyncio.run(
+        runner.ask_many(
+            [([f"q{i}"], schemas.PresenceCheck) for i in range(8)], raise_if_all_failed=False
+        )
+    )
+    assert runner.cost.failures == 8
+    assert len(runner.cost.failure_messages) == 5
+    assert all("401 UNAUTHENTICATED" in m for m in runner.cost.failure_messages)
+
+
+def test_budget_skips_are_counted_separately_from_failures():
+    runner = gc.GeminiRunner(FakeBackend([]), max_calls=2, log=None)
+    out = asyncio.run(runner.ask_many([(["q"], schemas.PresenceCheck)] * 5))
+    assert sum(o is not None for o in out) == 2
+    assert runner.cost.skipped_budget == 3
+    assert runner.cost.failures == 0
+
+
+def test_budget_skip_of_the_whole_batch_is_not_reported_as_all_failed():
+    runner = gc.GeminiRunner(FakeBackend([]), max_calls=0, log=None)
+    out = asyncio.run(runner.ask_many([(["q"], schemas.PresenceCheck)] * 2))
+    assert out == [None, None]
+    assert runner.cost.skipped_budget == 2 and runner.cost.failures == 0
+
+
+def test_schema_failure_after_reask_is_counted_and_recorded():
+    runner = gc.GeminiRunner(FakeBackend(["nope", "still nope"]), max_calls=10, log=None)
+    out = asyncio.run(runner.ask(["q"], schemas.PresenceCheck))
+    assert out is None
+    assert runner.cost.failures == 1
+    assert runner.cost.failure_messages and "schema" in runner.cost.failure_messages[0].lower()
+
+
+def test_check_raises_on_any_failure_by_default():
+    runner = gc.GeminiRunner(RaisingBackend([]), max_calls=10, concurrency=1, log=None)
+    asyncio.run(runner.ask_many([([f"q{i}"], schemas.PresenceCheck) for i in range(5)]))
+    with pytest.raises(gc.GeminiFailures) as info:
+        runner.check()
+    assert "400 INVALID_ARGUMENT" in str(info.value)
+    runner.check(max_failure_rate=0.5)  # 1 of 5 failed: within a 50% tolerance
+
+
+def test_check_passes_when_nothing_failed():
+    runner = gc.GeminiRunner(FakeBackend([]), max_calls=10, log=None)
+    asyncio.run(runner.ask_many([(["q"], schemas.PresenceCheck)] * 3))
+    runner.check()
+
+
+def test_summary_reports_failures_and_budget_skips():
+    c = gc.CostTracker()
+    c.failures, c.skipped_budget = 2, 7
+    s = c.summary()
+    assert "failures=2" in s and "skipped_budget=7" in s
+
+
+def test_prices_by_model_and_warning_fallback():
+    assert gc.prices_for(gc.DEFAULT_MODEL) == gc.PRICES_BY_MODEL[gc.DEFAULT_MODEL]
+    with pytest.warns(UserWarning, match="no-such-model"):
+        p = gc.prices_for("no-such-model")
+    assert p == gc.DEFAULT_PRICES
+
+
+def test_runner_prices_follow_the_backend_model():
+    class ModelBackend(FakeBackend):
+        model = "gemini-2.5-pro"
+
+    runner = gc.GeminiRunner(ModelBackend([]), log=None)
+    assert runner.cost.prices == gc.PRICES_BY_MODEL["gemini-2.5-pro"]

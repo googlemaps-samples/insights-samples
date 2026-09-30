@@ -9,6 +9,9 @@ Hard rules (tested in tests/test_no_uri_parts.py and here):
   geometry it returns must be re-checked by the caller in code.
 * `MAX_GEMINI_CALLS` (default 500, `None` = unlimited) and a concurrency semaphore (default
   16) bound each run; `CostTracker` sums `usage_metadata` (thinking tokens billed as output).
+* Failures are loud: a batch in which every request fails raises `AllRequestsFailed`, every
+  failure is counted with its first messages kept, and `GeminiRunner.check()` raises
+  `GeminiFailures` so a notebook cell cannot silently continue on missing results.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ import asyncio
 import dataclasses
 import json
 import re
+import warnings
 from collections.abc import Sequence
 from typing import Any, Protocol
 
@@ -34,12 +38,40 @@ MAX_IMAGE_SIDE = 1536
 # USD per 1M tokens. ESTIMATES ONLY - check current Vertex AI pricing for your model/region and
 # pass your own `prices=` to CostTracker.
 DEFAULT_PRICES = {"input_per_m": 0.30, "output_per_m": 2.50}
+# Per-model list prices (USD per 1M tokens, <=200k-token prompts). Also ESTIMATES ONLY.
+PRICES_BY_MODEL: dict[str, dict[str, float]] = {
+    DEFAULT_MODEL: dict(DEFAULT_PRICES),
+    "gemini-2.5-flash": {"input_per_m": 0.30, "output_per_m": 2.50},
+    "gemini-2.5-flash-lite": {"input_per_m": 0.10, "output_per_m": 0.40},
+    "gemini-2.5-pro": {"input_per_m": 1.25, "output_per_m": 10.00},
+}
+MAX_FAILURE_MESSAGES = 5
 
 _URI_RE = re.compile(r"^\s*(gs|https?)://", re.I)
 
 
 class BudgetExceeded(RuntimeError):
     """The run hit MAX_GEMINI_CALLS; no further requests are sent."""
+
+
+class AllRequestsFailed(RuntimeError):
+    """Every request of a batch failed (e.g. 401/403 credentials, wrong model or region)."""
+
+
+class GeminiFailures(RuntimeError):
+    """`GeminiRunner.check()` found more failed requests than the caller tolerates."""
+
+
+def prices_for(model: str) -> dict[str, float]:
+    """Price table for `model`; unknown models fall back to DEFAULT_PRICES with a warning."""
+    if model in PRICES_BY_MODEL:
+        return dict(PRICES_BY_MODEL[model])
+    warnings.warn(
+        f"no price entry for model {model!r}; cost estimates use DEFAULT_PRICES {DEFAULT_PRICES}",
+        UserWarning,
+        stacklevel=2,
+    )
+    return dict(DEFAULT_PRICES)
 
 
 # --------------------------------------------------------------------------- images/parts
@@ -87,7 +119,15 @@ class CostTracker:
     input_tokens: int = 0
     output_tokens: int = 0  # candidates + thoughts
     thoughts_tokens: int = 0
+    requests: int = 0  # logical requests (a re-ask is a second call, not a second request)
     failures: int = 0
+    skipped_budget: int = 0  # requests not sent because MAX_GEMINI_CALLS was reached
+    failure_messages: list[str] = dataclasses.field(default_factory=list)
+
+    def record_failure(self, message: str) -> None:
+        self.failures += 1
+        if len(self.failure_messages) < MAX_FAILURE_MESSAGES:
+            self.failure_messages.append(message[:500])
 
     def add(self, usage: Any) -> None:
         self.calls += 1
@@ -109,7 +149,8 @@ class CostTracker:
 
     def summary(self) -> str:
         return (
-            f"Gemini calls={self.calls} (failures={self.failures}) input_tokens={self.input_tokens:,} "
+            f"Gemini calls={self.calls} requests={self.requests} failures={self.failures} "
+            f"skipped_budget={self.skipped_budget} input_tokens={self.input_tokens:,} "
             f"output_tokens={self.output_tokens:,} (thinking {self.thoughts_tokens:,}) "
             f"est_cost=${self.usd:.4f}"
         )
@@ -255,7 +296,9 @@ class GeminiRunner:
     ):
         self.backend = backend
         self.max_calls = max_calls
-        self.cost = cost or CostTracker()
+        self.cost = cost or CostTracker(
+            prices=prices_for(getattr(backend, "model", None) or DEFAULT_MODEL)
+        )
         self._sem = asyncio.Semaphore(concurrency)
         self._reserved = 0
         self.log = log
@@ -290,14 +333,17 @@ class GeminiRunner:
         code_execution: bool = False,
         reask: bool = True,
     ) -> BaseModel | None:
-        """One request (+ at most one re-ask if the reply fails schema validation)."""
+        """One request (+ at most one re-ask if the reply fails schema validation).
+
+        A reply that still fails validation is counted as a failure and returns None."""
+        self.cost.requests += 1
         parts = build_parts(items)
         reply = await self._call(parts, schema, code_execution)
         try:
             return parse_reply("\n".join(reply.code_outputs + [reply.text]), schema)
         except (ValidationError, ValueError) as err:
             if not reask:
-                self.cost.failures += 1
+                self.cost.record_failure(f"schema validation failed: {str(err)[:300]}")
                 return None
             fix = build_parts(
                 [
@@ -309,26 +355,71 @@ class GeminiRunner:
             reply2 = await self._call(parts + fix, schema, code_execution)
             try:
                 return parse_reply("\n".join(reply2.code_outputs + [reply2.text]), schema)
-            except (ValidationError, ValueError):
-                self.cost.failures += 1
+            except (ValidationError, ValueError) as err2:
+                self.cost.record_failure(
+                    f"schema validation failed after re-ask: {str(err2)[:300]}"
+                )
                 return None
 
-    async def ask_many(self, requests: Sequence[tuple[Sequence[Any], type[BaseModel]]], **kw):
-        """Concurrent `ask` calls; requests beyond the budget return None (not sent), and a
-        request that errors (400, safety block, exhausted retries) returns None without
-        discarding the rest of the batch (QA F9)."""
+    async def ask_many(
+        self,
+        requests: Sequence[tuple[Sequence[Any], type[BaseModel]]],
+        raise_if_all_failed: bool = True,
+        **kw,
+    ):
+        """Concurrent `ask` calls.
+
+        * Requests beyond the budget are not sent; they return None and are counted in
+          `cost.skipped_budget` (not as failures).
+        * A request that errors (400, safety block, exhausted retries) or whose reply fails
+          validation returns None and is counted in `cost.failures`, without discarding the
+          rest of the batch's paid results.
+        * If no request succeeded and at least one failed, `AllRequestsFailed` is raised
+          (unless `raise_if_all_failed=False`): a 401 must stop the notebook, not produce an
+          empty map.
+        """
+        errors: list[str] = []
+        skipped = 0
 
         async def one(items, schema):
+            nonlocal skipped
             try:
                 return await self.ask(items, schema, **kw)
             except BudgetExceeded:
+                skipped += 1
+                self.cost.skipped_budget += 1
                 return None
             except Exception as err:  # noqa: BLE001 - keep the batch's already-paid results
-                self.cost.failures += 1
-                self.log(f"[gemini] request failed, result dropped: {type(err).__name__}: {err}")
+                msg = f"{type(err).__name__}: {err}"
+                errors.append(msg)
+                self.cost.record_failure(msg)
+                if self.log:
+                    self.log(f"[gemini] request failed, result dropped: {msg}")
                 return None
 
-        return await asyncio.gather(*(one(i, s) for i, s in requests))
+        out = await asyncio.gather(*(one(i, s) for i, s in requests))
+        n_ok = sum(r is not None for r in out)
+        n_failed = len(out) - n_ok - skipped
+        if raise_if_all_failed and n_ok == 0 and n_failed > 0:
+            first = errors[0] if errors else "every reply failed schema validation"
+            raise AllRequestsFailed(
+                f"all {n_failed} Gemini requests failed; first error: {first}. "
+                "Check credentials (see the auth cell), PROJECT_ID, MODEL and region."
+            )
+        return out
+
+    def check(self, max_failure_rate: float = 0.0) -> None:
+        """Raise `GeminiFailures` if the failed share of requests exceeds `max_failure_rate`."""
+        c = self.cost
+        if c.failures == 0:
+            return
+        rate = c.failures / max(1, c.requests)
+        if rate > max_failure_rate:
+            raise GeminiFailures(
+                f"{c.failures} of {c.requests} Gemini requests failed "
+                f"(rate {rate:.1%} > allowed {max_failure_rate:.1%}); first messages: "
+                + " | ".join(c.failure_messages)
+            )
 
 
 def draw_boxes(image: np.ndarray, boxes: Sequence[Sequence[float]], labels=None) -> np.ndarray:

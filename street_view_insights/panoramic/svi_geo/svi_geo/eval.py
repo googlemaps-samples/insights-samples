@@ -257,6 +257,7 @@ async def cross_view_agreement(
     tasks: Sequence[ViewTask],
     render: Callable[[ViewTask], tuple[np.ndarray, rosette.PerspectiveView]],
     runner: Any,
+    raise_if_all_failed: bool = True,
 ) -> dict[str, Any]:
     """Ask `PresenceCheck` on a code-rendered crop centred at each predicted bearing."""
     reqs, views = [], []
@@ -264,7 +265,7 @@ async def cross_view_agreement(
         img, view = render(t)
         reqs.append(([presence_prompt(t.cls), img], schemas.PresenceCheck))
         views.append(view)
-    replies = await runner.ask_many(reqs)
+    replies = await runner.ask_many(reqs, raise_if_all_failed=raise_if_all_failed)
     present, offsets, signed, per_task = [], [], [], []
     by_cls: dict[str, list[float]] = {}
     for t, view, r in zip(tasks, views, replies, strict=True):
