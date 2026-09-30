@@ -313,3 +313,69 @@ def test_single_view_pole_keeps_the_longer_range_cap():
     o = ent.Observation("p", "P0", "UTILITY_POLE", tri.Ray(c, 90.0, el_b), 0.8, el_bottom_deg=el_b)
     (e,) = ent.cluster([o], REF, cam_height_m=CAM_H)
     assert e.method == "single_view_ground_contact"
+
+
+def test_min_post_panos_excludes_single_view_signs_from_located_entities():
+    c = np.array([0.0, 0.0, CAM_H])
+    el_b = -math.degrees(math.atan2(CAM_H, 12.0))
+    sign_single = ent.Observation(
+        "s1", "P0", "ROAD_SIGN", tri.Ray(c, 80.0, el_b), 0.85, el_bottom_deg=el_b
+    )
+    pole_obs, _ = _observe([("UTILITY_POLE", np.array([4.0, 20.0, 0.0]))], _panos(4), seed=0)
+    entities = ent.cluster([*pole_obs, sign_single], REF, cam_height_m=CAM_H, min_post_panos=2)
+    located = ent.located_entities(entities)
+    assert [e.cls for e in located] == ["UTILITY_POLE"]
+    candidates = [e for e in entities if not e.located]
+    assert len(candidates) == 1 and candidates[0].cls == "ROAD_SIGN"
+
+
+def test_three_14m_houses_seen_from_six_panos_located_via_facade_edges():
+    facades = [(16.0, 4.0, 18.0), (16.0, 28.0, 42.0), (16.0, 52.0, 66.0)]
+    panos = [(f"P{i}", np.array([0.0, 12.0 * i, CAM_H])) for i in range(6)]
+    obs = []
+    for pid, c in panos:
+        for oi, (x, fy0, fy1) in enumerate(facades):
+            if abs(c[1] - 0.5 * (fy0 + fy1)) > 26.0:
+                continue
+            az_left = math.degrees(math.atan2(x - c[0], fy1 - c[1]))
+            az_right = math.degrees(math.atan2(x - c[0], fy0 - c[1]))
+            # Partial occlusion shifts the apparent box centre while true edges remain recoverable
+            az_mid = 0.5 * (az_left + az_right) + (1.5 if c[1] < 0.5 * (fy0 + fy1) else -1.5)
+            obs.append(
+                ent.Observation(
+                    obs_id=f"{pid}_{oi}",
+                    pano_id=pid,
+                    cls="HOUSE",
+                    ray=tri.Ray(
+                        c,
+                        az_mid,
+                        0.0,
+                        meta={"az_left": az_left, "az_right": az_right},
+                    ),
+                    confidence=0.9,
+                    el_bottom_deg=None,
+                )
+            )
+    out_edge = ent.cluster(obs, REF, cam_height_m=CAM_H, use_house_facade_edges=True)
+    loc_edge = [e for e in out_edge if e.located and e.cls == "HOUSE"]
+    assert len(loc_edge) == 3
+    for e in loc_edge:
+        dists = [
+            float(np.hypot(e.point_enu[0] - x, e.point_enu[1] - 0.5 * (fy0 + fy1)))
+            for x, fy0, fy1 in facades
+        ]
+        assert min(dists) <= 2.0, dists
+
+
+def test_fuse_attribute_returns_unknown_when_fewer_than_min_agree_views():
+    # Two disagreeing views -> returns ("UNKNOWN", 0.0) when min_agree_views=2
+    assert ent.fuse_attribute(
+        [("BRICK", 0.9), ("STUCCO", 0.85)], ignore={"UNKNOWN"}, min_agree_views=2
+    ) == ("UNKNOWN", 0.0)
+    # Two agreeing views -> returns the agreed value
+    val, share = ent.fuse_attribute(
+        [("BRICK", 0.9), ("BRICK", 0.8), ("STUCCO", 0.7)],
+        ignore={"UNKNOWN"},
+        min_agree_views=2,
+    )
+    assert val == "BRICK" and share > 0.6

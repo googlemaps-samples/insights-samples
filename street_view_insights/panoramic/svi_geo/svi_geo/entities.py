@@ -117,21 +117,30 @@ class Entity:
 
 
 def fuse_attribute(
-    votes: Iterable[tuple[Any, float]], ignore: Collection[Any] = ()
+    votes: Iterable[tuple[Any, float]],
+    ignore: Collection[Any] = (),
+    *,
+    min_agree_views: int = 1,
 ) -> tuple[Any, float]:
     """Confidence-weighted vote -> (value, share of total weight).
 
     Values in `ignore` (e.g. {"UNKNOWN"}) do not vote, so they can never outvote a known
-    value; if only ignored values were given the result is (None, 0.0)."""
+    value; if only ignored values were given the result is (None, 0.0).
+    When `min_agree_views > 1` and the top-voted value has fewer than `min_agree_views`
+    supporting votes, returns `("UNKNOWN", 0.0)`."""
     skip = set(ignore)
     w: dict[Any, float] = defaultdict(float)
+    counts: dict[Any, int] = defaultdict(int)
     for v, c in votes:
         if v is not None and v not in skip:
             w[v] += float(c)
+            counts[v] += 1
     if not w:
         return None, 0.0
     tot = sum(w.values())
     best = max(sorted(w, key=str), key=lambda k: w[k])
+    if min_agree_views > 1 and counts[best] < min_agree_views:
+        return "UNKNOWN", 0.0
     return best, w[best] / tot
 
 
@@ -437,6 +446,34 @@ def _merge_split(obs, groups, eps, cam_height_m, max_range_m, sigma_deg, gate, m
         groups = [g for k, g in enumerate(groups) if k not in (a, b)] + [merged]
 
 
+def _refine_house_edges(
+    members: Sequence[Observation],
+    fallback_pt: np.ndarray,
+    fallback_rms: float,
+    max_range_m: float,
+    max_rms_m: float,
+) -> tuple[np.ndarray, float]:
+    """Refine a multi-view HOUSE cluster using left/right facade-edge rays when available."""
+    left_rays: list[tri.Ray] = []
+    right_rays: list[tri.Ray] = []
+    for m in members:
+        meta = m.ray.meta or {}
+        az_l = meta.get("az_left")
+        az_r = meta.get("az_right")
+        if az_l is not None and az_r is not None:
+            left_rays.append(tri.Ray(m.ray.origin, float(az_l), m.ray.el_deg))
+            right_rays.append(tri.Ray(m.ray.origin, float(az_r), m.ray.el_deg))
+    if len(left_rays) >= 2 and len(right_rays) >= 2:
+        eff_rms = max(max_rms_m, 0.5 * SIZE_M.get("HOUSE", 10.0) + 1.5)
+        hit_l = tri.intersect_rays(left_rays, max_range_m=max_range_m, max_rms_m=eff_rms)
+        hit_r = tri.intersect_rays(right_rays, max_range_m=max_range_m, max_rms_m=eff_rms)
+        if hit_l.ok and hit_l.point is not None and hit_r.ok and hit_r.point is not None:
+            mid_pt = 0.5 * (hit_l.point + hit_r.point)
+            mid_rms = 0.5 * (hit_l.rms_m + hit_r.rms_m)
+            return mid_pt, float(mid_rms)
+    return fallback_pt, fallback_rms
+
+
 def cluster(
     observations: Sequence[Observation],
     ref_lla: Sequence[float],
@@ -447,6 +484,9 @@ def cluster(
     bearing_sigma_deg: float = 1.0,
     ghost_conf: float = GHOST_CONF,
     max_rms_by_class: Mapping[str, float] | None = None,
+    *,
+    min_post_panos: int = 1,
+    use_house_facade_edges: bool = False,
 ) -> list[Entity]:
     """Deduplicate observations into entities (see module docstring). ENU is relative to ref.
 
@@ -471,6 +511,8 @@ def cluster(
         obs = by_cls[cls]
         eps = eps_map.get(cls, DEFAULT_EPS)
         max_rms = rms_map.get(cls, eps)
+        if use_house_facade_edges and cls == "HOUSE":
+            max_rms = max(max_rms, 0.5 * SIZE_M.get("HOUSE", 10.0) + 2.0)
         accepted, leftovers = _cluster_class(
             obs, eps, cam_height_m, max_range_m, bearing_sigma_deg, max_rms=max_rms
         )
@@ -507,10 +549,23 @@ def cluster(
                 if d[j] <= eps and obs[i].pano_id not in pano_ids:
                     groups[j][1].append(i)
                     continue
-            groups.append((p, [i], math.nan, "single_view_ground_contact", r))
+            if cls == "POST_GROUP" and min_post_panos >= 2:
+                groups.append((np.full(3, np.nan), [i], math.nan, "unlocated", r))
+            else:
+                groups.append((p, [i], math.nan, "single_view_ground_contact", r))
         tri_pts = [g[0] for g in groups if g[3] == "triangulated"]
         for pt, idx, rms, method, range_m in groups:
             members = [obs[i] for i in idx]
+            if (
+                cls == "POST_GROUP"
+                and min_post_panos >= 2
+                and len({m.pano_id for m in members}) < min_post_panos
+            ):
+                method = "unlocated"
+                pt = np.full(3, np.nan)
+                rms = math.nan
+            elif use_house_facade_edges and cls == "HOUSE" and method == "triangulated":
+                pt, rms = _refine_house_edges(members, pt, rms, max_range_m, max_rms)
             if method == "unlocated":
                 lat = lng = math.nan
             else:
