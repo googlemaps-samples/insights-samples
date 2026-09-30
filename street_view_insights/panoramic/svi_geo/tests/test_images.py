@@ -168,3 +168,13 @@ def test_purge_expired_deletes_only_stale_files(tmp_path):
     assert len(list(tmp_path.iterdir())) == 1
     f.fetch(URI1)
     assert store.downloads == 2
+
+
+# ----------------------------------------------------------------------------- F8
+def test_dark_pixel_fraction_counts_near_black_pixels_not_dark_grey():
+    img = np.full((100, 200, 3), 120, np.uint8)
+    img[:5, :] = 0  # rendered no-coverage border: 5 %
+    img[50:60, 50:70] = (3, 5, 2)  # a near-black redaction blob after JPEG: 1 %
+    img[80:90, :] = 40  # dark shadow, not near-black
+    assert images.dark_pixel_fraction(img) == pytest.approx(0.06)
+    assert images.dark_pixel_fraction(img, max_value=0) == pytest.approx(0.05)

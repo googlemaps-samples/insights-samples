@@ -72,6 +72,15 @@ Notes on the seam check:
 - Only the vertical component is scored, because the rosette baseline
   produces horizontal parallax.
 
+## Black fraction vs dark pixels
+
+`rosette.view_black_fraction` (and `black_fraction_max` in the notebooks) is analytic sensor
+coverage only: the share of view pixels whose ray misses the sensor or the lens model. It
+does not see the dataset's black redaction blobs inside a frame, which are image content.
+The notebooks therefore also print `dark_pixel_max`, measured on the images sent to Gemini
+with `images.dark_pixel_fraction` (every channel <= 8). It counts coverage gaps, redaction
+blobs and any genuinely black object alike.
+
 ## Evaluation (`scripts/run_eval.py`)
 
 Accuracy against human labels on real imagery is measured with the label kit described in

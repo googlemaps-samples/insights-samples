@@ -180,3 +180,14 @@ def fit_within(img: np.ndarray, max_side: int) -> np.ndarray:
     return cv2.resize(
         img, (max(1, round(w * s)), max(1, round(h * s))), interpolation=cv2.INTER_AREA
     )
+
+
+def dark_pixel_fraction(img: np.ndarray, max_value: int = 8) -> float:
+    """Measured share of pixels whose every channel is <= `max_value` (near black).
+
+    `rosette.view_black_fraction` is analytic sensor coverage only. This measures the image
+    that is actually sent, so it also counts near-black content inside the frames: the
+    dataset's black redaction blobs (and any genuinely black object)."""
+    a = np.asarray(img)
+    peak = a.max(axis=2) if a.ndim == 3 else a
+    return float(np.mean(peak <= max_value))

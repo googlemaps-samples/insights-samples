@@ -274,7 +274,7 @@ def test_uc3_absent_state_gap_breaks_and_travel_centred_views():
 def test_uc3_reports_black_fraction_of_the_cropped_images_sent_to_gemini():
     code = _code(_uc3())
     assert "rv.black_sent" in code and "blacks.append(rv.black)" not in code
-    assert "sent_zero_pixel_max=" in code  # measured on the images actually sent
+    assert "images.dark_pixel_fraction(out[role])" in code  # measured on the images sent
 
 
 def test_uc3_reports_smoothing_effect_not_flicker_as_quality():
@@ -315,3 +315,9 @@ def test_notebooks_print_the_lines_the_live_checker_reads(path):
     code = _code(nbformat.read(path, as_version=4))
     assert RESULT_PRINTS[path.stem] in code
     assert "black_fraction_max=" in code and "runner.cost.summary()" in code
+
+
+@pytest.mark.parametrize("path", NOTEBOOKS, ids=lambda p: p.stem)
+def test_notebooks_measure_dark_pixels_of_sent_views_besides_sensor_coverage(path):
+    code = _code(nbformat.read(path, as_version=4))
+    assert "images.dark_pixel_fraction(" in code and "dark_pixel_max=" in code
