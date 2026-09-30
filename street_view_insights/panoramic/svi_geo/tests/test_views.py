@@ -1,5 +1,6 @@
 """UC1 view framing, ranking and house triangulation (pure geometry, zero mocks)."""
 
+import inspect
 import math
 
 import numpy as np
@@ -159,16 +160,42 @@ def test_triangulate_house_recovers_the_point_and_anchors_the_id_on_it():
     assert loc.n_views == 3
 
 
-def test_triangulated_id_does_not_depend_on_the_user_coordinate():
+def _runs_with_box_noise(n_runs=20, noise_deg=1.0):
     true_ll = _house_latlng(offset_e=18.0, along_n=40.0)
-    s = _sightings(true_ll, noise_deg=1.0)
-    a, _ = views.triangulate_house(s)
-    # the user's coordinate is only used to pick views; a 2 m shift changes nothing
-    b, _ = views.triangulate_house(s, user_latlng=_house_latlng(offset_e=20.0, along_n=40.0))
-    assert a.entity_id == b.entity_id
-    assert ent.entity_id_for("HOUSE", *true_ll) != ent.entity_id_for(
-        "HOUSE", *_house_latlng(offset_e=20.0, along_n=41.0)
-    )  # the old user-anchored id would have changed
+    locs = [
+        views.triangulate_house(_sightings(true_ll, noise_deg, seed=s))[0] for s in range(n_runs)
+    ]
+    assert all(loc is not None for loc in locs)
+    return locs
+
+
+def test_raw_house_id_is_run_local_under_box_noise():
+    # 1 deg of box noise moves the point by ~0.5 m, enough to cross a 2 m id cell sometimes:
+    # the raw id is not a cross-run key, which is why match_house_ids exists.
+    locs = _runs_with_box_noise()
+    assert len({loc.entity_id for loc in locs}) > 1
+
+
+def test_match_house_ids_carries_the_previous_id_under_box_noise():
+    locs = _runs_with_box_noise()
+    first = locs[0]
+    for loc in locs[1:]:
+        assert views.match_house_ids([first], [loc], max_m=3.0) == [first.entity_id]
+
+
+def test_match_house_ids_keeps_new_ids_for_new_or_distant_houses():
+    a = views.HouseLocation(28.0, -81.0, "house_a", 2, 0.5)
+    near = views.HouseLocation(28.0 + 1.0 / 111_320, -81.0, "house_b", 2, 0.5)  # ~1 m north
+    far = views.HouseLocation(28.0 + 10.0 / 111_320, -81.0, "house_c", 2, 0.5)  # ~10 m north
+    assert views.match_house_ids([a], [near, far], max_m=3.0) == ["house_a", "house_c"]
+    # one previous id is given to at most one new house (the nearest)
+    near2 = views.HouseLocation(28.0 + 2.0 / 111_320, -81.0, "house_d", 2, 0.5)
+    assert views.match_house_ids([a], [near2, near], max_m=3.0) == ["house_d", "house_a"]
+    assert views.match_house_ids([], [near], max_m=3.0) == ["house_b"]
+
+
+def test_triangulate_house_takes_no_user_coordinate():
+    assert "user_latlng" not in inspect.signature(views.triangulate_house).parameters
 
 
 @pytest.mark.parametrize("n", [0, 1])

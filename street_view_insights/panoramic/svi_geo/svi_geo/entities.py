@@ -136,7 +136,8 @@ def fuse_attribute(
 
 
 def entity_id_for(cls: str, lat: float, lng: float, precision_m: float = 2.0) -> str:
-    """Stable id from class + location snapped to a ~`precision_m` grid."""
+    """Deterministic id from class + location snapped to a ~`precision_m` grid. It changes when
+    noise moves the point across a grid line, so it is a run-local key, not a cross-run one."""
     q = precision_m / 111_320.0
     key = f"{cls}:{round(lat / q)}:{round(lng / (q / max(0.1, math.cos(math.radians(lat)))))}"
     return f"{cls.lower()}_{hashlib.sha1(key.encode()).hexdigest()[:10]}"

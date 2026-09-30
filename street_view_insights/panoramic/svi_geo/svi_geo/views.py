@@ -8,7 +8,8 @@
 * `rank_house_views` orders candidates by normalised distance + off-axis angle, at most
   `max_per_seq` per drive sequence.
 * `triangulate_house` intersects the bearings of the house boxes returned by Gemini and
-  anchors the house id on that point, not on the user's input coordinate.
+  derives a run-local house id from that point (not from the user's input coordinate);
+  `match_house_ids` carries ids from a previous run to houses located within 3 m.
 """
 
 from __future__ import annotations
@@ -194,16 +195,16 @@ class HouseLocation:
 
 def triangulate_house(
     sightings: Sequence[HouseSighting],
-    user_latlng: tuple[float, float] | None = None,
     max_rms_m: float = HOUSE_MAX_RMS_M,
     max_range_m: float = 100.0,
 ) -> tuple[HouseLocation | None, str]:
     """Intersect the box-centre bearings of >= 2 panos; the id hashes the intersection.
 
-    `user_latlng` is accepted for symmetry with the view search but deliberately unused:
-    the id depends only on the imagery. Returns (None, "unlocated") with fewer than 2
-    distinct panos or when the rays do not intersect cleanly (parallel, behind, misfit)."""
-    del user_latlng
+    The id is run-local: it is the 2 m grid cell of the triangulated point, so box noise
+    (about 0.5 m per degree here) can move the point into a neighbouring cell and change the
+    id on a re-run. Use `match_house_ids` to carry ids from a previous run. Returns
+    (None, "unlocated") with fewer than 2 distinct panos or when the rays do not intersect
+    cleanly (parallel, behind, misfit)."""
     by_pano: dict[str, HouseSighting] = {}
     for s in sightings:
         by_pano.setdefault(s.pano_id, s)
@@ -225,6 +226,32 @@ def triangulate_house(
         HouseLocation(lat, lng, ent.entity_id_for("HOUSE", lat, lng), len(rays), hit.rms_m),
         "triangulated",
     )
+
+
+def match_house_ids(
+    previous: Sequence[HouseLocation], new: Sequence[HouseLocation], max_m: float = 3.0
+) -> list[str]:
+    """Ids for `new`, reusing the id of a previous house located within `max_m`.
+
+    Pairs are taken nearest first and each previous id is reused at most once; a new house
+    with no previous house within `max_m` keeps its own (run-local) id."""
+    pairs = sorted(
+        (float(geo.haversine_m(p.lat, p.lng, n.lat, n.lng)), i, j)
+        for i, n in enumerate(new)
+        for j, p in enumerate(previous)
+    )
+    ids = [n.entity_id for n in new]
+    used_new: set[int] = set()
+    used_prev: set[int] = set()
+    for d, i, j in pairs:
+        if d > max_m:
+            break
+        if i in used_new or j in used_prev:
+            continue
+        ids[i] = previous[j].entity_id
+        used_new.add(i)
+        used_prev.add(j)
+    return ids
 
 
 # ----------------------------------------------------------------------------- roof views (UC4)
