@@ -5,14 +5,16 @@ Pipeline (all deterministic code except the single Gemini perception call):
 1. Metadata lookup in `pano_observations_latest` with parameterised SQL (no `gcs_uri` column:
    selecting it scans ~1.9 GB, so the frame path is derived from the published pattern
    gs://<bucket>/<snapshot_id>/v0/<observation_id>.jpg).
-2. Pick the forward-facing camera of the pano from the travel direction (neighbouring panos
-   of the same drive), falling back to camera 0.
-3. Download the frame with the caller's credentials and render a road-facing view in code:
-   with svi_geo installed, a rectified view along the camera's calibrated heading, pitched
-   down in world coordinates using the frame's real camera_pose, with the vehicle hood
-   cropped; otherwise a fixed lower-frame crop.
+2. Travel direction from the neighbouring panos of the same drive (or `--travel-deg`); the
+   script stops if neither is available rather than guessing a camera.
+3. Download the frame(s) with the caller's credentials and render a road view in code: with
+   svi_geo installed, a view centred on the travel direction and pitched down in world
+   coordinates (`sequence.road_view`: the covering camera, or the two cameras flanking the
+   seam composited), with the vehicle hood cropped and less than 1 % outside the sensor
+   (checked); otherwise a fixed lower-frame crop of the camera nearest the travel direction.
 4. Send the view INLINE as bytes to Gemini with a pydantic `response_schema`; the reply is
-   validated in code (numeric confidence, shared material taxonomy incl. Turf).
+   validated in code (numeric confidence, shared material taxonomy incl. Turf). The token
+   usage and estimated cost are printed.
 """
 
 from __future__ import annotations
@@ -98,17 +100,24 @@ WHERE pano_id IS NOT NULL
 """
 )
 
-# Frames of the pano identified by @id (observation, pano or capture id) plus its neighbours.
+# Frames of the pano identified by @id (observation, pano or capture id) plus its neighbours:
+# the id is looked up once (LIMIT 1) and the frames are filtered by distance to that location.
+# The table is not clustered, so BigQuery bills the referenced columns in full; the dry run
+# measured 1.63 GB (COORDS_SQL: 1.40 GB), both under the 2 GB cap.
 ID_SQL = (
-    "SELECT"
+    """WITH hit AS (
+  SELECT capture_location.latitude AS lat, capture_location.longitude AS lng
+  FROM `__PROJECT__.__DATASET__.pano_observations_latest`
+  WHERE pano_id IS NOT NULL AND (observation_id = @id OR pano_id = @id OR capture_id = @id)
+  LIMIT 1
+)
+SELECT hit.lat AS hit_lat, hit.lng AS hit_lng,"""
     + _FIELDS
     + """
-FROM `__PROJECT__.__DATASET__.pano_observations_latest`
+FROM `__PROJECT__.__DATASET__.pano_observations_latest`, hit
 WHERE pano_id IS NOT NULL
   AND ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
-    (SELECT ANY_VALUE(capture_location) FROM `__PROJECT__.__DATASET__.pano_observations_latest`
-     WHERE pano_id IS NOT NULL AND (observation_id = @id OR pano_id = @id OR capture_id = @id)),
-    @radius_m)
+                 ST_GEOGPOINT(hit.lng, hit.lat), @radius_m)
 """
 )
 
@@ -191,11 +200,24 @@ def travel_direction(rows: list[dict], pano_id: str, max_dt_s: float = 5.0) -> f
     return _bearing(first["lat"], first["lng"], last["lat"], last["lng"])
 
 
+def resolve_travel(measured: float | None, override: float | None) -> float:
+    """`--travel-deg` if given, else the measured travel direction; never a guess."""
+    if override is not None:
+        return float(override) % 360.0
+    if measured is None:
+        raise ValueError(
+            "cannot determine the travel direction (no neighbouring pano of the same drive "
+            "within 5 s); pass --travel-deg"
+        )
+    return float(measured)
+
+
 def pick_front_camera(frames: list[dict], travel_deg: float | None) -> dict:
-    """Ground camera (0-5) whose heading is closest to the travel direction (else camera 0)."""
+    """Ground camera (0-5) whose heading is closest to the travel direction (fallback view
+    when svi_geo is not installed)."""
     ground = [f for f in frames if 0 <= int(f["cam_k"]) <= 5]
     if travel_deg is None:
-        return min(ground, key=lambda f: int(f["cam_k"]))
+        raise ValueError("the travel direction is required to pick the front camera")
 
     def diff(f):
         return abs(((float(f["heading"]) - travel_deg + 180.0) % 360.0) - 180.0)
@@ -212,6 +234,43 @@ def _fit_within(img: np.ndarray, max_side: int = MAX_IMAGE_SIDE) -> np.ndarray:
 ROAD_PITCH_DEG = -22.0  # world pitch of the road view (PerspectiveView angles are world)
 ROAD_HFOV_DEG = 60.0
 ROAD_VIEW_SIZE = (1024, 768)
+
+
+MAX_BLACK = 0.01  # share of the sent view allowed outside the sensor
+
+
+def plan_road_view(frames: list[dict], travel_deg: float):
+    """svi_geo `RoadView` centred on `travel_deg`: the ground camera that covers it, or the
+    cameras flanking the seam composited. Raises ValueError if no view can be rendered."""
+    from svi_geo import rosette, sequence
+
+    rv = sequence.road_view(
+        frames, rosette.load_intrinsics(), travel_deg, "front",
+        pitch_deg=ROAD_PITCH_DEG, hfov_deg=ROAD_HFOV_DEG, size=ROAD_VIEW_SIZE,
+    )  # fmt: skip
+    if rv is None:
+        raise ValueError(f"no camera of this pano covers a road view at {travel_deg:.1f} deg")
+    return rv
+
+
+def check_black(rv, max_black: float = MAX_BLACK) -> None:
+    """Raise if more than `max_black` of the hood-cropped view is outside the sensor."""
+    if not rv.black_sent < max_black:
+        raise ValueError(
+            f"road view black fraction {rv.black_sent:.4f} >= {max_black} (outside the sensor)"
+        )
+
+
+def cost_line(usage, model: str) -> str:
+    """Token usage and estimated cost of the Gemini call (svi_geo price table)."""
+    from svi_geo import gemini_client
+
+    tracker = gemini_client.CostTracker(prices=gemini_client.prices_for(model))
+    tracker.add(usage)
+    return (
+        f"[gemini] calls={tracker.calls} input_tokens={tracker.input_tokens:,} "
+        f"output_tokens={tracker.output_tokens:,} est. ${tracker.usd:.4f}"
+    )
 
 
 def road_view_spec(pose: dict, cam_k: int | None, intr):
@@ -275,6 +334,11 @@ def parse_args(argv=None, env=None):
     g.add_argument("--observation-id", "--pano-id", dest="observation_id")
     g.add_argument("--coordinates", help="'lat,lng' - nearest pano within --radius-m")
     p.add_argument("--radius-m", type=float, default=30.0)
+    p.add_argument(
+        "--travel-deg",
+        type=float,
+        help="Travel direction (deg from north) if it cannot be measured from neighbouring panos.",
+    )
     p.add_argument("--output", help="Optional path to save the JSON result.")
     p.add_argument(
         "--project",
@@ -298,7 +362,37 @@ def parse_args(argv=None, env=None):
     return args
 
 
-def fetch_frame(args) -> tuple[np.ndarray, dict]:
+def frame_rows(rows: list[dict], pano_id: str) -> list[dict]:
+    """The frames of `pano_id` with their camera index and full `camera_pose` (missing pitch or
+    roll are treated as level)."""
+    out = []
+    for r in rows:
+        k = _camera_index(r["observation_id"])
+        if r["pano_id"] != pano_id or k is None:
+            continue
+        pose = {
+            "heading": float(r["heading"]),
+            "pitch": float(r["pitch"] or 0.0),
+            "roll": float(r["roll"] or 0.0),
+            "latitude": float(r["lat"]),
+            "longitude": float(r["lng"]),
+        }
+        out.append({**r, "cam_k": k, "camera_pose": pose})
+    return sorted(out, key=lambda f: f["cam_k"])
+
+
+def _download(gcs, bucket: str, frame: dict) -> np.ndarray:
+    uri = gcs_uri_for(bucket, frame["snapshot_id"], frame["observation_id"])
+    data = gcs.bucket(bucket).blob(uri.removeprefix("gs://").split("/", 1)[1]).download_as_bytes()
+    img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError(f"cannot decode {uri}")
+    return img
+
+
+def fetch_view(args) -> tuple[np.ndarray, dict]:
+    """Look up the pano, download the frame(s) with the caller's credentials and return the
+    road view to send plus its metadata."""
     from google.cloud import bigquery, storage
 
     creds, _ = _optional_svi_geo_auth()
@@ -321,34 +415,50 @@ def fetch_frame(args) -> tuple[np.ndarray, dict]:
             bigquery.ScalarQueryParameter("radius_m", "FLOAT64", args.radius_m),
         ]
         rows = run_query(bq, render_sql(ID_SQL, project, args.dataset), params)
-        hit = [r for r in rows if args.observation_id in (r["observation_id"], r["pano_id"])]
-        if not hit:
+        if not rows:
             raise ValueError(f"no pano observation found for {args.observation_id}")
-        near = hit[0]
+        # An observation or pano id names its row; a capture id is resolved by the location
+        # of the matched row (hit_lat/hit_lng), i.e. the pano at distance 0.
+        near = min(
+            rows,
+            key=lambda r: (
+                args.observation_id not in (r["observation_id"], r["pano_id"]),
+                _dist_m(r["hit_lat"], r["hit_lng"], r["lat"], r["lng"]),
+            ),
+        )
     pano = near["pano_id"]
-    frames = [
-        {**r, "cam_k": _camera_index(r["observation_id"])} for r in rows if r["pano_id"] == pano
-    ]
-    frames = [f for f in frames if f["cam_k"] is not None]
-    travel = travel_direction(rows, pano)
-    cam = pick_front_camera(frames, travel)
-    bucket = args.gcs_bucket
-    uri = gcs_uri_for(bucket, cam["snapshot_id"], cam["observation_id"])
-    name = uri.removeprefix("gs://").split("/", 1)[1]
+    frames = frame_rows(rows, pano)
+    travel = resolve_travel(travel_direction(rows, pano), args.travel_deg)
     gcs = storage.Client(project=project, credentials=creds)
-    data = gcs.bucket(bucket).blob(name).download_as_bytes()
-    img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
-    pose = {"heading": cam["heading"], "pitch": cam["pitch"] or 0.0, "roll": cam["roll"] or 0.0}
     meta = {
-        "camera_pose": pose,
         "pano_id": pano,
-        "observation_id": cam["observation_id"],
-        "cam_k": cam["cam_k"],
-        "travel_deg": travel,
-        "capture_time": str(cam["capture_time"]),
+        "travel_deg": round(travel, 1),
+        "capture_time": str(near["capture_time"]),
         "project": project,
     }
-    return img, meta
+    try:
+        from svi_geo import images, rosette, sequence
+    except ImportError:
+        cam = pick_front_camera(frames, travel)
+        img = _download(gcs, args.gcs_bucket, cam)
+        meta.update(observation_id=cam["observation_id"], cam_k=cam["cam_k"])
+        return road_view(img), meta
+    rv = plan_road_view(frames, travel)
+    check_black(rv)
+    imgs = {int(r["cam_k"]): _download(gcs, args.gcs_bucket, r) for r in rv.rows}
+    view = sequence.render_road_view(imgs, rosette.load_intrinsics(), rv)
+    print(
+        f"[view] yaw={rv.view.yaw_deg:.1f} hfov={rv.view.hfov_deg:.1f} cameras="
+        f"{sorted(imgs)} black_fraction_sent={rv.black_sent:.4f} "
+        f"dark_pixel_fraction={images.dark_pixel_fraction(view):.4f}",
+        file=sys.stderr,
+    )
+    meta.update(
+        observation_ids=[r["observation_id"] for r in rv.rows],
+        cam_k=sorted(imgs),
+        black_fraction_sent=round(float(rv.black_sent), 4),
+    )
+    return _fit_within(view), meta
 
 
 def main():
@@ -359,8 +469,9 @@ def main():
             if img is None:
                 raise ValueError(f"cannot read {args.image}")
             meta = {"image": args.image, "project": args.project}
+            view = road_view(img)
         else:
-            img, meta = fetch_frame(args)
+            view, meta = fetch_view(args)
     except Exception as e:  # noqa: BLE001 - CLI boundary
         print(f"Error loading image: {e}", file=sys.stderr)
         sys.exit(1)
@@ -368,7 +479,6 @@ def main():
     from google import genai
     from google.genai import types
 
-    view = road_view(img, pose=meta.get("camera_pose"), cam_k=meta.get("cam_k"))
     ok, jpg = cv2.imencode(".jpg", view, [cv2.IMWRITE_JPEG_QUALITY, 90])
     if not ok:
         print("Error: could not encode the road view", file=sys.stderr)
@@ -397,6 +507,10 @@ def main():
     except Exception as e:  # noqa: BLE001 - CLI boundary
         print(f"Material detection failed: {e}", file=sys.stderr)
         sys.exit(1)
+    try:
+        print(cost_line(resp.usage_metadata, args.model), file=sys.stderr)
+    except ImportError:  # no svi_geo price table: report the raw token counts only
+        print(f"[gemini] calls=1 usage={resp.usage_metadata}", file=sys.stderr)
     out = {
         **result.model_dump(mode="json"),
         "source": {k: v for k, v in meta.items() if k not in ("project", "camera_pose")},

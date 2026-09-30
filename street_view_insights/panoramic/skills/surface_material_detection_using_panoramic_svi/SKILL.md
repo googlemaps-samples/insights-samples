@@ -16,15 +16,20 @@ using the Street View Insights **panoramic** tables only (`pano_observations_lat
     (each pano has one `capture_id`). It never selects `gcs_uri`: that column alone scans
     ~1.9 GB, so the frame path is derived as
     `gs://<bucket>/<snapshot_id>/v0/<observation_id>.jpg`.
-2.  **Camera choice (code).** The forward camera of the nearest pano is picked from the travel
-    direction (neighbouring panos of the same drive); camera 0 is the fallback.
-3.  **Road view (code).** The frame is downloaded with your credentials and a road view is
-    rendered deterministically. With `svi_geo` installed it is rectified with the fitted
-    fisheye model along the camera's calibrated heading, pitched 22 deg below the horizon
-    using the frame's real `camera_pose`, and the rows showing the vehicle are cropped.
-    Without `svi_geo` it is a fixed crop of the lower frame.
+2.  **Travel direction (code).** Measured from the neighbouring panos of the same drive
+    (same snapshot, within 5 s). If it cannot be measured the script stops and asks for
+    `--travel-deg`; it never guesses a camera.
+3.  **Road view (code).** The frame(s) are downloaded with your credentials and a road view is
+    rendered deterministically. With `svi_geo` installed the view is centred on the travel
+    direction (not on a camera heading), 60 deg wide and pitched 22 deg below the horizon in
+    world coordinates using the frames' real `camera_pose`. On the real rosette the travel
+    direction falls on the seam between two cameras, so the view is composited from both
+    (`sequence.road_view`). The rows showing the vehicle are cropped and the script stops if
+    1 % or more of the sent view is outside the sensor (black-border check). Without `svi_geo`
+    it is a fixed crop of the lower frame of the camera nearest the travel direction.
 4.  **Perception (Gemini).** The view is sent **inline as bytes** with a pydantic
-    `response_schema`; the reply is validated in code (numeric confidence 0-1).
+    `response_schema`; the reply is validated in code (numeric confidence 0-1). The token
+    usage and estimated cost of the call are printed to stderr.
 
 ## Prerequisites
 
@@ -65,6 +70,8 @@ python3 street_view_insights/panoramic/skills/surface_material_detection_using_p
 -   `--output`: path to save the JSON result.
 -   `--dataset`: BigQuery dataset (default `imagery_insights___us`).
 -   `--radius-m`: search radius for the pano lookup (default 30).
+-   `--travel-deg`: travel direction in degrees from north, for panos whose direction
+    cannot be measured from neighbouring panos.
 -   `--model` (default `gemini-3.5-flash`) and `--location` (default `global`).
 
 ### Output
@@ -76,6 +83,7 @@ python3 street_view_insights/panoramic/skills/surface_material_detection_using_p
   "confidence": 0.86,
   "surface_condition": "Fair",
   "visual_reasoning": "...",
-  "source": {"pano_id": "...", "observation_id": "...", "cam_k": 0, "travel_deg": 87.1}
+  "source": {"pano_id": "...", "travel_deg": 87.1, "observation_ids": ["...", "..."],
+             "cam_k": [0, 1], "black_fraction_sent": 0.0}
 }
 ```

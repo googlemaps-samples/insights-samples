@@ -1,5 +1,6 @@
 """T10: static + pure-function tests for the surface-material skill script (no network)."""
 
+import dataclasses
 import importlib.util
 import re
 import sys
@@ -63,7 +64,8 @@ def test_render_sql_rejects_injection(dm):
 def test_front_camera_follows_travel_direction(dm):
     frames = [{"cam_k": k, "heading": (100.0 + 60 * k) % 360} for k in range(7)]
     assert dm.pick_front_camera(frames, travel_deg=225.0)["cam_k"] == 2  # heading 220
-    assert dm.pick_front_camera(frames, travel_deg=None)["cam_k"] == 0
+    with pytest.raises(ValueError, match="travel"):
+        dm.pick_front_camera(frames, travel_deg=None)  # no silent camera-0 fallback
 
 
 def test_gcs_uri_is_derived_not_selected(dm):
@@ -140,3 +142,84 @@ def test_skill_selects_the_full_pose_and_documents_capture_id(dm):
     assert "camera_pose.pitch" in dm._FIELDS and "camera_pose.roll" in dm._FIELDS
     md = SKILL.parents[1].joinpath("SKILL.md").read_text()
     assert "capture_id" in md
+
+
+# ----------------------------------------------------------------------------- round 2 partial
+
+
+def test_id_sql_looks_up_the_id_once_and_filters_by_that_location(dm):
+    sql = dm.render_sql(dm.ID_SQL, "my-proj", "imagery_insights___us")
+    assert "ANY_VALUE(capture_location)" not in sql  # a STRUCT, not a GEOGRAPHY: it failed
+    assert "WITH hit AS" in sql and "LIMIT 1" in sql
+    assert "ST_GEOGPOINT(hit.lng, hit.lat)" in sql and "@radius_m" in sql
+    assert "@id" in sql and not re.search(r"\bgcs_uri\b", sql)
+
+
+def _rosette_rows(heading0):
+    rows = []
+    for k in range(7):
+        pose = {"heading": (heading0 + 60.0 * k) % 360, "pitch": 90.0 if k == 6 else 0.0,
+                "roll": 0.0}  # fmt: skip
+        rows.append({"observation_id": f"o1:PANO_{k}:5001ee", "cam_k": k, "camera_pose": pose,
+                     "snapshot_id": "s"})  # fmt: skip
+    return rows
+
+
+def test_road_view_is_centred_on_travel_and_composited_on_the_seam(dm):
+    travel = 80.0
+    rv = dm.plan_road_view(_rosette_rows(travel + 30.0), travel)  # cameras at travel +-30
+    assert rv.view.yaw_deg == pytest.approx(travel)
+    assert len(rv.rows) == 2 and rv.black_sent < 0.01
+    single = dm.plan_road_view(_rosette_rows(travel), travel)
+    assert single.view.yaw_deg == pytest.approx(travel) and len(single.rows) == 1
+
+
+def test_black_border_check_rejects_views_past_the_sensor(dm):
+    rv = dm.plan_road_view(_rosette_rows(110.0), 80.0)
+    dm.check_black(rv)  # passes
+    with pytest.raises(ValueError, match="black"):
+        dm.check_black(dataclasses.replace(rv, black_sent=0.05))
+
+
+def test_travel_direction_is_required_not_guessed(dm):
+    with pytest.raises(ValueError, match="--travel-deg"):
+        dm.resolve_travel(None, None)
+    assert dm.resolve_travel(None, 12.5) == 12.5
+    assert dm.resolve_travel(40.0, None) == 40.0
+    a = dm.parse_args(["--coordinates", "1,2", "--travel-deg", "90"],
+                      env={"PROJECT_ID": "p", "GCS_BUCKET": "b"})  # fmt: skip
+    assert a.travel_deg == 90.0
+
+
+def test_cost_line_reports_tokens_and_usd(dm):
+    usage = {"prompt_token_count": 1000, "candidates_token_count": 200, "thoughts_token_count": 50}
+    line = dm.cost_line(usage, "gemini-3.5-flash")
+    assert "calls=1" in line and "input_tokens=1,000" in line and "output_tokens=250" in line
+    assert "$" in line
+
+
+def test_frame_rows_carry_the_real_pose_of_each_ground_frame(dm):
+    import datetime as dt
+
+    t = dt.datetime(2024, 1, 1)
+    rows = [
+        {"pano_id": "P", "observation_id": f"o1:P_{k}:5001ee", "snapshot_id": "s",
+         "capture_time": t, "lat": 1.0, "lng": 2.0, "heading": 10.0 * k,
+         "pitch": None if k == 0 else 1.5, "roll": None}
+        for k in range(7)
+    ] + [{"pano_id": "Q", "observation_id": "o1:Q_0:5001ee", "snapshot_id": "s",
+          "capture_time": t, "lat": 1.0, "lng": 2.0, "heading": 0.0, "pitch": 0.0,
+          "roll": 0.0}]  # fmt: skip
+    frames = dm.frame_rows(rows, "P")
+    assert [f["cam_k"] for f in frames] == list(range(7))
+    assert frames[0]["camera_pose"] == {"heading": 0.0, "pitch": 0.0, "roll": 0.0,
+                                        "latitude": 1.0, "longitude": 2.0}  # fmt: skip
+    assert frames[3]["camera_pose"]["heading"] == 30.0
+    assert frames[3]["camera_pose"]["pitch"] == 1.5
+
+
+def test_skill_doc_describes_the_travel_centred_view_not_a_camera_fallback(dm):
+    md = SKILL.parents[1].joinpath("SKILL.md").read_text()
+    assert "camera 0 is the fallback" not in md
+    assert "--travel-deg" in md
+    assert "black" in md and "cost" in md
