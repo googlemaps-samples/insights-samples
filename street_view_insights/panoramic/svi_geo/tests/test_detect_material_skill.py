@@ -51,7 +51,8 @@ def test_sql_is_parameterised_pano_latest_only_without_gcs_uri(dm):
         assert not re.search(r"\bgcs_uri\b", sql)
         tables = data.referenced_tables(sql)
         assert tables == {"my-proj.imagery_insights___us.pano_observations_latest"}
-        assert "pano_id IS NOT NULL" in sql
+        assert "pano_id IS NOT NULL" not in sql
+        assert "capture_id" in sql
     assert "@radius_m" in dm.COORDS_SQL and "ST_DWITHIN" in dm.COORDS_SQL
     assert "ORDER BY ST_DISTANCE" not in dm.COORDS_SQL.split("WHERE")[0]
 
@@ -112,7 +113,7 @@ def test_road_crop_is_deterministic_code(dm):
 
 # ----------------------------------------------------------------------------- Task 9
 
-from svi_geo import rosette  # noqa: E402
+from svi_geo import gemini_client, rosette  # noqa: E402
 
 INTR = rosette.load_intrinsics()
 
@@ -138,12 +139,54 @@ def test_road_view_docstring_matches_the_code(dm):
     assert "25 deg" not in doc or dm.ROAD_PITCH_DEG == -25
 
 
-def test_skill_selects_the_full_pose_and_excludes_capture_id(dm):
+def test_skill_sql_keys_on_capture_id_and_keeps_null_pano_id(dm):
+    import datetime as dt
+
     assert "camera_pose.pitch" in dm._FIELDS and "camera_pose.roll" in dm._FIELDS
-    assert "capture_id" not in dm.ID_SQL
-    assert "capture_id" not in dm.COORDS_SQL
+    assert "capture_id" in dm.ID_SQL
+    assert "capture_id" in dm.COORDS_SQL
+    assert "pano_id IS NOT NULL" not in dm.ID_SQL
+    assert "pano_id IS NOT NULL" not in dm.COORDS_SQL
     md = SKILL.parents[1].joinpath("SKILL.md").read_text()
-    assert "capture_id" not in md
+    assert "capture_id" in md
+    assert "~1.9 GB" not in md
+
+    # Verify frame_rows and travel_direction work when pano_id is None
+    t0 = dt.datetime(2025, 1, 1, 12, 0, 0)
+    t1 = dt.datetime(2025, 1, 1, 12, 0, 2)
+    rows = [
+        {
+            "capture_id": "cap_A",
+            "pano_id": None,
+            "observation_id": f"o1:A_{k}:5001ee",
+            "snapshot_id": "s",
+            "capture_time": t0,
+            "lat": 28.0500,
+            "lng": -81.9600,
+            "heading": 60.0 * k,
+            "pitch": 0.0,
+            "roll": 0.0,
+        }
+        for k in range(7)
+    ] + [
+        {
+            "capture_id": "cap_B",
+            "pano_id": None,
+            "observation_id": f"o1:B_{k}:5001ee",
+            "snapshot_id": "s",
+            "capture_time": t1,
+            "lat": 28.0501,
+            "lng": -81.9600,
+            "heading": 60.0 * k,
+            "pitch": 0.0,
+            "roll": 0.0,
+        }
+        for k in range(7)
+    ]
+    frames = dm.frame_rows(rows, "cap_A")
+    assert len(frames) == 7
+    td = dm.travel_direction(rows, "cap_A")
+    assert td is not None and 0.0 <= td < 360.0
 
 
 # ----------------------------------------------------------------------------- round 2 partial
@@ -155,8 +198,8 @@ def test_id_sql_looks_up_the_id_once_and_filters_by_that_location(dm):
     assert "WITH hit AS" in sql and "LIMIT 1" in sql
     assert "ST_GEOGPOINT(hit.lng, hit.lat)" in sql and "@radius_m" in sql
     assert "@id" in sql and not re.search(r"\bgcs_uri\b", sql)
-    assert "capture_id" not in sql
-    assert "observation_id = @id OR pano_id = @id" in sql
+    assert "capture_id" in sql
+    assert "observation_id = @id OR capture_id = @id OR pano_id = @id" in sql
 
 
 def test_render_sql_validates_dataset_allowlist(dm):
@@ -175,7 +218,7 @@ def test_pano_id_and_observation_id_are_separate_or_aliased_flags(dm):
 
 
 @pytest.mark.live
-def test_id_sql_dry_run_under_145gb(dm):
+def test_id_sql_dry_run_under_175gb(dm):
     import os
 
     from google.cloud import bigquery
@@ -193,7 +236,7 @@ def test_id_sql_dry_run_under_145gb(dm):
         sql, job_config=bigquery.QueryJobConfig(dry_run=True, query_parameters=params)
     )
     gb = dry.total_bytes_processed / 1e9
-    assert gb <= 1.45, f"expected ID_SQL dry run <= 1.45 GB, got {gb:.3f} GB"
+    assert gb <= 1.75, f"expected ID_SQL dry run <= 1.75 GB, got {gb:.3f} GB"
 
 
 def _rosette_rows(heading0):
@@ -234,7 +277,7 @@ def test_travel_direction_is_required_not_guessed(dm):
 
 def test_cost_line_reports_tokens_and_usd(dm):
     usage = {"prompt_token_count": 1000, "candidates_token_count": 200, "thoughts_token_count": 50}
-    line = dm.cost_line(usage, "gemini-3.5-flash")
+    line = dm.cost_line(usage, gemini_client.DEFAULT_MODEL)
     assert "calls=1" in line and "input_tokens=1,000" in line and "output_tokens=250" in line
     assert "$" in line
 

@@ -16,9 +16,12 @@ GCS_BUCKET=YOUR_FRAME_BUCKET SVI_PROJECT=YOUR_PROJECT_ID \
 The scripts in `scripts/` take the frame bucket from `--gcs-bucket` or `$GCS_BUCKET`; the
 bucket is never discovered by selecting `gcs_uri`.
 
-**First-run BigQuery cost.** The pano metadata query dry-runs at ~1.6 GB on first run (cached
-locally for 7 days under `~/.cache/svi_geo/bq`; $0 within the free 1 TB/month tier or ~$0.01
-at $6.25/TB on-demand; re-runs within 7 days bill 0 bytes).
+**First-run BigQuery cost.** The canonical rosette query (`data.rosette_sql`, keyed on
+`capture_id` with SQL-side sequences, bearings, and per-camera centres) dry-runs at **1.831 GB**
+on first run (ceiling 1.95 GB; cached locally with a 35-day TTL cap and `.json` byte sidecar
+under `~/.cache/svi_geo/bq`; $0 within the free 1 TB/month tier or ~$0.0114 at $6.25/TB
+on-demand; re-runs hit the snapshot-keyed parquet cache and bill 0 bytes). Live `SV_PANO`
+snapshots are discovered at runtime via `data.snapshot_catalog_sql` (0.000002 GB / 2 KB).
 
 `pyproject.toml` bounds every dependency. The lower bound is the version preinstalled on
 Colab (runtime 2026.07: Python 3.12, numpy 2.0.2, pandas 2.2.2, pyarrow 18.1; and the current
@@ -44,14 +47,16 @@ reproducible install, install it first and then the package without dependencies
 |---|---|
 | `config` | explicit `PROJECT_ID` / `GCS_BUCKET` resolution; fails fast on placeholders |
 | `geo` | ENU / haversine / bearing helpers |
-| `rosette` | KB4 fisheye model for the 7-camera rosette, per-camera pose, perspective rendering, `undistort`, camera selection |
-| `data` | parameterized, dry-run-first, byte-capped queries on the pano tables; cheap `gcs_uri_for` |
-| `sequence` | drive-sequence reconstruction, measured spacing, camera roles |
-| `images` | GCS fetch (opt-in disk cache with a 24 h TTL), fast JPEG decode |
-| `attribution` | "Imagery © Google" credit for figures and folium maps |
+| `rosette` | KB4 fisheye model for the 7-camera rosette, `Intrinsics.scaled`, anti-aliased `render_perspective`, `render_equirect_strip` |
+| `data` | `capture_id`-keyed `rosette_sql` (1.831 GB), `snapshot_catalog_sql` (2 KB), `cluster_points_sql` (0 B), `repeat_pairs_sql` (1.362 GB), `coverage_sql` (1.040 GB), `tracks_sql` (1.425 GB), `multi_aoi_sql` (1.628 GB), `assets_in_aoi_sql` (0.053 GB); cheap `gcs_uri_for` |
+| `sequence` | drive-sequence reconstruction, `select_by_spacing`, measured spacing, camera roles |
+| `images` | GCS fetch with content-hashed disk cache, `decode(scale=s*)`, `clahe_lab` |
+| `views`, `roof`, `cvchecks` | geometric `zoom_view`, `redaction_overlap`, roof-edge validation, Gemini-independent OpenCV checks |
+| `attribution`, `maps` | "Imagery © Google" credit for figures and shared WKT-based folium maps |
 | `triangulate`, `entities` | multi-view ray triangulation and per-class entity clustering / dedup |
-| `smoothing` | HMM / Viterbi smoothing of per-pano labels along a drive; segments |
-| `schemas`, `gemini_client` | typed Gemini outputs; async runner with call cap, concurrency and cost log |
+| `smoothing` | HMM / Viterbi smoothing of per-rosette labels along a drive; segments |
+| `schemas`, `gemini_client` | typed Gemini outputs; async runner with `thinking_level`, `media_resolution`, `CodeExecTrace` validation, and cost log |
+| `usecases` | shared UC1–UC4 execution pipelines (`Variant`, `ucN_run`, and agentic-vision cross-checks) |
 | `simulate`, `eval`, `pipeline` | synthetic scenes on real drive paths, metrics, end-to-end pipeline |
 | `calibrate`, `calib_features`, `calib_real` | rosette intrinsics fitting (`scripts/fit_intrinsics.py`) |
 
@@ -135,3 +140,56 @@ python scripts/run_eval.py --labels my_labels.csv --pipeline-output entities.jso
 
 `scripts/make_label_kit.py` renders the views to label and writes the CSV template; see
 [`EVALUATION.md`](EVALUATION.md).
+
+## Appendix (O3): Production pattern for a user-owned clustered pano index
+
+Because `imagery_insights___us.pano_observations_latest` is an authorized view over an
+Analytics Hub linked dataset:
+1. Row predicates (`ST_DWITHIN`, `snapshot_id = ...`, `capture_time BETWEEN ...`) do **not**
+   prune scanned bytes on the authorized view (`rosette_sql` always scans **1.831 GB** across
+   the projected columns).
+2. BigQuery does not allow `CREATE MATERIALIZED VIEW` over an Analytics Hub linked view across
+   project boundaries.
+
+When running hundreds of small AOI queries per day in production, materialise a **user-owned
+physical table** in your own project clustered by `geog` with a **35-day partition/table
+expiration** (matching the Imagery Insights snapshot retention policy, and omitting `gcs_uri`
+to comply with Zero-URI caching rules):
+
+```sql
+-- Run once per snapshot refresh in your own writable dataset (NOT inside the read-only notebooks):
+CREATE OR REPLACE TABLE `my_billing_project.my_scratch_dataset.rosette_index_35d`
+PARTITION BY DATE(capture_time)
+CLUSTER BY geog
+OPTIONS (
+  expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 35 DAY),
+  description = "Metadata-only clustered rosette index (no gcs_uri; 35-day TTL)"
+) AS
+SELECT
+  capture_id,
+  snapshot_id,
+  ANY_VALUE(pano_id) AS pano_id,
+  MIN(capture_time) AS capture_time,
+  ANY_VALUE(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude)) AS geog,
+  ANY_VALUE(map_url) AS map_url,
+  ANY_VALUE(camera_pose.altitude) AS cam_alt,
+  ARRAY_AGG(
+    STRUCT(
+      CAST(REGEXP_EXTRACT(observation_id, r'_(\d)(?::|$)') AS INT64) AS k,
+      observation_id,
+      camera_pose.heading AS heading,
+      camera_pose.pitch AS pitch,
+      camera_pose.roll AS roll,
+      camera_pose.latitude AS cam_lat,
+      camera_pose.longitude AS cam_lng
+    )
+    ORDER BY CAST(REGEXP_EXTRACT(observation_id, r'_(\d)(?::|$)') AS INT64)
+  ) AS cams,
+  COUNT(*) AS n_frames
+FROM `imagery-insights-sandbox.imagery_insights___us.pano_observations_latest`
+GROUP BY capture_id, snapshot_id;
+```
+
+Subsequent `ST_DWITHIN(geog, ST_GEOGPOINT(@lng, @lat), @radius_m)` queries against
+`rosette_index_35d` prune via the `CLUSTER BY geog` blocks to a few megabytes per AOI.
+

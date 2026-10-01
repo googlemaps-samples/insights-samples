@@ -65,6 +65,20 @@
       "ceiling_bytes": 100000000,
       "ceiling_gb": 0.1,
       "usd_at_6_25_per_tb": 0.00033
+    },
+    "skill_id_sql": {
+      "dry_run_bytes": 1627581204,
+      "dry_run_gb": 1.627581,
+      "ceiling_bytes": 1750000000,
+      "ceiling_gb": 1.75,
+      "usd_at_6_25_per_tb": 0.01017
+    },
+    "skill_coords_sql": {
+      "dry_run_bytes": 1627581204,
+      "dry_run_gb": 1.627581,
+      "ceiling_bytes": 1750000000,
+      "ceiling_gb": 1.75,
+      "usd_at_6_25_per_tb": 0.01017
     }
   }
 }

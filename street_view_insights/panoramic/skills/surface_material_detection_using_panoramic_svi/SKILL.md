@@ -11,12 +11,14 @@ using the Street View Insights **panoramic** tables only (`pano_observations_lat
 ## How it works
 
 1.  **Metadata lookup (code).** A parameterised, dry-run-checked BigQuery query (capped at
-    2 GB billed) reads frame metadata for panos within `--radius-m` of the point, or around the
-    given id. `--observation-id` accepts an `observation_id` or a `pano_id` (or use `--pano-id`
-    directly); the id lookup scans ~1.40 GB (note: a miss still scans and bills ~1.40 GB). It
-    never selects `gcs_uri`: that column alone scans ~1.9 GB, so the frame path is derived from
-    `<bucket>/<snapshot_id>/v0/<observation_id>.jpg`.
-2.  **Travel direction (code).** Measured from the neighbouring panos of the same drive
+    2 GB billed) reads frame metadata for rosettes within `--radius-m` of the point, or around the
+    given id. Rosettes are keyed on `capture_id` (`pano_id` is kept as nullable publishable
+    metadata; keeping `pano_id IS NULL` rosettes recovers ~69% of frames). `--observation-id`
+    accepts an `observation_id`, `--capture-id` accepts a `capture_id`, or use `--pano-id`
+    directly; the id lookup scans 1.632 GB (note: a miss still scans and bills 1.632 GB). It
+    never selects `gcs_uri`: that column alone adds 1.201 GB (taking the scan to 2.803 GB), so
+    the frame path is derived from `<bucket>/<snapshot_id>/v0/<observation_id>.jpg`.
+2.  **Travel direction (code).** Measured from the neighbouring rosettes of the same drive
     (same snapshot, within 5 s). If it cannot be measured the script stops and asks for
     `--travel-deg`; it never guesses a camera.
 3.  **Road view (code).** The frame(s) are downloaded with your credentials and a road view is
@@ -49,13 +51,15 @@ Run from the repository root:
 ```bash
 export PROJECT_ID=YOUR_PROJECT_ID GCS_BUCKET=YOUR_FRAME_BUCKET
 
-# By GPS coordinates (nearest pano within --radius-m, default 30 m)
+# By GPS coordinates (nearest rosette within --radius-m, default 30 m)
 python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py \
   --coordinates <lat,lng>
 
-# By observation id or pano id
+# By observation id, capture id, or pano id
 python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py \
   --observation-id <observation_id>
+python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py \
+  --capture-id <capture_id>
 python3 street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi/scripts/detect_material.py \
   --pano-id <pano_id>
 
@@ -74,7 +78,7 @@ python3 street_view_insights/panoramic/skills/surface_material_detection_using_p
 -   `--radius-m`: search radius for the pano lookup (default 30).
 -   `--travel-deg`: travel direction in degrees from north, for panos whose direction
     cannot be measured from neighbouring panos.
--   `--model` (default `gemini-3.5-flash`) and `--location` (default `global`).
+-   `--model` (default `gemini_client.DEFAULT_MODEL`) and `--location` (default `global`).
 
 ### Output
 
@@ -85,7 +89,7 @@ python3 street_view_insights/panoramic/skills/surface_material_detection_using_p
   "confidence": 0.86,
   "surface_condition": "Fair",
   "visual_reasoning": "...",
-  "source": {"pano_id": "...", "travel_deg": 87.1, "observation_ids": ["...", "..."],
+  "source": {"capture_id": "...", "pano_id": "...", "travel_deg": 87.1, "observation_ids": ["...", "..."],
              "cam_k": [0, 1], "black_fraction_sent": 0.0}
 }
 ```

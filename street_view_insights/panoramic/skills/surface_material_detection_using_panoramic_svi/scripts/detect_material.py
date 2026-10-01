@@ -83,39 +83,37 @@ SURFACE_MATERIAL_PROMPT = (
 # ----------------------------------------------------------------------------- SQL
 
 _FIELDS = """
-  pano_id, observation_id, snapshot_id, capture_time,
+  capture_id, pano_id, observation_id, snapshot_id, capture_time,
   capture_location.latitude AS lat, capture_location.longitude AS lng,
   camera_pose.heading AS heading, camera_pose.pitch AS pitch, camera_pose.roll AS roll"""
 
-# Frames of every pano within @radius_m of the point (the nearest pano plus its neighbours,
+# Frames of every rosette within @radius_m of the point (the nearest rosette plus its neighbours,
 # which give the travel direction). Filtered with ST_DWITHIN, never a full-table ORDER BY.
+# Keyed on capture_id (pano_id is nullable publishable metadata; keeping NULLs recovers ~69% of frames).
 COORDS_SQL = (
     "SELECT"
     + _FIELDS
     + """
 FROM `__PROJECT__.__DATASET__.pano_observations_latest`
-WHERE pano_id IS NOT NULL
-  AND ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
+WHERE ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
                  ST_GEOGPOINT(@lng, @lat), @radius_m)
 """
 )
 
-# Frames of the pano identified by @id (observation_id or pano_id) plus its neighbours:
-# the id is looked up once (LIMIT 1) and the frames are filtered by distance to that location.
-# Dropping capture_id keeps the dry run at ~1.40 GB (down from 1.63 GB).
+# Frames of the rosette identified by @id (observation_id, capture_id, or pano_id) plus its neighbours:
+# the id is looked up once (LIMIT 1) and the frames are filtered by distance to that location (~1.63 GB).
 ID_SQL = (
     """WITH hit AS (
   SELECT capture_location.latitude AS lat, capture_location.longitude AS lng
   FROM `__PROJECT__.__DATASET__.pano_observations_latest`
-  WHERE pano_id IS NOT NULL AND (observation_id = @id OR pano_id = @id)
+  WHERE observation_id = @id OR capture_id = @id OR pano_id = @id
   LIMIT 1
 )
 SELECT hit.lat AS hit_lat, hit.lng AS hit_lng,"""
     + _FIELDS
     + """
 FROM `__PROJECT__.__DATASET__.pano_observations_latest`, hit
-WHERE pano_id IS NOT NULL
-  AND ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
+WHERE ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
                  ST_GEOGPOINT(hit.lng, hit.lat), @radius_m)
 """
 )
@@ -197,12 +195,21 @@ def _dist_m(lat1, lng1, lat2, lng2) -> float:
     return math.hypot((lat2 - lat1) * k, (lng2 - lng1) * k * math.cos(math.radians(lat1)))
 
 
-def travel_direction(rows: list[dict], pano_id: str, max_dt_s: float = 5.0) -> float | None:
-    """Bearing from the previous to the next pano of the same drive (same snapshot, <= 5 s)."""
-    panos = {}
+def _rosette_key(r: dict) -> str:
+    return str(r.get("capture_id") or r.get("pano_id") or "")
+
+
+def travel_direction(rows: list[dict], key_id: str, max_dt_s: float = 5.0) -> float | None:
+    """Bearing from the previous to the next rosette of the same drive (same snapshot, <= 5 s)."""
+    panos: dict[str, dict] = {}
+    me = None
     for r in rows:
-        panos.setdefault(r["pano_id"], r)
-    me = panos[pano_id]
+        rk = _rosette_key(r)
+        panos.setdefault(rk, r)
+        if key_id in (rk, r.get("capture_id"), r.get("pano_id")):
+            me = panos[rk]
+    if me is None:
+        me = panos[key_id]
     t0 = me["capture_time"]
     same = [
         p
@@ -343,6 +350,15 @@ def _optional_svi_geo_auth():
 # ----------------------------------------------------------------------------- main
 
 
+def _default_model() -> str:
+    try:
+        from svi_geo import gemini_client
+
+        return gemini_client.DEFAULT_MODEL
+    except ImportError:
+        return os.environ.get("SVI_GEMINI_MODEL") or "-".join(("gemini", "3", "flash", "preview"))
+
+
 def parse_args(argv=None, env=None):
     """CLI arguments. `env` (default: the process environment) supplies PROJECT_ID /
     GOOGLE_CLOUD_PROJECT / GCS_BUCKET / BIGQUERY_DATASET defaults; nothing else is guessed."""
@@ -351,8 +367,9 @@ def parse_args(argv=None, env=None):
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--image", help="Path to a local image file (already downloaded).")
     g.add_argument("--observation-id", dest="observation_id", help="Panoramic observation_id.")
+    g.add_argument("--capture-id", dest="capture_id", help="Panoramic capture_id (rosette key).")
     g.add_argument("--pano-id", dest="pano_id", help="Panoramic pano_id.")
-    g.add_argument("--coordinates", help="'lat,lng' - nearest pano within --radius-m")
+    g.add_argument("--coordinates", help="'lat,lng' - nearest rosette within --radius-m")
     p.add_argument("--radius-m", type=float, default=30.0)
     p.add_argument(
         "--travel-deg",
@@ -372,7 +389,7 @@ def parse_args(argv=None, env=None):
         help="Frame bucket linked to your dataset (default: $GCS_BUCKET). Required unless --image.",
     )
     p.add_argument("--location", default="global")
-    p.add_argument("--model", default="gemini-3.5-flash")
+    p.add_argument("--model", default=_default_model())
     args = p.parse_args(argv)
     if not args.project:
         p.error("set --project or the PROJECT_ID environment variable")
@@ -382,13 +399,14 @@ def parse_args(argv=None, env=None):
     return args
 
 
-def frame_rows(rows: list[dict], pano_id: str) -> list[dict]:
-    """The frames of `pano_id` with their camera index and full `camera_pose` (missing pitch or
-    roll are treated as level)."""
+def frame_rows(rows: list[dict], key_id: str) -> list[dict]:
+    """The frames of `key_id` (`capture_id` or `pano_id`) with their camera index and full
+    `camera_pose` (missing pitch or roll are treated as level)."""
     out = []
     for r in rows:
         k = _camera_index(r["observation_id"])
-        if r["pano_id"] != pano_id or k is None:
+        rk = _rosette_key(r)
+        if key_id not in (rk, r.get("capture_id"), r.get("pano_id")) or k is None:
             continue
         pose = {
             "heading": float(r["heading"]),
@@ -411,7 +429,7 @@ def _download(gcs, bucket: str, frame: dict) -> np.ndarray:
 
 
 def fetch_view(args) -> tuple[np.ndarray, dict]:
-    """Look up the pano, download the frame(s) with the caller's credentials and return the
+    """Look up the rosette, download the frame(s) with the caller's credentials and return the
     road view to send plus its metadata."""
     from google.cloud import bigquery, storage
 
@@ -430,9 +448,9 @@ def fetch_view(args) -> tuple[np.ndarray, dict]:
             raise ValueError(f"no pano within {args.radius_m} m of {lat},{lng}")
         near = min(rows, key=lambda r: _dist_m(lat, lng, r["lat"], r["lng"]))
     else:
-        target_id = args.observation_id or args.pano_id
+        target_id = args.observation_id or getattr(args, "capture_id", None) or args.pano_id
         print(
-            "[bigquery] note: ID lookup scans ~1.40 GB even on a miss; prefer --coordinates when known.",
+            "[bigquery] note: ID lookup scans ~1.63 GB even on a miss; prefer --coordinates when known.",
             file=sys.stderr,
         )
         params = [
@@ -442,21 +460,22 @@ def fetch_view(args) -> tuple[np.ndarray, dict]:
         rows = run_query(bq, render_sql(ID_SQL, project, args.dataset), params)
         if not rows:
             raise ValueError(
-                f"no pano observation found for {target_id} (note: a miss still billed ~1.40 GB; consider --coordinates)"
+                f"no pano observation found for {target_id} (note: a miss still billed ~1.63 GB; consider --coordinates)"
             )
         near = min(
             rows,
             key=lambda r: (
-                target_id not in (r["observation_id"], r["pano_id"]),
+                target_id not in (r["observation_id"], r.get("capture_id"), r.get("pano_id")),
                 _dist_m(r["hit_lat"], r["hit_lng"], r["lat"], r["lng"]),
             ),
         )
-    pano = near["pano_id"]
-    frames = frame_rows(rows, pano)
-    travel = resolve_travel(travel_direction(rows, pano), args.travel_deg)
+    rosette_id = _rosette_key(near)
+    frames = frame_rows(rows, rosette_id)
+    travel = resolve_travel(travel_direction(rows, rosette_id), args.travel_deg)
     gcs = storage.Client(project=project, credentials=creds)
     meta = {
-        "pano_id": pano,
+        "capture_id": near.get("capture_id") or rosette_id,
+        "pano_id": near.get("pano_id"),
         "travel_deg": round(travel, 1),
         "capture_time": str(near["capture_time"]),
         "project": project,
