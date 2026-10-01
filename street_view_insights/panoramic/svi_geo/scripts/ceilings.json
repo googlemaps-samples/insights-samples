@@ -1,0 +1,32 @@
+{
+  "00_explore_coverage": {
+    "use_case": "O4",
+    "max_usd": 0.0,
+    "max_minutes": 3.0,
+    "max_rss_mb": 4000.0
+  },
+  "house_image_discovery_with_cost": {
+    "use_case": "UC1",
+    "max_usd": 0.15,
+    "max_minutes": 6.0,
+    "max_rss_mb": 8000.0
+  },
+  "analyze_sequential_images": {
+    "use_case": "UC2",
+    "max_usd": 0.60,
+    "max_minutes": 12.0,
+    "max_rss_mb": 8000.0
+  },
+  "surface_material_detection": {
+    "use_case": "UC3",
+    "max_usd": 0.25,
+    "max_minutes": 8.0,
+    "max_rss_mb": 8000.0
+  },
+  "roof_edge_tracing": {
+    "use_case": "UC4",
+    "max_usd": 0.10,
+    "max_minutes": 5.0,
+    "max_rss_mb": 8000.0
+  }
+}
