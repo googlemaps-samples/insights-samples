@@ -1,6 +1,11 @@
-data/
+data/*
+!data/bytes_manifest.json
+!data/decisions/
+!data/decisions/*.md
 .cache/
 *.parquet
+!tests/fixtures/
+!tests/fixtures/*.parquet
 *.jpg
 *.egg-info/
 build/

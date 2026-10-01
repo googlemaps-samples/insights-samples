@@ -103,3 +103,115 @@ def test_live_call_emits_no_afc_warning(runner, caplog):
     ]
     assert not afc_logs, f"Unexpected AFC log messages: {afc_logs}"
     assert not afc_warns, f"Unexpected AFC warnings: {afc_warns}"
+
+
+def _synthetic_three_rects() -> tuple[bytes, list[int]]:
+    """640x480 white image with 3 solid black rectangles of widths [60, 100, 140] px."""
+    import cv2
+    import numpy as np
+
+    img = np.full((480, 640, 3), 255, dtype=np.uint8)
+    widths = [60, 100, 140]
+    x_starts = [40, 160, 340]
+    for x0, w in zip(x_starts, widths, strict=True):
+        cv2.rectangle(img, (x0, 120), (x0 + w - 1, 320), (0, 0, 0), -1)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    return bytes(buf), widths
+
+
+class _RectMeasurement(schemas.BaseModel):
+    count: int
+    widths_px: list[int]
+
+
+@pytest.mark.live
+def test_schema_plus_code_execution_on_vertex(svi_project):
+    """U1 capability probe: structured output + ToolCodeExecution + thinking_level + media_resolution."""
+    from google.genai import types
+
+    mode = gemini_client.CodeExecSchemaMode.DEFAULT
+    assert mode in (
+        gemini_client.CodeExecSchemaMode.SCHEMA_NATIVE,
+        gemini_client.CodeExecSchemaMode.SCHEMA_IN_PROMPT,
+    )
+    png_bytes, expected_widths = _synthetic_three_rects()
+    client = gemini_client.make_vertex_client(svi_project, credentials=auth.get_credentials())
+    prompt = (
+        "Use Python code execution (with cv2 or numpy/PIL) to load the attached image, threshold "
+        "the black rectangles on the white background, measure the exact pixel width of each "
+        "rectangle (sorted ascending), print 'MEASURE: ' followed by JSON, and return count and widths_px."
+    )
+    cfg, extra = gemini_client._build_config(
+        _RectMeasurement,
+        code_execution=True,
+        validator=lambda r: None,
+        thinking_level="MEDIUM",
+        media_resolution="HIGH",
+        mode=mode,
+    )
+    parts = [
+        types.Part.from_text(text=prompt),
+        types.Part.from_bytes(data=png_bytes, mime_type="image/png"),
+    ]
+    if extra is not None:
+        parts.append(types.Part.from_text(text=extra))
+    resp = client.models.generate_content(
+        model=gemini_client.DEFAULT_MODEL,
+        contents=[types.Content(role="user", parts=parts)],
+        config=types.GenerateContentConfig(**cfg),
+    )
+    exec_parts = []
+    outcomes = []
+    texts = []
+    for cand in resp.candidates or []:
+        for p in (cand.content.parts if cand.content else None) or []:
+            if getattr(p, "executable_code", None) is not None:
+                exec_parts.append(p.executable_code)
+            if getattr(p, "code_execution_result", None) is not None:
+                outcomes.append(str(p.code_execution_result.outcome))
+            if getattr(p, "text", None):
+                texts.append(p.text)
+    assert len(exec_parts) >= 1, "Expected >= 1 executable_code part"
+    assert any("OUTCOME_OK" in o for o in outcomes), f"Expected OUTCOME_OK, got {outcomes}"
+    parsed = gemini_client.parse_reply("\n".join(texts), _RectMeasurement)
+    assert parsed.count == 3
+    got_widths = sorted(parsed.widths_px)
+    assert len(got_widths) == 3
+    for got, exp in zip(got_widths, expected_widths, strict=True):
+        assert abs(got - exp) <= 3, f"Width {got} not within +-3 px of {exp}"
+    usage = resp.usage_metadata
+    assert getattr(usage, "tool_use_prompt_token_count", None) is not None
+
+
+@pytest.mark.live
+def test_pinned_code_exec_schema_mode_still_works(svi_project):
+    """Drift-guard live test for CodeExecSchemaMode.DEFAULT."""
+    png_bytes, expected_widths = _synthetic_three_rects()
+    client = gemini_client.make_vertex_client(svi_project, credentials=auth.get_credentials())
+    backend = gemini_client.VertexGeminiBackend(
+        client, thinking_level="MEDIUM", media_resolution="HIGH"
+    )
+    runner = gemini_client.GeminiRunner(backend, max_calls=3, concurrency=1)
+
+    def _validate(r: _RectMeasurement) -> None:
+        if r.count != 3 or len(r.widths_px) != 3:
+            raise ValueError(f"expected 3 widths, got {r}")
+
+    prompt = (
+        "Use Python code execution to measure the pixel widths of the 3 black rectangles in the "
+        'white image. Print \'MEASURE: {"count": ..., "widths_px": [...]}\' from Python and '
+        "return the JSON."
+    )
+    out = asyncio.run(
+        runner.ask(
+            [prompt, png_bytes],
+            _RectMeasurement,
+            code_execution=True,
+            validator=_validate,
+        )
+    )
+    assert out is not None
+    assert out.count == 3
+    for got, exp in zip(sorted(out.widths_px), expected_widths, strict=True):
+        assert abs(got - exp) <= 3

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import enum
 import json
 import re
 import warnings
@@ -189,6 +190,41 @@ def estimate_cost(
 # --------------------------------------------------------------------------- backends
 
 
+class CodeExecSchemaMode(str, enum.Enum):
+    """How structured output (`response_schema`) combines with `ToolCodeExecution` on Vertex AI."""
+
+    SCHEMA_NATIVE = "schema_native"
+    SCHEMA_IN_PROMPT = "schema_in_prompt"
+    # Pinned from live Vertex AI probe (docs/vertex_capabilities_2026-10-01.json,
+    # data/decisions/2026-10_vertex_code_exec.md); guarded by
+    # tests/test_gemini_live.py::test_pinned_code_exec_schema_mode_still_works.
+    DEFAULT = "schema_native"
+
+
+def _normalize_thinking_level(level: str | Any | None) -> Any | None:
+    if level is None:
+        return None
+    from google.genai import types
+
+    if isinstance(level, types.ThinkingLevel):
+        return level
+    key = str(level).strip().upper().removeprefix("THINKING_LEVEL_")
+    return getattr(types.ThinkingLevel, key)
+
+
+def _normalize_media_resolution(res: str | Any | None) -> Any | None:
+    if res is None:
+        return None
+    from google.genai import types
+
+    if isinstance(res, types.MediaResolution):
+        return res
+    key = str(res).strip().upper()
+    if not key.startswith("MEDIA_RESOLUTION_"):
+        key = f"MEDIA_RESOLUTION_{key}"
+    return getattr(types.MediaResolution, key)
+
+
 @dataclasses.dataclass
 class RawReply:
     text: str
@@ -211,12 +247,18 @@ class VertexGeminiBackend:
         model: str = DEFAULT_MODEL,
         temperature: float | None = None,
         location: str | None = None,
+        thinking_level: str | Any | None = None,
+        media_resolution: str | Any | None = None,
+        code_exec_schema_mode: CodeExecSchemaMode = CodeExecSchemaMode.DEFAULT,
     ):
         """`temperature=None` keeps the model default (Google recommends the default 1.0 for
         Gemini 3.x; low values can cause looping or degraded reasoning)."""
         self.client = client
         self.model = model
         self.temperature = temperature
+        self.thinking_level = thinking_level
+        self.media_resolution = media_resolution
+        self.code_exec_schema_mode = code_exec_schema_mode
         self.location = (
             location
             or getattr(getattr(client, "_api_client", None), "location", None)
@@ -231,10 +273,24 @@ class VertexGeminiBackend:
         validator=None,
         seed: int | None = None,
         timeout_s: float = 90.0,
+        thinking_level: str | Any | None = None,
+        media_resolution: str | Any | None = None,
+        mode: CodeExecSchemaMode | None = None,
     ) -> RawReply:
         from google.genai import types
 
-        cfg, extra = _build_config(schema, code_execution, validator, self.temperature, seed=seed)
+        cfg, extra = _build_config(
+            schema,
+            code_execution,
+            validator,
+            self.temperature,
+            seed=seed,
+            thinking_level=thinking_level if thinking_level is not None else self.thinking_level,
+            media_resolution=(
+                media_resolution if media_resolution is not None else self.media_resolution
+            ),
+            mode=mode if mode is not None else self.code_exec_schema_mode,
+        )
         if extra is not None:
             parts = parts + [types.Part.from_text(text=extra)]
         contents = [types.Content(role="user", parts=parts)]
@@ -280,13 +336,17 @@ def _build_config(
     validator: Callable[[Any], None] | None,
     temperature: float | None = None,
     seed: int | None = None,
+    thinking_level: str | Any | None = None,
+    media_resolution: str | Any | None = None,
+    mode: CodeExecSchemaMode = CodeExecSchemaMode.DEFAULT,
 ) -> tuple[dict[str, Any], str | None]:
     """GenerateContentConfig kwargs and an optional extra prompt (pure, no network).
 
     Without the code tool the schema is enforced by the API (`response_schema`, JSON mode).
-    The code tool cannot be combined with `response_schema`, so the schema goes into the
-    prompt and a code-side `validator` is mandatory. Automatic function calling (AFC) is
-    always disabled because we never pass Python callable tools."""
+    With `code_execution=True`, a code-side `validator` is always mandatory; `mode` selects
+    `SCHEMA_NATIVE` (`response_schema` + `ToolCodeExecution`, pinned from live Vertex probe)
+    or `SCHEMA_IN_PROMPT` (schema JSON embedded in prompt text). Automatic function calling
+    (AFC) is always disabled because we never pass Python callable tools."""
     from google.genai import types
 
     cfg: dict[str, Any] = {
@@ -296,7 +356,15 @@ def _build_config(
         cfg["temperature"] = temperature
     if seed is not None:
         cfg["seed"] = int(seed)
+    tl = _normalize_thinking_level(thinking_level)
+    if tl is not None:
+        cfg["thinking_config"] = types.ThinkingConfig(thinking_level=tl)
+    mr = _normalize_media_resolution(media_resolution)
+    if mr is not None:
+        cfg["media_resolution"] = mr
     if schema is None:
+        if code_execution:
+            cfg["tools"] = [types.Tool(code_execution=types.ToolCodeExecution())]
         return cfg, None
     if not code_execution:
         cfg["response_mime_type"] = "application/json"
@@ -304,11 +372,16 @@ def _build_config(
         return cfg, None
     if validator is None:
         raise ValueError(
-            "code_execution with a schema bypasses response_schema; pass a validator that "
+            "code_execution with a schema requires a validator that "
             "re-checks the parsed reply in code"
         )
 
     cfg["tools"] = [types.Tool(code_execution=types.ToolCodeExecution())]
+    resolved_mode = CodeExecSchemaMode(mode)
+    if resolved_mode == CodeExecSchemaMode.SCHEMA_NATIVE:
+        cfg["response_mime_type"] = "application/json"
+        cfg["response_schema"] = schema
+        return cfg, None
     extra = (
         "You may use Python code execution to inspect the image. End your reply with ONLY a "
         "single JSON object matching this JSON schema:\n" + json.dumps(schema.model_json_schema())

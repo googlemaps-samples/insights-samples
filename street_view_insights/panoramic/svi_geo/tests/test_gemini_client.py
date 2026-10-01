@@ -149,9 +149,42 @@ def test_build_config_refuses_code_execution_with_schema_but_no_validator():
 
 
 def test_build_config_code_execution_with_validator_adds_tool_and_schema_prompt():
-    cfg, extra = gc._build_config(schemas.RoofEdges, code_execution=True, validator=lambda r: None)
+    cfg, extra = gc._build_config(
+        schemas.RoofEdges,
+        code_execution=True,
+        validator=lambda r: None,
+        mode=gc.CodeExecSchemaMode.SCHEMA_IN_PROMPT,
+    )
     assert len(cfg["tools"]) == 1 and "response_schema" not in cfg
     assert "roof_visible" in extra
+
+
+def test_build_config_schema_native_returns_schema_and_tools():
+    assert gc.CodeExecSchemaMode.DEFAULT == gc.CodeExecSchemaMode.SCHEMA_NATIVE
+    cfg, extra = gc._build_config(
+        schemas.RoofEdges,
+        code_execution=True,
+        validator=lambda r: None,
+        mode=gc.CodeExecSchemaMode.SCHEMA_NATIVE,
+    )
+    assert len(cfg["tools"]) == 1
+    assert cfg["response_mime_type"] == "application/json"
+    assert cfg["response_schema"] is schemas.RoofEdges
+    assert extra is None
+
+
+def test_build_config_emits_thinking_and_media():
+    from google.genai import types
+
+    cfg, _ = gc._build_config(
+        schemas.PresenceCheck,
+        code_execution=False,
+        validator=None,
+        thinking_level="low",
+        media_resolution="high",
+    )
+    assert cfg["thinking_config"].thinking_level == types.ThinkingLevel.LOW
+    assert cfg["media_resolution"] == types.MediaResolution.MEDIA_RESOLUTION_HIGH
 
 
 def test_build_config_passes_temperature_only_when_set():
