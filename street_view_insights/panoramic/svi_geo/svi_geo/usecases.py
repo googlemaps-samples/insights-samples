@@ -70,13 +70,20 @@ class Variant:
     gemini_seed: int | None = None
     prompt_paraphrase: bool = False
 
+    # Global rendering & Gemini dials
+    antialias: bool = True
+    thinking_level: str | None = None
+    media_resolution: str | None = None
+
     # UC1 parameters
+    uc1_view_size: tuple[int, int] = (1024, 768)
     uc1_sky_contact_weight: float = 0.0
     uc1_truncation_penalty: float = 0.0
     uc1_diversify_days: bool = False
     uc1_framing_weighted_fusion: bool = False
     uc1_min_agree_views: int = 1
     uc1_facade_edge_triangulation: bool = False
+    uc1_clahe: bool = False
 
     # UC2 parameters
     uc2_min_confidence: float = 0.40
@@ -94,10 +101,21 @@ class Variant:
     uc3_stay_prob: float = 0.88
 
     # UC4 parameters
+    uc4_view_size: tuple[int, int] = (1200, 900)
     uc4_sky_contact_min: float = 0.0
     uc4_flash_lite_precheck: bool = False
     uc4_validator_gates: bool = False
     uc4_validator_sky_min: float = 0.35
+    uc4_clahe: bool = False
+
+    def describe(self) -> str:
+        """Human-readable summary starting with `variant=<name>` followed by all tuned fields."""
+        fields = [
+            f"{f.name}={getattr(self, f.name)!r}"
+            for f in dataclasses.fields(self)
+            if f.name != "name"
+        ]
+        return f"variant={self.name}\n  " + ", ".join(fields)
 
 
 BASELINE_VARIANT = Variant(name="baseline")
@@ -185,10 +203,14 @@ def _framing_weight(
         w *= 0.65
     if _box_truncated(v.box_2d):
         w *= max(0.1, 1.0 - float(variant.uc1_truncation_penalty or 0.6))
-    if v.box_2d and variant.uc1_sky_contact_weight > 0.0:
-        x0, y0, x1, _ = schemas.box_2d_to_pixels(v.box_2d, width, height)
-        sc = cvc.sky_contact(crop, [(x0, y0), (x1, y0)])
-        w *= 1.0 + float(variant.uc1_sky_contact_weight) * sc
+    if v.box_2d:
+        box_px = schemas.box_2d_to_pixels(v.box_2d, width, height)
+        if views.redaction_overlap(crop, box_px) > 0.30:
+            w *= 0.5
+        if variant.uc1_sky_contact_weight > 0.0:
+            x0, y0, x1, _ = box_px
+            sc = cvc.sky_contact(crop, [(x0, y0), (x1, y0)])
+            w *= 1.0 + float(variant.uc1_sky_contact_weight) * sc
     return w
 
 
@@ -198,11 +220,13 @@ async def uc1_run(
     runner: gc.GeminiRunner,
     intr: rosette.Intrinsics,
     *,
-    width: int = 1024,
-    height: int = 768,
+    width: int | None = None,
+    height: int | None = None,
     variant: Variant = DEFAULT_VARIANT,
 ) -> dict[str, Any]:
     """Render ranked house views, query Gemini (`HouseView`), triangulate location, and fuse attributes."""
+    w = int(width) if width is not None else int(variant.uc1_view_size[0])
+    h = int(height) if height is not None else int(variant.uc1_view_size[1])
     raw_rows = ranked.to_dict("records")
     cand_rows: list[dict[str, Any]] = []
     valid_indices: list[int] = []
@@ -210,34 +234,48 @@ async def uc1_run(
     black: list[float] = []
     view_objs: list[rosette.PerspectiveView] = []
     for idx_r, r in enumerate(raw_rows):
-        try:
-            img = images.decode(fetch(r["gcs_uri"]))
-        except Exception:
-            continue
-        cand_rows.append(r)
-        valid_indices.append(idx_r)
-        base_view = views.view_for(r, width, height)
+        base_view = views.view_for(r, w, h)
         if variant.yaw_delta_deg != 0.0 or variant.hfov_scale != 1.0:
             yaw = (base_view.yaw_deg + variant.yaw_delta_deg) % 360.0
             hfov = min(
                 float(r.get("max_hfov", base_view.hfov_deg)),
                 base_view.hfov_deg * variant.hfov_scale,
             )
-            v_obj = rosette.PerspectiveView(yaw, base_view.pitch_deg, hfov, width, height)
+            v_obj = rosette.PerspectiveView(yaw, base_view.pitch_deg, hfov, w, h)
         else:
             v_obj = base_view
+        scale = images.decode_scale_for_view(w, v_obj.hfov_deg)
+        try:
+            img = images.decode(fetch(r["gcs_uri"]), scale=scale)
+        except Exception:
+            continue
+        cand_rows.append(r)
+        valid_indices.append(idx_r)
         view_objs.append(v_obj)
-        crops.append(
-            rosette.render_perspective(img, intr, r["camera_pose"], v_obj, int(r["cam_k"]))
+        crop = rosette.render_perspective(
+            img,
+            intr,
+            r["camera_pose"],
+            v_obj,
+            int(r["cam_k"]),
+            antialias=variant.antialias,
+            mask_hood=True,
         )
+        if variant.uc1_clahe:
+            crop = images.clahe_lab(crop)
+        crops.append(crop)
         black.append(rosette.view_black_fraction(intr, r["camera_pose"], v_obj, int(r["cam_k"])))
 
     prompt = UC1_PROMPT_PARAPHRASE if variant.prompt_paraphrase else UC1_PROMPT_V0
     ask_kw: dict[str, Any] = {
-        "validator": lambda v: v.validate_in_image(width, height),
+        "validator": lambda v: v.validate_in_image(w, h),
     }
     if variant.gemini_seed is not None:
         ask_kw["seed"] = variant.gemini_seed
+    if variant.thinking_level is not None:
+        ask_kw["thinking_level"] = variant.thinking_level
+    if variant.media_resolution is not None:
+        ask_kw["media_resolution"] = variant.media_resolution
     views_out = await runner.ask_many(
         [([prompt, c], schemas.HouseView) for c in crops],
         **ask_kw,
@@ -251,12 +289,16 @@ async def uc1_run(
     ]
     truncated = [bool(v and v.house_visible and _box_truncated(v.box_2d)) for v in views_out]
     sky_contacts = []
+    redaction_overlaps = []
     for c, v in zip(crops, views_out, strict=True):
         if v and v.house_visible and v.box_2d:
-            x0, y0, x1, _ = schemas.box_2d_to_pixels(v.box_2d, width, height)
+            box_px = schemas.box_2d_to_pixels(v.box_2d, w, h)
+            x0, y0, x1, _ = box_px
             sky_contacts.append(cvc.sky_contact(c, [(x0, y0), (x1, y0)]))
+            redaction_overlaps.append(views.redaction_overlap(c, box_px))
         else:
             sky_contacts.append(float("nan"))
+            redaction_overlaps.append(0.0)
 
     res = ranked.iloc[valid_indices].assign(
         visible=[v.house_visible if v else None for v in views_out],
@@ -266,13 +308,14 @@ async def uc1_run(
         centred=centred,
         truncated=truncated,
         sky_contact=sky_contacts,
+        redaction_overlap=redaction_overlaps,
     )
     sightings = [
         views.HouseSighting(
             str(r.get("capture_id") or r.get("pano_id") or ""),
             r["camera_pose"],
             v_obj,
-            schemas.box_2d_to_pixels(v.box_2d, width, height),
+            schemas.box_2d_to_pixels(v.box_2d, w, h),
         )
         for r, v_obj, v, c in zip(cand_rows, view_objs, views_out, centred, strict=True)
         if c
@@ -293,8 +336,7 @@ async def uc1_run(
     attrs: dict[str, tuple[Any, float]] = {}
     for k in ("stories", "exterior_material", "roof_type"):
         votes = [
-            (_val(getattr(v, k)), _framing_weight(v, c_img, width, height, variant))
-            for v, c_img in ok_pairs
+            (_val(getattr(v, k)), _framing_weight(v, c_img, w, h, variant)) for v, c_img in ok_pairs
         ]
         fuse_kw: dict[str, Any] = {"ignore": {"UNKNOWN"}}
         if variant.uc1_min_agree_views > 1:
@@ -312,6 +354,7 @@ async def uc1_run(
         "black": black,
         "black_fraction_max": max(black) if black else float("nan"),
         "dark_pixel_max": max((images.dark_pixel_fraction(c) for c in crops), default=float("nan")),
+        "redaction_overlap_max": max(redaction_overlaps, default=0.0),
     }
 
 
@@ -378,6 +421,7 @@ async def uc2_run(
         "classes": classes,
         "keep_images": True,
         "min_confidence": conf_floor,
+        "antialias": variant.antialias,
     }
     if variant.yaw_delta_deg != 0.0:
         det_kw["yaw_delta_deg"] = variant.yaw_delta_deg
@@ -441,6 +485,10 @@ async def uc2_run(
         (images.dark_pixel_fraction(r["image"]) for r in run.records if r.get("image") is not None),
         default=float("nan"),
     )
+    det_redaction = max(
+        (float(r.get("redaction_overlap_max", 0.0)) for r in run.records),
+        default=0.0,
+    )
     return {
         "run": run,
         "observations": filtered_obs,
@@ -453,6 +501,9 @@ async def uc2_run(
         "self_consistency": sc,
         "det_black": det_black,
         "det_dark": det_dark,
+        "black_fraction_max": det_black,
+        "dark_pixel_max": det_dark,
+        "redaction_overlap_max": det_redaction,
     }
 
 
@@ -480,6 +531,7 @@ async def uc3_run(
     rv_by_pano: dict[str, dict[str, sequence.RoadView]] = {}
     black: list[float] = []
     zero: list[float] = []
+    redactions: list[float] = []
     for p in sel.itertuples():
         cid = str(getattr(p, "capture_id", None) or getattr(p, "pano_id", ""))
         rows = sel_frames[sel_frames.capture_id == cid].to_dict("records")
@@ -497,8 +549,12 @@ async def uc3_run(
             )
             if rv is None:
                 continue
+            scale = images.decode_scale_for_view(rv.view.width, rv.view.hfov_deg)
             try:
-                imgs = {int(r["cam_k"]): images.decode(fetch(r["gcs_uri"])) for r in rv.rows}
+                imgs = {
+                    int(r["cam_k"]): images.decode(fetch(r["gcs_uri"]), scale=scale)
+                    for r in rv.rows
+                }
             except Exception:
                 continue
             black.append(rv.black_sent)
@@ -506,6 +562,9 @@ async def uc3_run(
             out_v[role] = rendered
             out_rv[role] = rv
             zero.append(images.dark_pixel_fraction(rendered))
+            redactions.append(
+                views.redaction_overlap(rendered, (0, 0, rendered.shape[1], rendered.shape[0]))
+            )
         views_by_pano[cid] = out_v
         rv_by_pano[cid] = out_rv
         if getattr(p, "pano_id", None) and str(p.pano_id) != cid:
@@ -537,6 +596,10 @@ async def uc3_run(
     ask_kw: dict[str, Any] = {}
     if variant.gemini_seed is not None:
         ask_kw["seed"] = variant.gemini_seed
+    if variant.thinking_level is not None:
+        ask_kw["thinking_level"] = variant.thinking_level
+    if variant.media_resolution is not None:
+        ask_kw["media_resolution"] = variant.media_resolution
     labels = await runner.ask_many([window_request(i) for i in range(len(sel))], **ask_kw)
 
     length_m = smoothing.drive_length_m(sel.lat, sel.lng, max_gap_m)
@@ -609,6 +672,7 @@ async def uc3_run(
         "zero": zero,
         "black_fraction_max": max(black) if black else float("nan"),
         "dark_pixel_max": max(zero) if zero else float("nan"),
+        "redaction_overlap_max": max(redactions, default=0.0),
         "prompt_version": f"uc3_{variant.uc3_prompt_version}",
     }
 
@@ -625,25 +689,28 @@ def uc4_select_views(
     *,
     n_views: int = 3,
     n_candidates: int | None = None,
-    width: int = 1200,
-    height: int = 900,
+    width: int | None = None,
+    height: int | None = None,
     max_dist_m: float = 60.0,
     variant: Variant = DEFAULT_VARIANT,
 ) -> tuple[pd.DataFrame, list[dict[str, Any]], list[dict[str, Any]]]:
     """Rank candidate roof views, render each, and apply the occlusion screen."""
+    w = int(width) if width is not None else int(variant.uc4_view_size[0])
+    h = int(height) if height is not None else int(variant.uc4_view_size[1])
     cand_cap = n_candidates if n_candidates is not None else 2 * n_views
     roof_views = views.rank_roof_views(
-        frames, lat, lng, intr, n=cand_cap, aspect=width / height, max_dist_m=max_dist_m
+        frames, lat, lng, intr, n=cand_cap, aspect=w / h, max_dist_m=max_dist_m
     )
     chosen: list[dict[str, Any]] = []
     screen_records: list[dict[str, Any]] = []
     for row in roof_views.to_dict("records"):
-        try:
-            img_raw = images.decode(fetch(row["gcs_uri"]))
-        except Exception:
-            continue
         bearing = (float(row["bearing"]) + variant.yaw_delta_deg) % 360.0
         hfov = float(row["hfov"]) * variant.hfov_scale
+        scale = images.decode_scale_for_view(w, hfov)
+        try:
+            img_raw = images.decode(fetch(row["gcs_uri"]), scale=scale)
+        except Exception:
+            continue
         img, view, black = roof.render_roof_view(
             img_raw,
             intr,
@@ -652,9 +719,11 @@ def uc4_select_views(
             int(row["cam_k"]),
             pitch_deg=float(row["pitch"]),
             hfov_deg=hfov,
-            width=width,
-            height=height,
+            width=w,
+            height=h,
         )
+        if variant.uc4_clahe:
+            img = images.clahe_lab(img)
         rbox = views.roof_box(row, view)
         scr_kw: dict[str, Any] = {}
         if variant.uc4_sky_contact_min > 0.0:
@@ -671,32 +740,48 @@ async def uc4_run(
     chosen: Sequence[Mapping[str, Any]],
     runner: gc.GeminiRunner,
     *,
-    width: int = 1200,
-    height: int = 900,
+    width: int | None = None,
+    height: int | None = None,
     variant: Variant = DEFAULT_VARIANT,
 ) -> dict[str, Any]:
     """Query Gemini for `RoofEdges` on `chosen` views and validate/snap against image evidence."""
+    w = (
+        int(width)
+        if width is not None
+        else (int(chosen[0]["image"].shape[1]) if chosen else int(variant.uc4_view_size[0]))
+    )
+    h = (
+        int(height)
+        if height is not None
+        else (int(chosen[0]["image"].shape[0]) if chosen else int(variant.uc4_view_size[1]))
+    )
     ask_kw: dict[str, Any] = {
-        "validator": lambda r: r.validate_in_image(width, height),
+        "validator": lambda r: r.validate_in_image(w, h),
     }
     if variant.gemini_seed is not None:
         ask_kw["seed"] = variant.gemini_seed
+    if variant.thinking_level is not None:
+        ask_kw["thinking_level"] = variant.thinking_level
+    if variant.media_resolution is not None:
+        ask_kw["media_resolution"] = variant.media_resolution
     roofs = await runner.ask_many(
         [([UC4_PROMPT_V0, c["image"]], schemas.RoofEdges) for c in chosen],
         **ask_kw,
     )
 
     def to_pixels(edge):
-        return edge.edge_type.value, [(x / 1000 * width, y / 1000 * height) for y, x in edge.points]
+        return edge.edge_type.value, [(x / 1000 * w, y / 1000 * h) for y, x in edge.points]
 
     results = []
     decoy_rates = []
+    redactions = []
     for c, rf in zip(chosen, roofs, strict=True):
         proposed = [to_pixels(e) for e in (rf.edges if rf else [])]
         valid_mask = c["image"].max(axis=2) > 0
         horizon = roof.horizon_row_for(c["view"])
         rbox = views.roof_box(c, c["view"])
         wbox = views.wall_box(c, c["view"])
+        redactions.append(views.redaction_overlap(c["image"], rbox))
         val_kw: dict[str, Any] = {}
         if variant.uc4_validator_gates:
             val_kw["roof_box"] = rbox
@@ -731,4 +816,5 @@ async def uc4_run(
         "dark_pixel_max": max(
             (images.dark_pixel_fraction(c["image"]) for c in chosen), default=float("nan")
         ),
+        "redaction_overlap_max": max(redactions, default=0.0),
     }

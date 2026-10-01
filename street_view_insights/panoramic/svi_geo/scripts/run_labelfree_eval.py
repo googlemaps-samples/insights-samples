@@ -351,8 +351,9 @@ async def evaluate_uc1(
         )
         if ranked.empty:
             continue
+        w1, h1 = variant.uc1_view_size
         base_out = await uc.uc1_run(
-            ranked, fetch, student_runner, intr, width=768, height=576, variant=variant
+            ranked, fetch, student_runner, intr, width=w1, height=h1, variant=variant
         )
         pert_spec = perts[idx_t % len(perts)]
         pert_var = dataclasses.replace(
@@ -363,7 +364,7 @@ async def evaluate_uc1(
             prompt_paraphrase=True,
         )
         pert_out = await uc.uc1_run(
-            ranked, fetch, student_runner, intr, width=768, height=576, variant=pert_var
+            ranked, fetch, student_runner, intr, width=w1, height=h1, variant=pert_var
         )
 
         # M1.1 attribute agreement across (stories, exterior_material, roof_type)
@@ -1079,6 +1080,7 @@ async def evaluate_uc4(
     teacher_trace_by_block: dict[str, tuple[float, float]] = {}
     eave_rays_by_target: dict[str, list[tri.Ray]] = {}
 
+    w4, h4 = variant.uc4_view_size
     pert_spec = manifest["perturbations"][0]
     for t in manifest["uc4_targets"][:4]:
         _, chosen, screen_recs = uc.uc4_select_views(
@@ -1088,8 +1090,8 @@ async def evaluate_uc4(
             fetch,
             intr,
             n_views=2,
-            width=800,
-            height=600,
+            width=w4,
+            height=h4,
             variant=variant,
         )
         for s_idx, srec in enumerate(screen_recs[:2]):
@@ -1115,9 +1117,9 @@ async def evaluate_uc4(
 
         if not chosen:
             continue
-        out0 = await uc.uc4_run(chosen, student_runner, width=800, height=600, variant=variant)
+        out0 = await uc.uc4_run(chosen, student_runner, width=w4, height=h4, variant=variant)
         pert_var = dataclasses.replace(variant, gemini_seed=pert_spec["gemini_seed"])
-        out1 = await uc.uc4_run(chosen, student_runner, width=800, height=600, variant=pert_var)
+        out1 = await uc.uc4_run(chosen, student_runner, width=w4, height=h4, variant=pert_var)
 
         for v_idx, (res0, dec0, res1, c_view) in enumerate(
             zip(out0["results"], out0["decoy_rates"], out1["results"], chosen, strict=True)
@@ -1168,7 +1170,7 @@ async def evaluate_uc4(
             s_edges = out0["results"][0].valid_edges
             if t_edges and s_edges:
                 t_pts_list = [
-                    [(p[1] / 1000.0 * 800, p[0] / 1000.0 * 600) for p in te["points"]]
+                    [(p[1] / 1000.0 * w4, p[0] / 1000.0 * h4) for p in te["points"]]
                     for te in t_edges
                 ]
                 hits = sum(

@@ -105,3 +105,20 @@ def test_run_labelfree_eval_offline_writes_results_summary_and_calls(tmp_path):
     )
     assert res_f["variant"] == "final"
     assert (out_final / "results.json").is_file()
+
+
+def test_eval_uses_usecases_view_sizes():
+    import inspect
+
+    import run_labelfree_eval as rle
+
+    from svi_geo import usecases as uc
+
+    src_uc1 = inspect.getsource(rle.evaluate_uc1)
+    src_uc4 = inspect.getsource(rle.evaluate_uc4)
+    assert "variant.uc1_view_size" in src_uc1
+    assert "width=768" not in src_uc1
+    assert "variant.uc4_view_size" in src_uc4
+    assert "width=800" not in src_uc4
+    assert uc.DEFAULT_VARIANT.uc1_view_size == (1024, 768)
+    assert uc.DEFAULT_VARIANT.uc4_view_size == (1200, 900)

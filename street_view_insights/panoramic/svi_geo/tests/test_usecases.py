@@ -265,3 +265,91 @@ def test_uc3_v1_prompt_and_kerb_sidewalk_prior_survives_viterbi():
     first_txt = getattr(seen_prompts[0], "text", str(seen_prompts[0]))
     assert "MUST set present=false" in first_txt
     assert all(x == "ABSENT" for x in out["smooth_by_slot"]["RIGHT"])
+
+
+def test_variant_describe_lists_all_tuned_fields():
+    desc = uc.DEFAULT_VARIANT.describe()
+    assert desc.splitlines()[0].strip() == "variant=final"
+    for field_name in (
+        "uc1_view_size",
+        "uc1_sky_contact_weight",
+        "uc1_truncation_penalty",
+        "uc1_framing_weighted_fusion",
+        "uc1_facade_edge_triangulation",
+        "uc1_clahe",
+        "uc2_min_post_panos",
+        "uc2_cv_post_gate",
+        "uc3_prompt_version",
+        "uc3_road_view_size",
+        "uc3_kerb_sidewalk_prior",
+        "uc4_view_size",
+        "uc4_sky_contact_min",
+        "uc4_validator_gates",
+        "uc4_clahe",
+        "antialias",
+        "thinking_level",
+        "media_resolution",
+    ):
+        assert field_name in desc, f"missing {field_name} in Variant.describe()"
+
+
+def test_uc1_run_honours_variant_view_size():
+    fr = _attach_uris(sim.synthetic_frames(6, 10.0, 28.0502, -81.9601, travel_deg=0.0))
+    panos = sequence.build_sequences(fr.drop_duplicates("capture_id"))
+    fr = fr.drop(columns=["seq_id", "seq_idx"]).merge(
+        panos[["capture_id", "seq_id", "seq_idx"]], on="capture_id", how="left"
+    )
+    _, ranked = uc.uc1_select_views(
+        fr, 28.0504, -81.9599, rosette.DEFAULT_INTRINSICS, max_per_seq=2, n=2
+    )
+
+    def reply_fn(_idx, _parts, _schema):
+        return (
+            '{"house_visible": true, "box_2d": [250, 350, 750, 650], '
+            '"occlusion": "NONE", "facade_visible_fraction": 0.85, '
+            '"stories": 2, "exterior_material": "STUCCO", "roof_type": "GABLE", '
+            '"confidence": 0.9}'
+        )
+
+    v_custom = uc.Variant(name="custom_sz", uc1_view_size=(640, 480), uc1_clahe=True)
+    runner = gemini_client.GeminiRunner(_ScriptedBackend(reply_fn), max_calls=10)
+    out = asyncio.run(
+        uc.uc1_run(ranked, _dummy_fetch, runner, rosette.DEFAULT_INTRINSICS, variant=v_custom)
+    )
+    assert out["crops"][0].shape == (480, 640, 3)
+    assert "redaction_overlap_max" in out
+    assert 0.0 <= out["redaction_overlap_max"] <= 1.0
+
+
+def test_uc2_peak_rss_reduced_with_scaled_decode():
+    import tracemalloc
+
+    from svi_geo import images, pipeline
+
+    fr = _attach_uris(sim.synthetic_frames(1, 10.0, 28.0502, -81.9601, travel_deg=0.0))
+    specs = pipeline.views_for_pano(fr.to_dict("records"), rosette.DEFAULT_INTRINSICS)
+    jpeg_bytes = _dummy_fetch("dummy")
+
+    tracemalloc.start()
+    frames_full = [images.decode(jpeg_bytes, scale=1.0) for _ in specs]
+    views_full = [
+        pipeline.render_view(im, rosette.DEFAULT_INTRINSICS, s)
+        for im, s in zip(frames_full, specs, strict=True)
+    ]
+    _, peak_full = tracemalloc.get_traced_memory()
+    del frames_full, views_full
+    tracemalloc.stop()
+
+    tracemalloc.start()
+    scale = images.decode_scale_for_view(specs[0].view.width, specs[0].view.hfov_deg)
+    frames_scaled = [images.decode(jpeg_bytes, scale=scale) for _ in specs]
+    views_scaled = [
+        pipeline.render_view(im, rosette.DEFAULT_INTRINSICS, s)
+        for im, s in zip(frames_scaled, specs, strict=True)
+    ]
+    _, peak_scaled = tracemalloc.get_traced_memory()
+    del frames_scaled, views_scaled
+    tracemalloc.stop()
+
+    assert scale == 0.5
+    assert peak_scaled <= 0.60 * peak_full
