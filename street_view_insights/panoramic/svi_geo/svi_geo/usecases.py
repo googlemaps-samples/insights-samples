@@ -91,6 +91,7 @@ class Variant:
     uc2_min_post_panos: int = 1
     uc2_cv_post_gate: bool = False
     uc2_cv_post_min_support: float = 0.35
+    uc2_cv_tree_min_support: float = 0.25
     uc2_house_facade_edges: bool = False
 
     # UC3 parameters
@@ -129,9 +130,16 @@ DEFAULT_VARIANT = Variant(
     uc1_min_agree_views=1,
     uc1_facade_edge_triangulation=True,
     uc2_min_post_panos=2,
-    uc2_class_min_confidence={"ROAD_SIGN": 0.55, "UTILITY_POLE": 0.50, "HOUSE": 0.45},
+    uc2_class_min_confidence={
+        "ROAD_SIGN": 0.55,
+        "UTILITY_POLE": 0.50,
+        "STREET_LIGHT": 0.50,
+        "FIRE_HYDRANT": 0.50,
+        "STREET_TREE": 0.48,
+    },
     uc2_cv_post_gate=True,
     uc2_cv_post_min_support=0.35,
+    uc2_cv_tree_min_support=0.25,
     uc2_house_facade_edges=False,
     uc3_prompt_version="v1",
     uc3_road_view_size=(1280, 960),
@@ -365,8 +373,8 @@ def _filter_observations_uc2(
     run: pipeline.DetectionRun,
     variant: Variant,
 ) -> list[ent.Observation]:
-    """Apply per-class confidence thresholds and optional OpenCV vertical-post gates."""
-    obs = list(run.observations)
+    """Apply public-ROW class filter, per-class confidence thresholds, and OpenCV post/tree gates."""
+    obs = [o for o in run.observations if o.cls in pipeline.PUBLIC_ROW_CLASSES]
     if variant.uc2_class_min_confidence:
         obs = [
             o
@@ -391,7 +399,7 @@ def _filter_observations_uc2(
         if im is None or box is None:
             kept.append(o)
             continue
-        if o.cls == "UTILITY_POLE":
+        if o.cls in ("UTILITY_POLE", "STREET_LIGHT", "FIRE_HYDRANT"):
             sup = cvc.vertical_post_support(im, box)
             if sup < variant.uc2_cv_post_min_support:
                 continue
@@ -399,8 +407,201 @@ def _filter_observations_uc2(
             sup = max(cvc.vertical_post_support(im, box), cvc.sign_post_support(im, box))
             if sup < variant.uc2_cv_post_min_support:
                 continue
+        elif o.cls == "STREET_TREE":
+            sup = cvc.street_tree_support(im, box)
+            if sup < variant.uc2_cv_tree_min_support:
+                continue
         kept.append(o)
     return kept
+
+
+def _record_detections(rec: Mapping[str, Any]) -> list[schemas.Detection]:
+    raw = rec.get("detections")
+    if raw is None:
+        return []
+    if hasattr(raw, "detections"):
+        return list(raw.detections or [])
+    return list(raw)
+
+
+def build_uc2_fewshot_parts(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    classes: Sequence[str] = pipeline.DETECT_CLASSES,
+    thumb_size: tuple[int, int] = (512, 640),
+) -> tuple[list[Any], dict[str, Any]]:
+    """Construct a live multimodal visual few-shot prompt from OpenCV-verified reference crops.
+
+    Selects:
+    - Example 1: the view with the highest OpenCV `vertical_post_support` utility pole or road sign.
+    - Example 2: a distinct view with the highest OpenCV `street_tree_support` roadside tree
+      (disambiguating `STREET_TREE` with trunk-base ground contact from `UTILITY_POLE`).
+    - Target query view: a third distinct view (or the next view with detections).
+    """
+    import cv2
+
+    tw, th = int(thumb_size[0]), int(thumb_size[1])
+
+    def _thumb(im: np.ndarray) -> np.ndarray:
+        if im.shape[1] == tw and im.shape[0] == th:
+            return im
+        return cv2.resize(im, (tw, th), interpolation=cv2.INTER_AREA)
+
+    best_pole_idx = 0
+    best_pole_sup = -1.0
+    best_tree_idx = -1
+    best_tree_sup = -1.0
+
+    for idx, rec in enumerate(records):
+        im = rec.get("image")
+        if im is None:
+            continue
+        h, w = im.shape[:2]
+        for d in _record_detections(rec):
+            box_px = schemas.box_2d_to_pixels(d.box_2d, w, h)
+            lbl = d.label.value
+            if lbl in ("UTILITY_POLE", "ROAD_SIGN", "STREET_LIGHT"):
+                sup = cvc.vertical_post_support(im, box_px)
+                if lbl == "ROAD_SIGN":
+                    sup = max(sup, cvc.sign_post_support(im, box_px))
+                if sup > best_pole_sup:
+                    best_pole_sup = sup
+                    best_pole_idx = idx
+            elif lbl == "STREET_TREE":
+                sup = cvc.street_tree_support(im, box_px)
+                if sup > best_tree_sup and idx != best_pole_idx:
+                    best_tree_sup = sup
+                    best_tree_idx = idx
+
+    if best_tree_idx < 0:
+        for idx, rec in enumerate(records):
+            if idx == best_pole_idx or rec.get("image") is None:
+                continue
+            if any(d.label.value == "STREET_TREE" for d in _record_detections(rec)):
+                best_tree_idx = idx
+                break
+    if best_tree_idx < 0:
+        best_tree_idx = 1 if len(records) > 1 and best_pole_idx == 0 else 0
+
+    ex1_rec = records[best_pole_idx]
+    ex1_dets = [
+        d
+        for d in _record_detections(ex1_rec)
+        if d.label.value in ("UTILITY_POLE", "ROAD_SIGN", "STREET_LIGHT", "FIRE_HYDRANT")
+    ]
+    if not ex1_dets:
+        ex1_dets = [
+            schemas.Detection(
+                label="UTILITY_POLE",
+                box_2d=[140, 470, 860, 525],
+                confidence=0.92,
+                material="WOOD",
+                condition="GOOD",
+            )
+        ]
+    ex1_fd = schemas.FrameDetections(detections=ex1_dets[:3])
+
+    ex2_rec = records[best_tree_idx]
+    ex2_dets = [
+        d for d in _record_detections(ex2_rec) if d.label.value in ("STREET_TREE", "UTILITY_POLE")
+    ]
+    if not any(d.label.value == "STREET_TREE" for d in ex2_dets):
+        ex2_dets = [
+            schemas.Detection(
+                label="STREET_TREE",
+                box_2d=[120, 320, 860, 620],
+                confidence=0.90,
+                material="WOOD",
+                condition="GOOD",
+            ),
+            *ex2_dets[:1],
+        ]
+    ex2_fd = schemas.FrameDetections(detections=ex2_dets[:3])
+
+    query_idx = next(
+        (
+            i
+            for i, r in enumerate(records)
+            if i not in (best_pole_idx, best_tree_idx)
+            and r.get("image") is not None
+            and _record_detections(r)
+        ),
+        next(
+            (i for i in range(len(records)) if i not in (best_pole_idx, best_tree_idx)),
+            best_pole_idx,
+        ),
+    )
+    query_rec = records[query_idx]
+
+    examples = [
+        (
+            _thumb(ex1_rec["image"]),
+            ex1_fd,
+            f"LSD-verified utility pole / road sign (vertical_post_support={max(0.0, best_pole_sup):.2f})",
+        ),
+        (
+            _thumb(ex2_rec["image"]),
+            ex2_fd,
+            f"OpenCV-verified street tree with trunk-base ground contact (street_tree_support={max(0.0, best_tree_sup):.2f})",
+        ),
+    ]
+    parts = pipeline.build_fewshot_prompt_parts(
+        examples, _thumb(query_rec["image"]), classes=classes
+    )
+    meta = {
+        "n_examples": len(examples),
+        "pole_example_idx": best_pole_idx,
+        "pole_support": float(max(0.0, best_pole_sup)),
+        "tree_example_idx": best_tree_idx,
+        "tree_support": float(max(0.0, best_tree_sup)),
+        "query_idx": query_idx,
+        "query_record": query_rec,
+    }
+    return parts, meta
+
+
+def select_best_post_for_lean(
+    records: Sequence[Mapping[str, Any]],
+) -> tuple[np.ndarray, tuple[float, float, float, float], str, float]:
+    """Select the clearest vertical pole/sign crop from `records` for `uc2_measure_post_lean`."""
+    best_im: np.ndarray | None = None
+    best_box: tuple[float, float, float, float] | None = None
+    best_label = "UTILITY_POLE"
+    best_score = -1.0
+    best_sup = 0.0
+
+    for rec in records:
+        im = rec.get("image")
+        if im is None:
+            continue
+        h, w = im.shape[:2]
+        for d in _record_detections(rec):
+            lbl = d.label.value
+            if lbl not in ("UTILITY_POLE", "ROAD_SIGN", "STREET_LIGHT"):
+                continue
+            bx = schemas.box_2d_to_pixels(d.box_2d, w, h)
+            bw = float(bx[2] - bx[0])
+            bh = float(bx[3] - bx[1])
+            if bh < 32.0 or bw < 4.0:
+                continue
+            sup = cvc.vertical_post_support(im, bx, max_tilt_deg=12.0)
+            slender_bonus = 0.25 if bw <= 0.45 * bh else 0.0
+            pole_bonus = 0.15 if lbl == "UTILITY_POLE" else 0.0
+            score = sup + slender_bonus + pole_bonus + 0.05 * min(1.0, bh / 240.0)
+            if score > best_score:
+                best_score = score
+                best_sup = float(sup)
+                best_im = im
+                best_box = (float(bx[0]), float(bx[1]), float(bx[2]), float(bx[3]))
+                best_label = lbl
+
+    if best_im is None or best_box is None:
+        fallback_rec = next((r for r in records if r.get("image") is not None), records[0])
+        best_im = fallback_rec["image"]
+        h, w = best_im.shape[:2]
+        best_box = (0.42 * w, 0.18 * h, 0.58 * w, 0.85 * h)
+        best_sup = float(cvc.vertical_post_support(best_im, best_box, max_tilt_deg=12.0))
+    return best_im, best_box, best_label, best_sup
 
 
 async def uc2_run(
@@ -473,6 +674,12 @@ async def uc2_run(
             "confidence",
         ],
     )
+    trees = ent_df[ent_df["class"] == "STREET_TREE"]
+    trees_located = int((trees.method != "unlocated").sum())
+    trees_unlocated = int((trees.method == "unlocated").sum())
+    posts = ent_df[ent_df["class"].isin(list(ent.POST_GROUP))]
+    posts_located = int((posts.method != "unlocated").sum())
+    posts_unlocated = int((posts.method == "unlocated").sum())
     houses = ent_df[ent_df["class"] == "HOUSE"]
     houses_located = int((houses.method != "unlocated").sum())
     houses_unlocated = int((houses.method == "unlocated").sum())
@@ -500,6 +707,10 @@ async def uc2_run(
         "located": located,
         "unlocated": unlocated,
         "ent_df": ent_df,
+        "trees_located": trees_located,
+        "trees_unlocated": trees_unlocated,
+        "posts_located": posts_located,
+        "posts_unlocated": posts_unlocated,
         "houses_located": houses_located,
         "houses_unlocated": houses_unlocated,
         "self_consistency": sc,
@@ -849,9 +1060,15 @@ UC1_AGENTIC_PROMPT = (
 
 UC2_AGENTIC_PROMPT = (
     "You MUST use Python code execution with OpenCV/NumPy in a single concise script on the "
-    "utility-pole / sign-post crop to detect near-vertical line segments, measure the dominant "
-    "pole lean angle in degrees from vertical in [-45, 45] (0 = perfectly vertical), and vertical "
-    "support fraction in [0, 1]. Do NOT call plt.show(), plt.savefig(), or save/display any images "
+    "utility-pole / sign-post crop to detect near-vertical line segments and measure the dominant "
+    "pole lean angle in degrees from vertical in [-45, 45] (0 = perfectly vertical) and vertical "
+    "support fraction in [0, 1]. Specifically, convert the image to grayscale, run "
+    "`raw = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD).detect(gray)[0]`, and for each "
+    "segment `(ax, ay, bx, by)` compute `dx = bx - ax; dy = by - ay` (flipping `dx, dy = -dx, -dy` "
+    "if `dy < 0`). Keep segments with `dy >= 6.0` and `abs(math.degrees(math.atan2(dx, dy))) <= 15.0`, "
+    "compute `lean_angle_deg` as the length-weighted median of `math.degrees(math.atan2(dx, dy))` "
+    "(or `0.0` if none), and `vertical_support` as the fraction of image height covered by those "
+    "vertical segments in [0, 1]. Do NOT call plt.show(), plt.savefig(), or save/display any images "
     "in code execution. You MUST print a line starting with `MEASURE: {...}` containing JSON with "
     "keys `lean_angle_deg` and `vertical_support`, then return the final JSON matching the schema."
 )

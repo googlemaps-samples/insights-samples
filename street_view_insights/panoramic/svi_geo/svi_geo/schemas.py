@@ -23,6 +23,7 @@ class AssetClass(str, Enum):
     ROAD_SIGN = "ROAD_SIGN"
     STREET_LIGHT = "STREET_LIGHT"
     FIRE_HYDRANT = "FIRE_HYDRANT"
+    STREET_TREE = "STREET_TREE"
     GATE = "GATE"
 
 

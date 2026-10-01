@@ -163,3 +163,28 @@ def test_placebo_boxes_seeded_and_redaction_masking():
     redacted = img.copy()
     redacted[:, 130:170] = 0
     assert cvc.vertical_post_support(redacted, box) == pytest.approx(0.0)
+
+
+def test_street_tree_support_distinguishes_tree_from_pole_and_sky():
+    h, w = 400, 400
+    # 1. Synthetic tree: green textured canopy in top 60% + dark vertical trunk in bottom 45%
+    img_tree = np.full((h, w, 3), (220, 195, 175), dtype=np.uint8)  # sky background
+    rng = np.random.default_rng(19)
+    canopy = np.zeros((160, 120, 3), dtype=np.uint8)
+    canopy[..., 0] = rng.integers(25, 65, size=(160, 120))  # B
+    canopy[..., 1] = rng.integers(110, 185, size=(160, 120))  # G (dominant)
+    canopy[..., 2] = rng.integers(30, 80, size=(160, 120))  # R
+    img_tree[60:220, 140:260] = canopy
+    cv2.rectangle(img_tree, (194, 200), (206, 350), (35, 45, 55), -1)  # trunk
+    box_tree = (135.0, 55.0, 265.0, 355.0)
+    sup_tree = cvc.street_tree_support(img_tree, box_tree)
+    assert sup_tree >= 0.45
+
+    # 2. Bare grey pole without green canopy -> low tree support (< 0.20)
+    img_pole = np.full((h, w, 3), 180, dtype=np.uint8)
+    cv2.rectangle(img_pole, (198, 60), (202, 350), (40, 40, 40), -1)
+    assert cvc.street_tree_support(img_pole, box_tree) < 0.20
+
+    # 3. Uniform blue sky -> 0.0
+    img_sky = np.full((h, w, 3), (235, 195, 135), dtype=np.uint8)
+    assert cvc.street_tree_support(img_sky, box_tree) == pytest.approx(0.0, abs=0.05)

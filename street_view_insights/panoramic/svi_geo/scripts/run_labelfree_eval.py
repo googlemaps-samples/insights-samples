@@ -67,21 +67,41 @@ VARIANTS: dict[str, uc.Variant] = {
     "v2a": uc.Variant(
         name="v2a",
         uc2_min_post_panos=2,
-        uc2_class_min_confidence={"ROAD_SIGN": 0.55, "UTILITY_POLE": 0.50, "HOUSE": 0.45},
+        uc2_class_min_confidence={
+            "ROAD_SIGN": 0.55,
+            "UTILITY_POLE": 0.50,
+            "STREET_LIGHT": 0.50,
+            "FIRE_HYDRANT": 0.50,
+            "STREET_TREE": 0.48,
+        },
     ),
     "v2b": uc.Variant(
         name="v2b",
         uc2_min_post_panos=2,
-        uc2_class_min_confidence={"ROAD_SIGN": 0.55, "UTILITY_POLE": 0.50, "HOUSE": 0.45},
+        uc2_class_min_confidence={
+            "ROAD_SIGN": 0.55,
+            "UTILITY_POLE": 0.50,
+            "STREET_LIGHT": 0.50,
+            "FIRE_HYDRANT": 0.50,
+            "STREET_TREE": 0.48,
+        },
         uc2_cv_post_gate=True,
         uc2_cv_post_min_support=0.35,
+        uc2_cv_tree_min_support=0.25,
     ),
     "v2c": uc.Variant(
         name="v2c",
         uc2_min_post_panos=2,
-        uc2_class_min_confidence={"ROAD_SIGN": 0.55, "UTILITY_POLE": 0.50, "HOUSE": 0.45},
+        uc2_class_min_confidence={
+            "ROAD_SIGN": 0.55,
+            "UTILITY_POLE": 0.50,
+            "STREET_LIGHT": 0.50,
+            "FIRE_HYDRANT": 0.50,
+            "STREET_TREE": 0.48,
+        },
         uc2_cv_post_gate=True,
         uc2_cv_post_min_support=0.35,
+        uc2_cv_tree_min_support=0.25,
         uc2_house_facade_edges=True,
     ),
     # UC3 variants (T11)
@@ -133,9 +153,16 @@ VARIANTS: dict[str, uc.Variant] = {
         uc1_min_agree_views=1,
         uc1_facade_edge_triangulation=True,
         uc2_min_post_panos=2,
-        uc2_class_min_confidence={"ROAD_SIGN": 0.55, "UTILITY_POLE": 0.50, "HOUSE": 0.45},
+        uc2_class_min_confidence={
+            "ROAD_SIGN": 0.55,
+            "UTILITY_POLE": 0.50,
+            "STREET_LIGHT": 0.50,
+            "FIRE_HYDRANT": 0.50,
+            "STREET_TREE": 0.48,
+        },
         uc2_cv_post_gate=True,
         uc2_cv_post_min_support=0.35,
+        uc2_cv_tree_min_support=0.25,
         uc2_house_facade_edges=False,
         uc3_prompt_version="v1",
         uc3_road_view_size=(1280, 960),
@@ -719,37 +746,48 @@ async def evaluate_uc2(
             rec_val = 0.5 * (mp["recall_a_in_b"] + mp["recall_b_in_a"])
             _add_cluster(retest_by_block, str(seq_spec["seq_id"]), rec_val, 1.0)
 
-        # M2.4 OpenCV vertical-structure support vs placebo
+        # M2.4 OpenCV vertical-structure and tree-foliage support vs placebo
         img_by_view = {
             (str(r["spec"].capture_id or r["spec"].pano_id), int(r["spec"].cam_k)): r["image"]
             for r in out0["run"].records
             if r.get("image") is not None
         }
         for o in out0["observations"]:
-            if o.cls in ("UTILITY_POLE", "ROAD_SIGN"):
+            if o.cls in (
+                "UTILITY_POLE",
+                "ROAD_SIGN",
+                "STREET_LIGHT",
+                "FIRE_HYDRANT",
+                "STREET_TREE",
+            ):
                 meta = o.ray.meta or {}
                 box = meta.get("box")
                 ck = meta.get("cam_k")
                 o_key = str(getattr(o, "capture_id", "") or o.pano_id)
                 im = img_by_view.get((o_key, int(ck))) if ck is not None else None
                 if im is not None and box is not None:
-                    sup = cvc.vertical_post_support(im, box)
-                    if o.cls == "ROAD_SIGN":
-                        sup = max(sup, cvc.sign_post_support(im, box))
                     o_blk = blocks_map.get(o_key, f"{seq_spec['seq_id']}:{o_key}")
-                    _add_cluster(cv_support_by_block, o_blk, 1.0 if sup >= 0.35 else 0.0, 1.0)
                     p_boxes = cvc.placebo_boxes(1, im.shape[1], im.shape[0], seed=seed)
-                    cv_support_placebo.append(cvc.vertical_post_support(im, p_boxes[0]))
+                    if o.cls == "STREET_TREE":
+                        sup = cvc.street_tree_support(im, box)
+                        _add_cluster(cv_support_by_block, o_blk, 1.0 if sup >= 0.25 else 0.0, 1.0)
+                        cv_support_placebo.append(cvc.street_tree_support(im, p_boxes[0]))
+                    else:
+                        sup = cvc.vertical_post_support(im, box)
+                        if o.cls == "ROAD_SIGN":
+                            sup = max(sup, cvc.sign_post_support(im, box))
+                        _add_cluster(cv_support_by_block, o_blk, 1.0 if sup >= 0.35 else 0.0, 1.0)
+                        cv_support_placebo.append(cvc.vertical_post_support(im, p_boxes[0]))
 
-        # M2.5 located share & house unlocated share
+        # M2.5 located share & street-tree unlocated share
         loc_ids = {e.entity_id for e in out0["located"]}
         for e in out0["entities"]:
             e_ids = getattr(e, "capture_ids", None) or e.pano_ids
             e_pid = str(e_ids[0]) if e_ids else str(seq_spec["seq_id"])
             e_blk = blocks_map.get(e_pid, f"{seq_spec['seq_id']}:{e_pid}")
             _add_cluster(loc_share_by_block, e_blk, 1.0 if e.entity_id in loc_ids else 0.0, 1.0)
-        house_unloc += out0["houses_unlocated"]
-        house_tot += out0["houses_located"] + out0["houses_unlocated"]
+        house_unloc += out0["trees_unlocated"]
+        house_tot += out0["trees_located"] + out0["trees_unlocated"]
 
         # M2.6 teacher confirmation on first view with detections
         if out0["run"].records and out0["observations"]:
@@ -834,7 +872,13 @@ async def evaluate_uc2(
             mp_rep = ev.match_passes(
                 loc_a,
                 loc_b,
-                eps_by_class={"UTILITY_POLE": 4.0, "ROAD_SIGN": 4.0, "HOUSE": 8.0},
+                eps_by_class={
+                    "UTILITY_POLE": 4.0,
+                    "ROAD_SIGN": 4.0,
+                    "STREET_LIGHT": 4.0,
+                    "FIRE_HYDRANT": 3.0,
+                    "STREET_TREE": 4.0,
+                },
             )
             rep_recall = 0.5 * (mp_rep["recall_a_in_b"] + mp_rep["recall_b_in_a"])
             _add_cluster(
@@ -870,7 +914,7 @@ async def evaluate_uc2(
         cv_support_by_block,
         seed=seed,
         placebo=placebo_2_4,
-        missing_reason="no pole or sign observations",
+        missing_reason="no pole, sign, or street-tree observations",
     )
     h_unloc_share = float(house_unloc / house_tot) if house_tot > 0 else None
     m2_5 = _ratio_measurement(
@@ -1404,8 +1448,8 @@ class _OfflineSmokeBackend:
         elif name == "FrameDetections":
             txt = (
                 '{"detections": ['
-                '{"label": "UTILITY_POLE", "box_2d": [200, 480, 850, 520], "confidence": 0.9, "material": "WOOD"},'
-                '{"label": "HOUSE", "box_2d": [250, 300, 750, 700], "confidence": 0.88, "material": "STUCCO"}'
+                '{"label": "UTILITY_POLE", "box_2d": [200, 480, 643, 520], "confidence": 0.9, "material": "WOOD"},'
+                '{"label": "STREET_TREE", "box_2d": [180, 320, 643, 440], "confidence": 0.88, "condition": "GOOD"}'
                 "]}"
             )
         elif name == "PresenceCheck":
@@ -1413,7 +1457,7 @@ class _OfflineSmokeBackend:
         elif name == "EntityConfirm":
             txt = (
                 '{"target_class": "UTILITY_POLE", "confirmed": true, '
-                '"box_2d": [200, 480, 850, 520], "confidence": 0.9, "visual_evidence": "Pole."}'
+                '"box_2d": [200, 480, 643, 520], "confidence": 0.9, "visual_evidence": "Pole."}'
             )
         elif name == "WindowLabel":
             txt = (
@@ -1457,7 +1501,12 @@ def _synthetic_frame_bytes(_uri: str) -> bytes:
         img[:1824, :] = (230, 200, 175)  # sky above y=1824
         img[1824:2600, :] = (110, 95, 85)  # roof/building band
         img[2600:, :] = (80, 80, 80)  # road
-        img[1900:3400, 1820:1828] = (25, 25, 25)  # vertical pole
+        rng = np.random.default_rng(17)
+        img[1400:2650, 1200:1600, 0] = rng.integers(30, 60, size=(1250, 400), dtype=np.uint8)
+        img[1400:2650, 1200:1600, 1] = rng.integers(120, 180, size=(1250, 400), dtype=np.uint8)
+        img[1400:2650, 1200:1600, 2] = rng.integers(35, 75, size=(1250, 400), dtype=np.uint8)
+        img[2550:4000, 1392:1408] = (35, 45, 55)
+        img[1200:4200, 1820:1828] = (25, 25, 25)  # vertical pole
         _SYNTH_JPEG_CACHE = images.encode_jpeg(img, quality=85)
     return _SYNTH_JPEG_CACHE
 
@@ -1628,6 +1677,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--out",
         default=f"data/labelfree/{dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d')}",
     )
+    ap.add_argument("--mode", choices=("live", "offline"), default="live")
     ap.add_argument("--project", default=None)
     ap.add_argument("--gcs-bucket", default=None)
     return ap
@@ -1636,6 +1686,28 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     ap = build_arg_parser()
     args = ap.parse_args(argv)
+    if args.mode == "offline" or os.environ.get("SVI_GEO_OFFLINE_EVAL") == "1":
+        from svi_geo import simulate as sim
+
+        t1 = dt.datetime(2024, 5, 1, 12, 0, tzinfo=dt.timezone.utc)
+        t2 = dt.datetime(2024, 6, 15, 14, 0, tzinfo=dt.timezone.utc)
+        fr1 = sim.synthetic_frames(12, 10.0, 28.0500, -81.9600, travel_deg=0.0, seq_id="S1", t0=t1)
+        fr2 = sim.synthetic_frames(12, 10.0, 28.0500, -81.95998, travel_deg=0.0, seq_id="S2", t0=t2)
+        fr = pd.concat([fr1, fr2], ignore_index=True)
+        fr["gcs_uri"] = [
+            data.gcs_uri_for("test-bucket", s, o)
+            for s, o in zip(fr["snapshot_id"], fr["observation_id"], strict=True)
+        ]
+        run_offline_smoke(
+            fr,
+            aoi=args.aoi,
+            out_dir=args.out,
+            seed=args.seed,
+            variant_name=args.variant,
+            thinking_level=args.thinking_level,
+            media_resolution=args.media_resolution,
+        )
+        return 0
 
     settings = config.resolve_settings(args.project, args.gcs_bucket, env=dict(os.environ))
     out_path = Path(args.out)

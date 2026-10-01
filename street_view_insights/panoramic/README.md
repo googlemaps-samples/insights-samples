@@ -22,11 +22,15 @@ evaluation code.
   facade from 2+ sighting rays.
 - **[Analyze Sequential Images](notebooks/analyze_sequential_images.ipynb)** (UC2,
   ceiling `<= $0.60`, `<= 12 min`): walks a drive sequence keyed on `capture_id`,
-  detects `HOUSE`, `UTILITY_POLE`, and `ROAD_SIGN` across all 6 horizontal cameras,
-  gates pole/sign boxes with OpenCV LSD vertical-post support, clusters rays into 3D
-  entities (cross-checked with 0-byte BigQuery `ST_CLUSTERDBSCAN`), runs one validated
-  agentic-vision pole-lean measurement, evaluates held-out cross-view consistency (not
-  accuracy), and audits repeat-pass pairs (`O1`) and `cropped_assets_latest` (`O2`).
+  detects public right-of-way infrastructure (`UTILITY_POLE`, `ROAD_SIGN`,
+  `STREET_LIGHT`, `FIRE_HYDRANT`) and urban forestry (`STREET_TREE`) across all 6
+  horizontal cameras (`HOUSE` is handled in UC1 / UC4), demonstrates multimodal
+  visual few-shot prompting (`build_uc2_fewshot_parts`), gates pole/sign boxes with
+  OpenCV `vertical_post_support` and tree boxes with `street_tree_support`, clusters
+  rays into 3D entities (cross-checked with 0-byte BigQuery `ST_CLUSTERDBSCAN`), runs
+  one validated agentic-vision pole-lean measurement, evaluates held-out cross-view
+  consistency (not accuracy), and audits repeat-pass pairs (`O1`) and
+  `cropped_assets_latest` (`O2`).
 - **[Surface Material Detection](notebooks/surface_material_detection.ipynb)** (UC3,
   ceiling `<= $0.25`, `<= 8 min`): classifies road (`CENTER`) and left/right sidewalk
   materials along a drive sequence from travel-aligned views, fuses bird's-eye IPM

@@ -22,10 +22,17 @@ from svi_geo import data, geo, images, rosette, schemas
 from svi_geo import entities as ent
 from svi_geo import triangulate as tri
 
-DETECT_CLASSES = ("HOUSE", "UTILITY_POLE", "ROAD_SIGN")
+PUBLIC_ROW_CLASSES = (
+    "UTILITY_POLE",
+    "ROAD_SIGN",
+    "STREET_LIGHT",
+    "FIRE_HYDRANT",
+    "STREET_TREE",
+)
+DETECT_CLASSES = PUBLIC_ROW_CLASSES
 VIEW_HFOV_DEG = 70.0  # 60 deg camera spacing + 10 deg overlap between neighbouring views
 VIEW_SIZE = (1024, 1280)  # width, height -> vfov ~82 deg (pole bases down to ~-41 deg)
-INTRA_PANO_AZ_TOL_DEG = {"HOUSE": 8.0}
+INTRA_PANO_AZ_TOL_DEG = {"HOUSE": 8.0, "STREET_TREE": 4.0}
 DEFAULT_AZ_TOL_DEG = 2.0
 
 
@@ -89,12 +96,44 @@ def detection_prompt(classes: Sequence[str] = DETECT_CLASSES) -> str:
     names = ", ".join(classes)
     return (
         "This is a rectified, level street-level photo (no lens distortion). Detect every "
-        f"instance of these classes: {names}. For each, return label, a tight box_2d "
-        "[ymin, xmin, ymax, xmax] on a 0-1000 scale covering the WHOLE visible object (for "
-        "poles and sign posts the box bottom must be where the post meets the ground), your "
-        "confidence (0-1) and the material if clearly visible, else UNKNOWN. Skip objects that "
+        f"public right-of-way asset of these classes: {names}. For each asset, return label, a "
+        "tight box_2d [ymin, xmin, ymax, xmax] on a 0-1000 scale covering the WHOLE visible "
+        "vertical extent down to ground contact:\n"
+        "- For UTILITY_POLE, ROAD_SIGN, STREET_LIGHT, and FIRE_HYDRANT, the box bottom (ymax) "
+        "MUST be where the post or base meets the ground/sidewalk.\n"
+        "- For STREET_TREE, box the roadside/curb-strip tree from its canopy top down to where "
+        "the trunk base meets the ground or planting strip (ymax at trunk base); distinguish "
+        "living trees with foliage/bark from utility poles.\n"
+        "- Do NOT box residential houses, private buildings, or distant background forest canopies.\n"
+        "Also return confidence (0-1), material if clearly visible (WOOD, METAL, CONCRETE, "
+        "OTHER, or UNKNOWN), and condition (GOOD, FAIR, POOR, or UNKNOWN). Skip objects that "
         "are mostly hidden or cut off by the image border. Return an empty list if none."
     )
+
+
+def build_fewshot_prompt_parts(
+    examples: Sequence[tuple[np.ndarray, schemas.FrameDetections, str]],
+    query_image: np.ndarray,
+    classes: Sequence[str] = DETECT_CLASSES,
+) -> list[Any]:
+    """Build a multimodal visual few-shot prompt list `[prompt, ex_text, ex_img, ex_json, ..., query_img]`."""
+    parts: list[Any] = [detection_prompt(classes)]
+    for idx, (ex_img, ex_fd, note) in enumerate(examples, start=1):
+        parts.append(
+            f"\n--- Few-Shot Example {idx} ({note}) ---\nReference rectified perspective crop:"
+        )
+        parts.append(ex_img)
+        parts.append(
+            f"Expected `FrameDetections` JSON for Example {idx} (note how `ymax` reaches the exact "
+            f"ground-contact point of the post or tree trunk):\n{ex_fd.model_dump_json()}"
+        )
+    parts.append(
+        "\n--- Target Perspective View ---\n"
+        "Now detect all visible public right-of-way assets in this target image and return JSON "
+        "matching `FrameDetections`:"
+    )
+    parts.append(query_image)
+    return parts
 
 
 def detections_to_observations(

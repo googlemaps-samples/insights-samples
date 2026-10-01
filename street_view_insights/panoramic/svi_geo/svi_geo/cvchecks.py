@@ -152,6 +152,75 @@ def sign_post_support(
     return max(in_box, below)
 
 
+def street_tree_support(
+    img: np.ndarray,
+    box: Sequence[float],
+    valid_mask: np.ndarray | None = None,
+) -> float:
+    """OpenCV foliage + trunk support in `[0, 1]` for a `STREET_TREE` box `(x0, y0, x1, y1)`.
+
+    Combines:
+    1. Canopy foliage fraction in the upper 65 % of the box (Excess Green `2G - R - B >= 18` or
+       HSV green/olive hue `25 <= H <= 95` with saturation `S >= 30` and texture std `>= 6`).
+    2. Vertical trunk / branch edge support in the lower 55 % of the box (vertical Sobel `|Gx|`
+       dominance or vertical LSD segments).
+    """
+    h, w = img.shape[:2]
+    x0, y0, x1, y1 = (float(v) for v in box)
+    ix0 = max(0, int(math.floor(min(x0, x1))))
+    ix1 = min(w, int(math.ceil(max(x0, x1))))
+    iy0 = max(0, int(math.floor(min(y0, y1))))
+    iy1 = min(h, int(math.ceil(max(y0, y1))))
+    if iy1 - iy0 < 12 or ix1 - ix0 < 8:
+        return 0.0
+
+    usable = _usable_mask(img, valid_mask, erode_px=1)[iy0:iy1, ix0:ix1]
+    if not np.any(usable):
+        return 0.0
+
+    crop = img[iy0:iy1, ix0:ix1]
+    ch, cw = crop.shape[:2]
+    top_end = max(4, int(round(0.65 * ch)))
+    bot_start = min(ch - 4, int(round(0.45 * ch)))
+
+    # 1. Canopy foliage score in upper 65%
+    canopy = crop[:top_end]
+    canopy_usable = usable[:top_end]
+    b = canopy[..., 0].astype(np.float32)
+    g = canopy[..., 1].astype(np.float32)
+    r = canopy[..., 2].astype(np.float32)
+    exg = 2.0 * g - r - b
+    hsv = cv2.cvtColor(canopy, cv2.COLOR_BGR2HSV)
+    green_hsv = (
+        (hsv[..., 0] >= 22) & (hsv[..., 0] <= 98) & (hsv[..., 1] >= 28) & (hsv[..., 2] >= 25)
+    )
+    tex = rosette.textured_mask(canopy, ksize=7, min_std=5.5)
+    foliage_mask = ((exg >= 14.0) | green_hsv) & tex & canopy_usable
+    denom = max(1, int(canopy_usable.sum()))
+    foliage_frac = float(foliage_mask.sum() / denom)
+    canopy_score = float(np.clip(foliage_frac / 0.30, 0.0, 1.0))
+
+    # 2. Vertical trunk / stem edge energy in lower 55%
+    lower = crop[bot_start:]
+    lower_usable = usable[bot_start:]
+    gray_low = cv2.cvtColor(lower, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    gx = np.abs(cv2.Sobel(gray_low, cv2.CV_32F, 1, 0, ksize=3))
+    gy = np.abs(cv2.Sobel(gray_low, cv2.CV_32F, 0, 1, ksize=3))
+    vert_edge = (gx > 18.0) & (gx > 1.15 * gy) & lower_usable
+    vert_frac = float(vert_edge.sum() / max(1, int(lower_usable.sum())))
+    trunk_sobel = float(np.clip(vert_frac / 0.08, 0.0, 1.0))
+    trunk_lsd = vertical_post_support(
+        img,
+        (x0, y0 + 0.35 * (y1 - y0), x1, y1),
+        max_tilt_deg=18.0,
+        valid_mask=valid_mask,
+    )
+    trunk_score = max(trunk_sobel, trunk_lsd)
+    trunk_gate = min(1.0, canopy_score / 0.25)
+
+    return float(np.clip(0.65 * canopy_score + 0.35 * trunk_score * trunk_gate, 0.0, 1.0))
+
+
 def sky_mask(
     img: np.ndarray,
     horizon_row: float | None = None,

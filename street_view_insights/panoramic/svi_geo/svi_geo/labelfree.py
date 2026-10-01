@@ -529,18 +529,18 @@ METRIC_DOCS: dict[str, dict[str, str]] = {
     },
     "M2.4": {
         "uc": "UC2",
-        "name": "OpenCV vertical-structure support for pole and sign boxes vs placebo",
+        "name": "OpenCV vertical-structure and tree-foliage support for public-ROW boxes vs placebo",
         "signal": "d",
         "role": "secondary",
-        "measures": "Gemini-independent LSD vertical post/edge support inside detected pole boxes and below sign plates compared with random boxes.",
+        "measures": "Gemini-independent LSD vertical post/edge support inside detected pole/sign boxes and foliage+trunk support inside STREET_TREE boxes compared with random boxes.",
         "does_not_measure": "Signs mounted flush on walls or overhead gantries without a vertical post.",
     },
     "M2.5": {
         "uc": "UC2",
-        "name": "Located share per class, HOUSE unlocated share, and >=2-pano share",
+        "name": "Located share per public-ROW class, STREET_TREE unlocated share, and >=2-pano share",
         "signal": "a",
         "role": "guard",
-        "measures": "Fraction of entities with a valid 3D position and multi-view support (density is reported only, never a target).",
+        "measures": "Fraction of public right-of-way entities with a valid 3D position and multi-view support (density is reported only, never a target).",
         "does_not_measure": "True object precision or recall against a ground-truth map.",
     },
     "M2.6": {

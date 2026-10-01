@@ -190,3 +190,52 @@ def test_detect_panos_can_opt_out_of_raising():
         )
     )
     assert run.observations == [] and runner.cost.failures == 12
+
+
+def test_public_row_classes_and_detection_prompt():
+    assert pipeline.PUBLIC_ROW_CLASSES == (
+        "UTILITY_POLE",
+        "ROAD_SIGN",
+        "STREET_LIGHT",
+        "FIRE_HYDRANT",
+        "STREET_TREE",
+    )
+    assert pipeline.DETECT_CLASSES == pipeline.PUBLIC_ROW_CLASSES
+    assert "HOUSE" not in pipeline.DETECT_CLASSES
+    prompt = pipeline.detection_prompt()
+    assert "STREET_TREE" in prompt
+    assert "trunk base" in prompt
+    assert "Do NOT box residential houses" in prompt
+
+
+def test_build_fewshot_prompt_parts_interleaves_examples():
+    img1 = np.full((64, 64, 3), 120, dtype=np.uint8)
+    img2 = np.full((64, 64, 3), 140, dtype=np.uint8)
+    query_img = np.full((64, 64, 3), 160, dtype=np.uint8)
+    ex1_fd = schemas.FrameDetections(
+        detections=[
+            schemas.Detection(
+                label="UTILITY_POLE", box_2d=[120, 460, 890, 520], confidence=0.92, material="WOOD"
+            )
+        ]
+    )
+    ex2_fd = schemas.FrameDetections(
+        detections=[
+            schemas.Detection(
+                label="STREET_TREE", box_2d=[180, 380, 870, 560], confidence=0.89, condition="GOOD"
+            )
+        ]
+    )
+    parts = pipeline.build_fewshot_prompt_parts(
+        [(img1, ex1_fd, "pole example"), (img2, ex2_fd, "tree example")],
+        query_img,
+    )
+    assert len(parts) == 1 + 3 * 2 + 2
+    assert "Few-Shot Example 1" in parts[1]
+    assert isinstance(parts[2], np.ndarray)
+    assert "UTILITY_POLE" in parts[3]
+    assert "Few-Shot Example 2" in parts[4]
+    assert isinstance(parts[5], np.ndarray)
+    assert "STREET_TREE" in parts[6]
+    assert "Target Perspective View" in parts[7]
+    assert parts[8] is query_img

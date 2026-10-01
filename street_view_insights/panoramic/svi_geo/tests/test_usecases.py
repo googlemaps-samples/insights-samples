@@ -33,10 +33,16 @@ def _dummy_fetch(_uri: str) -> bytes:
     img = np.full((5472, 3648, 3), 140, dtype=np.uint8)
     img[:1800, :] = (230, 200, 175)  # sky
     img[2600:, :] = (80, 80, 80)  # road
-    # Vertical post in the middle
-    img[1900:3400, 1820:1828] = (30, 30, 30)
     # Horizontal roof eave line
     img[1800:2600, 1200:2400] = (120, 100, 90)
+    # Green textured tree canopy + trunk to the left of centre
+    rng = np.random.default_rng(17)
+    img[1400:2650, 1200:1600, 0] = rng.integers(30, 60, size=(1250, 400), dtype=np.uint8)
+    img[1400:2650, 1200:1600, 1] = rng.integers(120, 180, size=(1250, 400), dtype=np.uint8)
+    img[1400:2650, 1200:1600, 2] = rng.integers(35, 75, size=(1250, 400), dtype=np.uint8)
+    img[2550:4000, 1392:1408] = (35, 45, 55)
+    # Vertical post in the middle spanning both +9 and -9 deg camera pitches
+    img[1200:4200, 1820:1828] = (30, 30, 30)
     from svi_geo import images
 
     return images.encode_jpeg(img, quality=85)
@@ -125,7 +131,8 @@ def test_uc2_run_reproduces_located_and_house_counts():
             return '{"present": true, "confidence": 0.9, "box_2d": [300, 400, 700, 600]}'
         return (
             '{"detections": ['
-            '{"label": "UTILITY_POLE", "box_2d": [200, 480, 850, 520], "confidence": 0.9, "material": "WOOD"},'
+            '{"label": "UTILITY_POLE", "box_2d": [200, 480, 643, 520], "confidence": 0.9, "material": "WOOD"},'
+            '{"label": "STREET_TREE", "box_2d": [180, 320, 643, 440], "confidence": 0.88, "condition": "GOOD"},'
             '{"label": "HOUSE", "box_2d": [250, 300, 750, 700], "confidence": 0.88, "material": "BRICK"}'
             "]}"
         )
@@ -143,6 +150,9 @@ def test_uc2_run_reproduces_located_and_house_counts():
     )
     assert len(out["entities"]) > 0
     assert len(out["located"]) >= 1
+    assert all(e.cls != "HOUSE" for e in out["entities"])
+    assert "trees_located" in out and "trees_unlocated" in out
+    assert "posts_located" in out and "posts_unlocated" in out
     assert "houses_located" in out and "houses_unlocated" in out
 
 
@@ -541,3 +551,62 @@ def test_agentic_helpers_signature_defaults():
         sig = inspect.signature(fn)
         assert sig.parameters["thinking_level"].default == "MEDIUM", fn.__name__
         assert sig.parameters["media_resolution"].default == "HIGH", fn.__name__
+
+
+def test_build_uc2_fewshot_parts_and_select_best_post_for_lean():
+    import cv2
+
+    h, w = 400, 400
+    img1 = np.full((h, w, 3), 185, dtype=np.uint8)
+    cv2.rectangle(img1, (198, 60), (202, 340), (30, 30, 30), -1)  # strong vertical pole
+    img2 = np.full((h, w, 3), (220, 195, 175), dtype=np.uint8)
+    rng = np.random.default_rng(23)
+    canopy = np.zeros((150, 120, 3), dtype=np.uint8)
+    canopy[..., 0] = rng.integers(25, 65, size=(150, 120))
+    canopy[..., 1] = rng.integers(110, 185, size=(150, 120))
+    canopy[..., 2] = rng.integers(30, 80, size=(150, 120))
+    img2[50:200, 140:260] = canopy
+    cv2.rectangle(img2, (195, 190), (205, 340), (35, 45, 55), -1)
+
+    records = [
+        {
+            "image": img1,
+            "detections": [
+                schemas.Detection(
+                    label="ROAD_SIGN",
+                    box_2d=[150, 100, 850, 200],
+                    confidence=0.80,
+                    material="METAL",
+                ),
+                schemas.Detection(
+                    label="UTILITY_POLE",
+                    box_2d=[150, 470, 850, 530],
+                    confidence=0.92,
+                    material="WOOD",
+                ),
+            ],
+        },
+        {
+            "image": img2,
+            "detections": [
+                schemas.Detection(
+                    label="STREET_TREE",
+                    box_2d=[125, 350, 850, 650],
+                    confidence=0.89,
+                    condition="GOOD",
+                ),
+            ],
+        },
+    ]
+
+    parts, meta = uc.build_uc2_fewshot_parts(records)
+    assert len(parts) == 9
+    assert meta["n_examples"] == 2
+    assert "UTILITY_POLE" in parts[3]
+    assert "STREET_TREE" in parts[6]
+
+    best_img, best_box, best_label, best_sup = uc.select_best_post_for_lean(records)
+    assert best_img is img1
+    assert best_label == "UTILITY_POLE"
+    assert best_sup >= 0.6
+    assert len(best_box) == 4

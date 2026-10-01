@@ -45,6 +45,7 @@ EPS_BY_CLASS = {
     "ROAD_SIGN": 3.0,
     "STREET_LIGHT": 3.0,
     "FIRE_HYDRANT": 2.0,
+    "STREET_TREE": 4.0,
     "GATE": 3.0,
     "HOUSE": 8.0,
     "BUILDING": 8.0,
@@ -52,7 +53,14 @@ EPS_BY_CLASS = {
 DEFAULT_EPS = 4.0
 # Classes whose box bottom is the ground-contact point (single-view range from elevation).
 POST_GROUP = frozenset({"UTILITY_POLE", "ROAD_SIGN", "STREET_LIGHT", "FIRE_HYDRANT"})
-GROUND_CONTACT = {"UTILITY_POLE", "ROAD_SIGN", "STREET_LIGHT", "FIRE_HYDRANT", "GATE"}
+GROUND_CONTACT = {
+    "UTILITY_POLE",
+    "ROAD_SIGN",
+    "STREET_LIGHT",
+    "FIRE_HYDRANT",
+    "STREET_TREE",
+    "GATE",
+}
 # Classes whose (untruncated) box bottom is where the object meets the ground, so a single
 # view can be ranged from its elevation. Buildings are included for single-view placement
 # only; their rays are not elevation-gated during clustering.
@@ -62,19 +70,37 @@ MAX_SINGLE_VIEW_RANGE_M = 60.0
 # with the camera 2.5 m up that is 6 m/deg at 30 m but 19 m/deg at 52 m. A house box bottom
 # is a soft edge (lawn, hedges, shadow), so houses and buildings are placed from one view
 # only within 30 m; farther ones are reported as unlocated.
-MAX_SINGLE_VIEW_RANGE_BY_CLASS = {"HOUSE": 30.0, "BUILDING": 30.0}
+MAX_SINGLE_VIEW_RANGE_BY_CLASS = {"HOUSE": 30.0, "BUILDING": 30.0, "STREET_TREE": 35.0}
 # Clustering eps (m) per cluster key: post-like classes share the key POST_GROUP. eps is the
 # DBSCAN radius for pair votes and the merge distance; it stays below the spacing of
 # neighbouring houses (tests/test_entities.py: two houses 20 m apart).
-CLUSTER_EPS = {"POST_GROUP": 3.0, "GATE": 3.0, "HOUSE": 5.0, "BUILDING": 5.0}
+CLUSTER_EPS = {
+    "POST_GROUP": 3.0,
+    "STREET_TREE": 4.0,
+    "GATE": 3.0,
+    "HOUSE": 5.0,
+    "BUILDING": 5.0,
+}
 # Max RMS (m) of a triangulation, separate from eps: a house or building is an extended
 # object whose box centre moves along the facade with the viewing angle and with partial
 # occlusion, so its rays miss a common point by up to about half its width (SIZE_M / 2 + 1 m
 # of noise). Point-like classes keep RMS = eps.
-MAX_TRIANGULATION_RMS_M = {"POST_GROUP": 3.0, "GATE": 3.0, "HOUSE": 6.0, "BUILDING": 7.0}
+MAX_TRIANGULATION_RMS_M = {
+    "POST_GROUP": 3.0,
+    "STREET_TREE": 4.0,
+    "GATE": 3.0,
+    "HOUSE": 6.0,
+    "BUILDING": 7.0,
+}
 GHOST_CONF = 0.65  # single-view detections below this confidence near a same-key entity
 # Physical extent that widens the angular gate (box reference points move across views).
-SIZE_M = {"HOUSE": 10.0, "BUILDING": 12.0, "ROAD_SIGN": 0.8, "GATE": 3.0}
+SIZE_M = {
+    "HOUSE": 10.0,
+    "BUILDING": 12.0,
+    "STREET_TREE": 2.5,
+    "ROAD_SIGN": 0.8,
+    "GATE": 3.0,
+}
 DEFAULT_SIZE_M = 0.5
 LEFTOVER_GATE = 3.0  # sigma units for attaching leftover rays to triangulated entities
 GROUND_SIGMA_M = 0.0  # extra ground-height sigma (m); >0 loosens gating for noisy altitudes
@@ -549,7 +575,7 @@ def cluster(
                 if d[j] <= eps and obs[i].pano_id not in pano_ids:
                     groups[j][1].append(i)
                     continue
-            if cls == "POST_GROUP" and min_post_panos >= 2:
+            if cls in ("POST_GROUP", "STREET_TREE") and min_post_panos >= 2:
                 groups.append((np.full(3, np.nan), [i], math.nan, "unlocated", r))
             else:
                 groups.append((p, [i], math.nan, "single_view_ground_contact", r))
@@ -557,7 +583,7 @@ def cluster(
         for pt, idx, rms, method, range_m in groups:
             members = [obs[i] for i in idx]
             if (
-                cls == "POST_GROUP"
+                cls in ("POST_GROUP", "STREET_TREE")
                 and min_post_panos >= 2
                 and len({m.pano_id for m in members}) < min_post_panos
             ):

@@ -138,3 +138,13 @@ def test_roof_edges_reject_points_that_collapse_to_one_pixel():
     # 0.5 units apart after rounding to pixels at 400 px width -> the same pixel
     with pytest.raises(ValueError, match="repeated"):
         _roof([[500, 500], [500, 501]]).validate_in_image(400, 300)
+
+
+def test_street_tree_in_asset_class():
+    d = schemas.Detection(
+        label="STREET_TREE",
+        box_2d=[150, 420, 880, 540],
+        confidence=0.88,
+        condition="GOOD",
+    )
+    assert d.label is schemas.AssetClass.STREET_TREE

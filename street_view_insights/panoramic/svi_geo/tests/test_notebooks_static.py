@@ -358,7 +358,18 @@ def test_uc2_counts_unlocated_detections_separately_from_entities():
     code = _code(_uc2())
     assert "{len(entities)} entities" not in code
     assert 'print(f"located_entities={len(located)} unlocated_detections={len(unlocated)}' in code
-    assert "houses_located=" in code and "houses_unlocated=" in code
+    assert "posts_located=" in code and "trees_located=" in code
+
+
+def test_uc2_notebook_is_pure_public_row_and_uses_visual_fewshot():
+    nb = _uc2()
+    text = _all(nb)
+    code = _code(nb)
+    assert "HOUSE" not in text
+    assert "STREET_TREE" in text
+    assert "usecases.build_uc2_fewshot_parts(" in code
+    assert "usecases.select_best_post_for_lean(" in code
+    assert "cvchecks.street_tree_support(" in code
 
 
 def test_uc2_does_not_claim_a_residential_street_and_fails_when_no_check_ran():

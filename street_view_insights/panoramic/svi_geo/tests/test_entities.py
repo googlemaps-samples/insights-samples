@@ -379,3 +379,24 @@ def test_fuse_attribute_returns_unknown_when_fewer_than_min_agree_views():
         min_agree_views=2,
     )
     assert val == "BRICK" and share > 0.6
+
+
+def test_street_tree_clustered_separately_from_poles_and_requires_min_panos():
+    panos = _panos(4)
+    objs = [
+        ("UTILITY_POLE", np.array([4.0, 20.0, 0.0])),
+        ("STREET_TREE", np.array([4.0, 21.5, 0.0])),  # 1.5 m from pole -> must NOT merge with pole
+    ]
+    obs, _ = _observe(objs, panos, sigma_deg=0.3, seed=5)
+    c = np.array([0.0, 0.0, CAM_H])
+    el_b = -math.degrees(math.atan2(CAM_H, 12.0))
+    single_tree = ent.Observation(
+        "t_single", "P0", "STREET_TREE", tri.Ray(c, -75.0, el_b), 0.85, el_bottom_deg=el_b
+    )
+    out_min1 = ent.cluster([*obs, single_tree], REF, cam_height_m=CAM_H, min_post_panos=1)
+    assert len(ent.located_entities(out_min1)) == 3
+    out = ent.cluster([*obs, single_tree], REF, cam_height_m=CAM_H, min_post_panos=2)
+    located = ent.located_entities(out)
+    assert sorted(e.cls for e in located) == ["STREET_TREE", "UTILITY_POLE"]
+    unloc = [e for e in out if not e.located]
+    assert len(unloc) == 1 and unloc[0].cls == "STREET_TREE"
