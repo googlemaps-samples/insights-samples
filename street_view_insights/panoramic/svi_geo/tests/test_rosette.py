@@ -364,3 +364,79 @@ def test_frame_edge_theta_is_a_plausible_half_fov():
     top = np.array([[intr.cx, 0.0]])  # the portrait frame's farthest edge midpoint
     assert abs(np.degrees(rosette.theta_of_pixel(intr, top))[0] - th) < 3.0
     assert intr.max_theta_deg >= th
+
+
+# ---------------------------------------------------------------- U6: scaled bearing, antialias, equirect strip
+
+
+def test_scaled_intrinsics_preserve_pixel_to_bearing():
+    intr_full = rosette.load_intrinsics()
+    intr_half = intr_full.scaled(0.5)
+    pose = _pose(115.0, -4.0, 0.8)
+    # Compare bearings across a grid of normalized coordinates
+    for fx in (0.2, 0.35, 0.5, 0.65, 0.8):
+        for fy in (0.2, 0.35, 0.5, 0.65, 0.8):
+            u_full = fx * intr_full.width - 0.5
+            v_full = fy * intr_full.height - 0.5
+            u_half = fx * intr_half.width - 0.5
+            v_half = fy * intr_half.height - 0.5
+            az1, el1 = rosette.pixel_to_bearing(intr_full, pose, u_full, v_full, cam_k=1)
+            az2, el2 = rosette.pixel_to_bearing(intr_half, pose, u_half, v_half, cam_k=1)
+            assert abs(float(geo.angdiff(az1, az2))) <= 0.01
+            assert abs(float(el1) - float(el2)) <= 0.01
+
+
+def test_render_has_less_aliasing_energy():
+    intr = INTR_K.scaled(0.5)  # 1824 x 2736, fx=900
+    pose = _pose(0.0, 0.0, 0.0)
+    # Synthetic zone plate / fine radial sinusoid in camera frame with period ~3 source pixels
+    u, v = np.meshgrid(
+        np.arange(intr.width, dtype=np.float64), np.arange(intr.height, dtype=np.float64)
+    )
+    r = np.hypot(u - intr.cx, v - intr.cy)
+    zone = (127.5 + 127.5 * np.cos(2 * math.pi * r / 3.2)).clip(0, 255).astype(np.uint8)
+    zone_bgr = np.stack([zone, zone, zone], axis=-1)
+
+    # Render into a strongly minified 256x192 view (f ~ 183 px -> minification f_src / f_view ~ 4.9)
+    view = PerspectiveView(yaw_deg=0.0, pitch_deg=0.0, hfov_deg=70.0, width=256, height=192)
+    f_min = rosette.minification_factor(intr, view)
+    assert f_min > 2.5
+
+    aliased = rosette.render_perspective(zone_bgr, intr, pose, view, antialias=False)
+    antialiased = rosette.render_perspective(zone_bgr, intr, pose, view, antialias=True)
+
+    # Measure high-frequency Laplacian energy (aliased Moiré produces strong high-frequency energy)
+    lap_raw = float(np.mean(cv2.Laplacian(aliased[..., 0].astype(np.float32), cv2.CV_32F) ** 2))
+    lap_aa = float(np.mean(cv2.Laplacian(antialiased[..., 0].astype(np.float32), cv2.CV_32F) ** 2))
+    assert lap_aa <= 0.6 * lap_raw
+
+
+def test_equirect_strip_yaw_markers_within_half_degree():
+    intr = _small_intr()
+    headings = [0.0, 60.0, 120.0, 180.0, 240.0, 300.0]
+    rows = _pano_rows(headings, pitches=[0.0] * 6)[:6]
+    frames6 = {}
+    marker_yaws = [30.0, 150.0, 275.0]
+    for k, r in enumerate(rows):
+        im = np.full((intr.height, intr.width, 3), 30, dtype=np.uint8)
+        for myaw in marker_yaws:
+            u, v, ok = rosette.bearing_to_pixel(intr, r["camera_pose"], myaw, 0.0, cam_k=k)
+            if bool(ok):
+                cv2.circle(im, (int(round(float(u))), int(round(float(v)))), 6, (0, 255, 0), -1)
+        frames6[k] = im
+
+    strip = rosette.render_equirect_strip(
+        frames6, intr, rows, width=1440, pitch_range=(-30.0, 45.0)
+    )
+    assert strip.shape[1] == 1440 and strip.shape[2] == 3
+    # Check each marker yaw lands at column round(myaw / 360 * width) within 0.5 deg (2 px at 1440w)
+    green = strip[..., 1].max(axis=0)
+    for myaw in marker_yaws:
+        expected_col = (myaw / 360.0) * 1440.0
+        window = np.arange(1440)
+        near = np.abs(((window - expected_col + 720) % 1440) - 720) <= 10
+        cols = np.nonzero(near & (green > 180))[0]
+        assert cols.size > 0
+        peak_col = float(np.mean(cols))
+        peak_yaw = (peak_col + 0.5) / 1440.0 * 360.0
+        assert abs(float(geo.angdiff(peak_yaw, myaw))) <= 0.5

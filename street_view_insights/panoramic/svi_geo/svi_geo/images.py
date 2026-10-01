@@ -78,6 +78,13 @@ class GcsImageFetcher:
         h = hashlib.sha1(uri.encode()).hexdigest()[:8]
         return self.cache_dir / f"{h}_{safe}"
 
+    def cached_content_hash(self, uri: str) -> str | None:
+        """Return `sha256(bytes)[:16]` for the cached frame of `uri`, or None."""
+        path = self._cache_path(uri)
+        if path is None or not path.exists():
+            return None
+        return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+
     def _fresh(self, path: Path) -> bool:
         return self._clock() - path.stat().st_mtime <= self.cache_ttl_s
 
@@ -92,10 +99,13 @@ class GcsImageFetcher:
                 n += 1
         return n
 
-    def fetch(self, uri: str) -> bytes:
+    def fetch(self, uri: str, *, expected_sha256: str | None = None) -> bytes:
         path = self._cache_path(uri)
         if path is not None and path.exists() and self._fresh(path):
-            return path.read_bytes()
+            cached_bytes = path.read_bytes()
+            cached_h = hashlib.sha256(cached_bytes).hexdigest()[:16]
+            if expected_sha256 is None or cached_h.startswith(expected_sha256[:16]):
+                return cached_bytes
         bucket, name = split_gcs_uri(uri)
         data = self.client.bucket(bucket).blob(name).download_as_bytes()
         self.n_downloads += 1
@@ -144,6 +154,24 @@ _REDUCED = {
 }
 
 
+def decode_scale_for_view(
+    view_width: int,
+    hfov_deg: float,
+    sensor_px_per_deg: float = 55.14,
+) -> float:
+    """Power-of-two decode scale `s* in {0.25, 0.5, 1.0}` for a view of `view_width` and `hfov_deg`:
+
+    `s* = min(1, pow2_fraction(1.2 * view_px_per_deg / sensor_px_per_deg))`.
+    """
+    view_px_per_deg = float(view_width) / max(1.0, float(hfov_deg))
+    ratio = 1.2 * view_px_per_deg / max(1.0, float(sensor_px_per_deg))
+    if ratio <= 0.25:
+        return 0.25
+    if ratio <= 0.5:
+        return 0.5
+    return 1.0
+
+
 def decode(data: bytes, scale: float = 1.0, gray: bool = False) -> np.ndarray:
     """JPEG bytes -> BGR (or gray) uint8 array, optionally resized by `scale`.
 
@@ -162,6 +190,18 @@ def decode(data: bytes, scale: float = 1.0, gray: bool = False) -> np.ndarray:
     if scale != 1.0:
         img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
     return img
+
+
+def clahe_lab(img: np.ndarray, clip: float = 2.0, tile: int = 8) -> np.ndarray:
+    """Apply CLAHE on the L channel of CIE Lab (or directly on a grayscale image)."""
+    arr = np.asarray(img, dtype=np.uint8)
+    clahe = cv2.createCLAHE(clipLimit=float(clip), tileGridSize=(int(tile), int(tile)))
+    if arr.ndim == 2:
+        return clahe.apply(arr)
+    lab = cv2.cvtColor(arr, cv2.COLOR_BGR2LAB)
+    l_ch, a_ch, b_ch = cv2.split(lab)
+    l_eq = clahe.apply(l_ch)
+    return cv2.cvtColor(cv2.merge([l_eq, a_ch, b_ch]), cv2.COLOR_LAB2BGR)
 
 
 def encode_jpeg(img: np.ndarray, quality: int = 90) -> bytes:

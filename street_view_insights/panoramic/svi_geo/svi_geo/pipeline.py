@@ -72,8 +72,17 @@ def views_for_pano(
     return out
 
 
-def render_view(image: np.ndarray, intr: rosette.Intrinsics, spec: ViewSpec) -> np.ndarray:
-    return rosette.render_perspective(image, intr, spec.pose, spec.view, spec.cam_k)
+def render_view(
+    image: np.ndarray,
+    intr: rosette.Intrinsics,
+    spec: ViewSpec,
+    *,
+    antialias: bool = True,
+    mask_hood: bool = False,
+) -> np.ndarray:
+    return rosette.render_perspective(
+        image, intr, spec.pose, spec.view, spec.cam_k, antialias=antialias, mask_hood=mask_hood
+    )
 
 
 def detection_prompt(classes: Sequence[str] = DETECT_CLASSES) -> str:
@@ -94,8 +103,12 @@ def detections_to_observations(
     ref_lla: Sequence[float],
     min_confidence: float = 0.3,
     classes: Sequence[str] = DETECT_CLASSES,
+    *,
+    image: np.ndarray | None = None,
 ) -> list[ent.Observation]:
     """Boxes on a rendered view -> world-bearing observations (pure geometry)."""
+    from svi_geo import views
+
     w, h = spec.view.width, spec.view.height
     origin = rosette.camera_center_enu(spec.pose, ref_lla)
     out = []
@@ -104,6 +117,10 @@ def detections_to_observations(
         if cls not in classes or d.confidence < min_confidence:
             continue
         box = schemas.box_2d_to_pixels(d.box_2d, w, h)
+        ro = views.redaction_overlap(image, box) if image is not None else 0.0
+        conf = float(d.confidence) * (0.5 if ro > 0.30 else 1.0)
+        if conf < min_confidence:
+            continue
         b = spec.view.box_to_bearings(box)
         ymid = 0.5 * (box[1] + box[3])
         az_l, _ = spec.view.pixel_to_bearing(box[0], ymid)
@@ -125,9 +142,10 @@ def detections_to_observations(
                         "box": box,
                         "az_left": float(az_l),
                         "az_right": float(az_r),
+                        "redaction_overlap": ro,
                     },
                 ),
-                confidence=float(d.confidence),
+                confidence=conf,
                 el_bottom_deg=el_bottom,
                 el_top_deg=b["el_top"],
                 attrs={"material": d.material.value if d.material else None},
@@ -177,11 +195,15 @@ async def detect_panos(
     yaw_delta_deg: float = 0.0,
     hfov_scale: float = 1.0,
     seed: int | None = None,
+    decode_scale: float | None = None,
+    antialias: bool = True,
 ) -> DetectionRun:
     """Render every ground view of every rosette in code, ask Gemini for boxes, convert to rays.
 
     `frames` rows need capture_id (or pano_id), cam_k, observation_id, camera_pose and gcs_uri.
     """
+    from svi_geo import views
+
     frames = data.ensure_capture_id(frames)
     specs = [
         s
@@ -196,8 +218,14 @@ async def detect_panos(
     prompt = detection_prompt(classes)
     rendered = []
     for s in specs:
-        img = images.decode(fetch(s.gcs_uri))
-        rendered.append(render_view(img, intr, s))
+        scale = (
+            float(decode_scale)
+            if decode_scale is not None
+            else images.decode_scale_for_view(s.view.width, s.view.hfov_deg)
+        )
+        img = images.decode(fetch(s.gcs_uri), scale=scale)
+        rendered.append(render_view(img, intr, s, antialias=antialias))
+        del img
     ask_kw: dict[str, Any] = {"raise_if_all_failed": raise_if_all_failed}
     if seed is not None:
         ask_kw["seed"] = seed
@@ -208,12 +236,27 @@ async def detect_panos(
     obs, records = [], []
     for s, im, fd in zip(specs, rendered, replies, strict=True):
         black = rosette.view_black_fraction(intr, s.pose, s.view, s.cam_k)
-        rec = {"spec": s, "detections": fd, "black_fraction": black}
+        ro_max = 0.0
+        if fd is not None and fd.detections:
+            ro_max = max(
+                views.redaction_overlap(
+                    im, schemas.box_2d_to_pixels(d.box_2d, s.view.width, s.view.height)
+                )
+                for d in fd.detections
+            )
+        rec = {
+            "spec": s,
+            "detections": fd,
+            "black_fraction": black,
+            "redaction_overlap_max": ro_max,
+        }
         if keep_images:
             rec["image"] = im
         records.append(rec)
         if fd is not None:
-            obs.extend(detections_to_observations(fd, s, ref_lla, min_confidence, classes))
+            obs.extend(
+                detections_to_observations(fd, s, ref_lla, min_confidence, classes, image=im)
+            )
     return DetectionRun(merge_intra_pano(obs), records)
 
 
@@ -255,7 +298,8 @@ def task_renderer(
             return None
         row = choice.row
         view = rosette.PerspectiveView(float(task.az_deg), pitch, choice.hfov_deg, size, size)
-        img = images.decode(fetch(row["gcs_uri"]))
+        scale = images.decode_scale_for_view(size, choice.hfov_deg)
+        img = images.decode(fetch(row["gcs_uri"]), scale=scale)
         pose = row["camera_pose"]
         black = rosette.view_black_fraction(intr, pose, view, choice.cam_k)
         return rosette.render_perspective(img, intr, pose, view, choice.cam_k), view, black

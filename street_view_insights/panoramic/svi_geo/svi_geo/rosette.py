@@ -382,7 +382,7 @@ class PerspectiveView:
         u = np.asarray(u, dtype=np.float64)
         v = np.asarray(v, dtype=np.float64)
         d = np.stack(np.broadcast_arrays((u - self.cx) / self.f, (v - self.cy) / self.f, 1.0), -1)
-        d = d / np.linalg.norm(d, axis=-1, keepdims=True)
+        d /= np.linalg.norm(d, axis=-1, keepdims=True)
         return d @ self.R.T
 
     def pixel_to_bearing(self, u, v):
@@ -423,13 +423,22 @@ def perspective_maps(
         np.arange(view.width, dtype=np.float64), np.arange(view.height, dtype=np.float64)
     )
     d_world = view.pixel_dirs(u, v)
+    del u, v
     d_cam = d_world @ pose_rotation(intr, pose, cam_k)
+    del d_world
     uv = project(intr, d_cam)
     theta = np.degrees(np.arccos(np.clip(d_cam[..., 2], -1.0, 1.0)))
+    del d_cam
     bad = theta > intr.max_theta_deg
+    del theta
     map_x = np.where(bad, -1.0, uv[..., 0]).astype(np.float32)
     map_y = np.where(bad, -1.0, uv[..., 1]).astype(np.float32)
     return map_x, map_y
+
+
+def minification_factor(intr: Intrinsics, view: PerspectiveView) -> float:
+    """Source pixels per output pixel near the view centre (`0.5*(fx + fy) / view.f`)."""
+    return float(0.5 * (intr.fx + intr.fy) / max(1e-6, view.f))
 
 
 def render_perspective(
@@ -439,11 +448,31 @@ def render_perspective(
     view: PerspectiveView,
     cam_k: int | None = None,
     interpolation: int = cv2.INTER_LINEAR,
+    *,
+    antialias: bool = True,
+    mask_hood: bool = False,
+    hood_elev_deg: float = -40.0,
 ) -> np.ndarray:
-    """Resample a fisheye frame into a world-oriented pinhole `view`."""
+    """Resample a fisheye frame into a world-oriented pinhole `view`.
+
+    When `antialias=True` and the residual minification factor `f = minification_factor(intr_img, view)`
+    exceeds 1.3, applies a Gaussian prefilter (`sigma = 0.5 * sqrt(max(f^2 - 1, 0))`) before
+    `cv2.remap`. When `mask_hood=True` (or `view.pitch_deg < -5` when requested by callers),
+    rows below `hood_row(view, pose, intr_img, hood_elev_deg, cam_k)` are masked out."""
     intr_img = intr.for_image(image)
+    src = image
+    if antialias:
+        f_min = minification_factor(intr_img, view)
+        if f_min > 1.3:
+            sigma = 0.5 * math.sqrt(max(f_min * f_min - 1.0, 0.0))
+            src = cv2.GaussianBlur(image, (0, 0), sigmaX=sigma, sigmaY=sigma)
     map_x, map_y = perspective_maps(intr_img, pose, view, cam_k)
-    return cv2.remap(image, map_x, map_y, interpolation, borderMode=cv2.BORDER_CONSTANT)
+    out = cv2.remap(src, map_x, map_y, interpolation, borderMode=cv2.BORDER_CONSTANT)
+    if mask_hood and view.pitch_deg < -5.0:
+        hr = hood_row(view, pose, intr_img, hood_elev_deg=hood_elev_deg, cam_k=cam_k)
+        if hr < out.shape[0]:
+            out[hr:] = 0
+    return out
 
 
 _IDENTITY_POSE = {"heading": 0.0, "pitch": 0.0, "roll": 0.0}
@@ -900,6 +929,8 @@ def render_perspective_multi(
     rows: Sequence[Any],
     view: PerspectiveView,
     interpolation: int = cv2.INTER_LINEAR,
+    *,
+    antialias: bool = True,
 ) -> np.ndarray:
     """Composite `view` from several frames of one pano; `images` maps cam_k -> frame. Each
     pixel comes from the covering camera nearest its optical axis; uncovered pixels are 0."""
@@ -912,10 +943,81 @@ def render_perspective_multi(
         if not mask.any():
             continue
         img = images[k]
-        part = render_perspective(img, intr, _row_get(row, "camera_pose"), view, k, interpolation)
+        part = render_perspective(
+            img, intr, _row_get(row, "camera_pose"), view, k, interpolation, antialias=antialias
+        )
         if out is None:
             out = np.zeros_like(part)
         out[mask] = part[mask]
     if out is None:
         raise ValueError("no camera in rows covers the view")
+    return out
+
+
+def render_equirect_strip(
+    frames6: Mapping[int, np.ndarray],
+    intr: Intrinsics,
+    rows: Sequence[Any],
+    *,
+    width: int = 2048,
+    pitch_range: tuple[float, float] = (-30.0, 45.0),
+    interpolation: int = cv2.INTER_LINEAR,
+) -> np.ndarray:
+    """Render a 360-degree equirectangular strip (azimuth 0..360 deg left-to-right, elevation
+    `pitch_range[1]` top down to `pitch_range[0]` bottom) composited from the ground cameras."""
+    lo_el, hi_el = float(pitch_range[0]), float(pitch_range[1])
+    span_el = max(1.0, hi_el - lo_el)
+    height = max(16, int(round(width * span_el / 360.0)))
+    az_cols = (np.arange(width, dtype=np.float64) + 0.5) / width * 360.0
+    el_rows = hi_el - (np.arange(height, dtype=np.float64) + 0.5) / height * span_el
+    az_grid, el_grid = np.meshgrid(az_cols, el_rows)
+    d_world = bearing_to_dir(az_grid, el_grid)
+
+    ground = _ground_rows(rows)
+    if not ground:
+        raise ValueError("no ground cameras in rows for render_equirect_strip")
+    best_theta = np.full((height, width), np.inf, dtype=np.float64)
+    owner = np.full((height, width), -1, dtype=np.int64)
+    uv_by_cam: dict[int, tuple[np.ndarray, np.ndarray, Intrinsics]] = {}
+
+    for i, (row, k) in enumerate(ground):
+        if k not in frames6:
+            continue
+        img = frames6[k]
+        intr_img = intr.for_image(img)
+        pose = _row_get(row, "camera_pose")
+        d_cam = d_world @ pose_rotation(intr_img, pose, k)
+        theta = np.degrees(np.arccos(np.clip(d_cam[..., 2], -1.0, 1.0)))
+        uv = project(intr_img, d_cam)
+        cap = min(intr_img.max_theta_deg, _invertible_theta_deg(intr_img))
+        ok = (
+            (theta <= cap)
+            & (uv[..., 0] >= 0)
+            & (uv[..., 0] <= intr_img.width - 1)
+            & (uv[..., 1] >= 0)
+            & (uv[..., 1] <= intr_img.height - 1)
+        )
+        better = ok & (theta < best_theta)
+        best_theta = np.where(better, theta, best_theta)
+        owner = np.where(better, i, owner)
+        uv_by_cam[i] = (
+            uv[..., 0].astype(np.float32),
+            uv[..., 1].astype(np.float32),
+            intr_img,
+        )
+
+    sample = next(iter(frames6.values()))
+    out_shape = (height, width) if sample.ndim == 2 else (height, width, sample.shape[2])
+    out = np.zeros(out_shape, dtype=sample.dtype)
+    for i, (_row, k) in enumerate(ground):
+        if i not in uv_by_cam:
+            continue
+        mask = owner == i
+        if not mask.any():
+            continue
+        map_x, map_y, _ = uv_by_cam[i]
+        remapped = cv2.remap(
+            frames6[k], map_x, map_y, interpolation, borderMode=cv2.BORDER_CONSTANT
+        )
+        out[mask] = remapped[mask]
     return out

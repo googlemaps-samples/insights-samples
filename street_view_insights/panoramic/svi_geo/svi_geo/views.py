@@ -507,3 +507,54 @@ def wall_box(row: Mapping[str, Any], view: rosette.PerspectiveView) -> tuple[flo
     el_base = math.degrees(math.atan(-CAM_HEIGHT_M / float(row["dist_m"])))
     _, v_base, _ = view.bearing_to_pixel(row["bearing"], el_base)
     return (x0, y_eave, x1, float(v_base))
+
+
+def zoom_view(
+    row: Mapping[str, Any] | rosette.PerspectiveView,
+    box_2d: Sequence[float],
+    factor: float = 2.5,
+    width: int = 1024,
+    height: int = 768,
+    min_hfov_deg: float = 12.0,
+) -> rosette.PerspectiveView:
+    """Return a narrower `PerspectiveView` centred on `box_2d` ([ymin, xmin, ymax, xmax] in 0..1000)
+    with `hfov_deg = max(min_hfov_deg, base_hfov / factor)` for geometric re-rendering from the
+    full-resolution fisheye frame (never upsampling a low-res crop)."""
+    if isinstance(row, rosette.PerspectiveView):
+        base = row
+    else:
+        base_yaw = float(row.get("bearing", row.get("yaw_deg", 0.0)))
+        base_pitch = float(row.get("pitch", row.get("pitch_deg", 0.0)))
+        base_hfov = float(row.get("hfov", row.get("hfov_deg", 70.0)))
+        base = rosette.PerspectiveView(base_yaw, base_pitch, base_hfov, width, height)
+    y0, x0, y1, x1 = (float(v) for v in box_2d)
+    xc = 0.5 * (x0 + x1) / 1000.0 * base.width
+    yc = 0.5 * (y0 + y1) / 1000.0 * base.height
+    az_c, el_c = base.pixel_to_bearing(xc, yc)
+    new_hfov = max(float(min_hfov_deg), base.hfov_deg / max(1.0, float(factor)))
+    return rosette.PerspectiveView(
+        yaw_deg=float(az_c),
+        pitch_deg=float(el_c),
+        hfov_deg=new_hfov,
+        width=int(width),
+        height=int(height),
+    )
+
+
+def redaction_overlap(
+    image: np.ndarray,
+    box_px: Sequence[float],
+    thresh: int = 8,
+    min_area_frac: float = 2e-5,
+) -> float:
+    """Fraction of pixels inside `box_px` (`x0, y0, x1, y1` in image pixels) that fall inside a
+    solid-black privacy redaction blob (`~rosette.privacy_blob_mask`)."""
+    h, w = image.shape[:2]
+    x0, y0, x1, y1 = (int(round(float(v))) for v in box_px)
+    x0, x1 = max(0, min(w, x0)), max(0, min(w, x1))
+    y0, y1 = max(0, min(h, y0)), max(0, min(h, y1))
+    if x1 <= x0 or y1 <= y0:
+        return 0.0
+    not_blob = rosette.privacy_blob_mask(image, thresh=thresh, min_area_frac=min_area_frac)
+    sub = ~not_blob[y0:y1, x0:x1]
+    return float(np.mean(sub)) if sub.size > 0 else 0.0

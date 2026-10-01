@@ -399,3 +399,44 @@ def test_triangulate_house_with_facade_edges_locates_midpoint():
     loc, status = views.triangulate_house(s, use_facade_edges=True)
     assert status == "triangulated" and loc is not None
     assert geo.haversine_m(loc.lat, loc.lng, *true_ll) < 1.5
+
+
+# ----------------------------------------------------------------------------- U6: zoom_view and redaction_overlap
+
+
+def test_zoom_view_centres_box_bearing_and_narrows_hfov():
+    base_view = rosette.PerspectiveView(
+        yaw_deg=120.0, pitch_deg=5.0, hfov_deg=70.0, width=1024, height=768
+    )
+    # Box in the upper-right quadrant (0-1000 normalized: [ymin, xmin, ymax, xmax])
+    box_2d = [200, 600, 500, 800]
+    # Expected centre pixel in base_view
+    xc = 0.5 * (600 + 800) / 1000.0 * 1024.0
+    yc = 0.5 * (200 + 500) / 1000.0 * 768.0
+    exp_az, exp_el = base_view.pixel_to_bearing(xc, yc)
+
+    row = {"bearing": 120.0, "pitch": 5.0, "hfov": 70.0}
+    zview = views.zoom_view(row, box_2d, factor=2.5, width=1024, height=768)
+    assert zview.hfov_deg == pytest.approx(70.0 / 2.5, rel=1e-3)
+    assert abs(float(geo.angdiff(zview.yaw_deg, float(exp_az)))) < 0.05
+    assert abs(zview.pitch_deg - float(exp_el)) < 0.05
+    # Projecting the target bearing into the zoom view lands at its centre pixel
+    u_z, v_z, ok = zview.bearing_to_pixel(float(exp_az), float(exp_el))
+    assert bool(ok)
+    assert abs(float(u_z) - zview.cx) < 0.5 and abs(float(v_z) - zview.cy) < 0.5
+
+
+def test_redaction_overlap_on_synthetic_blob():
+    rng = np.random.default_rng(11)
+    img = rng.integers(60, 220, size=(400, 500, 3), dtype=np.uint8)
+    # Paint a solid-black privacy redaction blob in rows 100..200, cols 150..250
+    img[100:200, 150:250] = 0
+    # Box 1 overlaps the blob completely -> overlap >= 0.9
+    ov_full = views.redaction_overlap(img, (150, 100, 250, 200))
+    assert ov_full >= 0.90
+    # Box 2 overlaps half the blob -> overlap ~ 0.5
+    ov_half = views.redaction_overlap(img, (150, 100, 350, 200))
+    assert 0.40 <= ov_half <= 0.65
+    # Box 3 is far from the blob -> overlap == 0.0
+    ov_none = views.redaction_overlap(img, (350, 250, 450, 350))
+    assert ov_none == pytest.approx(0.0, abs=0.02)

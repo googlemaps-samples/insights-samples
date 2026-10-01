@@ -178,3 +178,36 @@ def test_dark_pixel_fraction_counts_near_black_pixels_not_dark_grey():
     img[80:90, :] = 40  # dark shadow, not near-black
     assert images.dark_pixel_fraction(img) == pytest.approx(0.06)
     assert images.dark_pixel_fraction(img, max_value=0) == pytest.approx(0.05)
+
+
+# ----------------------------------------------------------------------------- U6: scale choice, CLAHE, content-hash cache
+
+
+def test_decode_scale_choice_from_px_per_deg():
+    # A 1024px 70 deg view is ~14.6 px/deg vs sensor ~36.5 px/deg -> 1.2 * 14.6 / 36.5 = 0.48 <= 0.5
+    assert images.decode_scale_for_view(1024, 70.0) == 0.5
+    assert images.decode_scale_for_view(1280, 70.0) == 0.5
+    # A narrow 20 deg zoom view at 1024 px is ~51.2 px/deg -> needs full-res (1.0)
+    assert images.decode_scale_for_view(1024, 20.0) == 1.0
+    # A tiny thumbnail 256 px over 80 deg -> 3.2 px/deg -> 0.25
+    assert images.decode_scale_for_view(256, 80.0) == 0.25
+
+
+def test_clahe_lab_enhances_low_contrast_without_changing_shape():
+    rng = np.random.default_rng(7)
+    low_contrast = rng.integers(90, 130, (64, 80, 3), dtype=np.uint8)
+    out = images.clahe_lab(low_contrast, clip=2.0, tile=8)
+    assert out.shape == low_contrast.shape and out.dtype == np.uint8
+    assert float(out.std()) > float(low_contrast.std())
+
+
+def test_frame_cache_invalidates_on_content_hash(tmp_path):
+    store = FakeStorage({"s/v0/o1:P_0:5001ee.jpg": b"version_1_bytes"})
+    f = images.GcsImageFetcher(store, cache_dir=tmp_path)
+    assert f.fetch(URI0) == b"version_1_bytes"
+    # Sidecar records sha256(bytes)[:16]
+    assert f.cached_content_hash(URI0) is not None
+    # When expected_sha256 mismatches cached bytes, it re-downloads
+    store.objects["s/v0/o1:P_0:5001ee.jpg"] = b"version_2_bytes"
+    assert f.fetch(URI0, expected_sha256="deadbeef00000000") == b"version_2_bytes"
+    assert store.downloads == 2
