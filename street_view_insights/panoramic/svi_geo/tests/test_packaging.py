@@ -54,7 +54,10 @@ def test_dependencies_are_pinned_and_the_lock_file_has_hashes():
         assert "==" in spec or (">=" in spec and "<" in spec.replace("<=", "")), spec
     lock_checks = [
         ("requirements.lock", proj["dependencies"]),
-        ("requirements-notebooks.lock", proj["dependencies"] + proj["optional-dependencies"]["notebooks"]),
+        (
+            "requirements-notebooks.lock",
+            proj["dependencies"] + proj["optional-dependencies"]["notebooks"],
+        ),
         ("requirements-dev.lock", proj["dependencies"] + proj["optional-dependencies"]["dev"]),
     ]
     for lock_filename, expected_specs in lock_checks:

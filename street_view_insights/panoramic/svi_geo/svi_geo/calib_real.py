@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 
 from svi_geo import calib_features as cf
-from svi_geo import calibrate, geo, images, rosette
+from svi_geo import calibrate, data, geo, images, rosette
 from svi_geo.calibrate import CalibProblem, CamInstance, Chain
 from svi_geo.rosette import Intrinsics
 
@@ -37,20 +37,21 @@ DEFAULT_FEATURE_CACHE = Path.home() / ".cache" / "svi_geo" / "features"
 @dataclasses.dataclass
 class InstanceSet:
     instances: list[CamInstance]
-    index: dict[tuple[str, int], int]  # (pano_id, cam_k) -> instance index
+    index: dict[tuple[str, int], int]  # (capture_id, cam_k) -> instance index
     radius_m: float
     radius_p10_p90: tuple[float, float]
 
 
 def instances_from_frames(frames: pd.DataFrame) -> InstanceSet:
-    """`frames` needs pano_id, cam_k, heading, pitch, roll, cam_lat, cam_lng, cam_alt, aoi."""
+    """`frames` needs capture_id (or pano_id), cam_k, heading, pitch, roll, cam_lat, cam_lng, cam_alt, aoi."""
+    frames = data.ensure_capture_id(frames)
     frames = frames[frames["cam_k"].between(0, 5)]
     refs = {}
     for aoi, g in frames.groupby("aoi"):
-        r0 = g.sort_values(["pano_id", "cam_k"]).iloc[0]
+        r0 = g.sort_values(["capture_id", "cam_k"]).iloc[0]
         refs[aoi] = (float(r0["cam_lat"]), float(r0["cam_lng"]), float(r0["cam_alt"]))
     instances, index, offsets = [], {}, []
-    for pid, g in frames.sort_values(["pano_id", "cam_k"]).groupby("pano_id", sort=False):
+    for cid, g in frames.sort_values(["capture_id", "cam_k"]).groupby("capture_id", sort=False):
         ref = refs[g["aoi"].iloc[0]]
         enu = np.stack(
             geo.lla_to_enu(
@@ -64,10 +65,10 @@ def instances_from_frames(frames: pd.DataFrame) -> InstanceSet:
         centre = enu.mean(0)
         offsets.extend(np.linalg.norm((enu - centre)[:, :2], axis=1).tolist())
         for row in g.itertuples(index=False):
-            index[(pid, int(row.cam_k))] = len(instances)
+            index[(cid, int(row.cam_k))] = len(instances)
             instances.append(
                 CamInstance(
-                    pid,
+                    cid,
                     int(row.cam_k),
                     centre,
                     float(row.heading),

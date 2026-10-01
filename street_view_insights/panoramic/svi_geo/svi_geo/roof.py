@@ -483,7 +483,10 @@ def validate_roof_edges(
             from svi_geo import cvchecks as cvc
 
             sc = cvc.sky_contact(
-                img, [tuple(map(float, p)) for p in pts], horizon_row=horizon_row, valid_mask=valid_mask
+                img,
+                [tuple(map(float, p)) for p in pts],
+                horizon_row=horizon_row,
+                valid_mask=valid_mask,
             )
             if math.isfinite(sc) and sc < min_sky_contact:
                 rejected.append(

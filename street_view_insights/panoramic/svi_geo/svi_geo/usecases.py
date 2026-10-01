@@ -269,7 +269,7 @@ async def uc1_run(
     )
     sightings = [
         views.HouseSighting(
-            r["pano_id"],
+            str(r.get("capture_id") or r.get("pano_id") or ""),
             r["camera_pose"],
             v_obj,
             schemas.box_2d_to_pixels(v.box_2d, width, height),
@@ -472,12 +472,17 @@ async def uc3_run(
     variant: Variant = DEFAULT_VARIANT,
 ) -> dict[str, Any]:
     """Render front/left/right road views, query `WindowLabel`, smooth with Viterbi, and emit segments."""
+    from svi_geo import data
+
+    sel = data.ensure_capture_id(sel).reset_index(drop=True)
+    sel_frames = data.ensure_capture_id(sel_frames)
     views_by_pano: dict[str, dict[str, np.ndarray]] = {}
     rv_by_pano: dict[str, dict[str, sequence.RoadView]] = {}
     black: list[float] = []
     zero: list[float] = []
     for p in sel.itertuples():
-        rows = sel_frames[sel_frames.pano_id == p.pano_id].to_dict("records")
+        cid = str(getattr(p, "capture_id", None) or getattr(p, "pano_id", ""))
+        rows = sel_frames[sel_frames.capture_id == cid].to_dict("records")
         out_v: dict[str, np.ndarray] = {}
         out_rv: dict[str, sequence.RoadView] = {}
         travel = (float(p.travel_deg) + variant.yaw_delta_deg) % 360.0
@@ -501,23 +506,22 @@ async def uc3_run(
             out_v[role] = rendered
             out_rv[role] = rv
             zero.append(images.dark_pixel_fraction(rendered))
-        views_by_pano[p.pano_id] = out_v
-        rv_by_pano[p.pano_id] = out_rv
+        views_by_pano[cid] = out_v
+        rv_by_pano[cid] = out_rv
+        if getattr(p, "pano_id", None) and str(p.pano_id) != cid:
+            views_by_pano[str(p.pano_id)] = out_v
+            rv_by_pano[str(p.pano_id)] = out_rv
 
     prompt = UC3_PROMPT_V1 if variant.uc3_prompt_version == "v1" else UC3_PROMPT_V0
     breaks = smoothing.gap_breaks(sel.lat, sel.lng, max_gap_m)
+    cids = [str(c) for c in sel["capture_id"].tolist()]
 
     def window_request(i: int):
-        c = views_by_pano[sel.pano_id[i]]
+        c = views_by_pano[cids[i]]
         items: list[Any] = [prompt]
         use_neighbours = variant.uc3_window_size >= 3
-        if (
-            use_neighbours
-            and i > 0
-            and not breaks[i]
-            and "front" in views_by_pano[sel.pano_id[i - 1]]
-        ):
-            items += ["PREVIOUS front:", views_by_pano[sel.pano_id[i - 1]]["front"]]
+        if use_neighbours and i > 0 and not breaks[i] and "front" in views_by_pano[cids[i - 1]]:
+            items += ["PREVIOUS front:", views_by_pano[cids[i - 1]]["front"]]
         for role in ("front", "left", "right"):
             if role in c:
                 items += [f"CENTRE {role}:", c[role]]
@@ -525,9 +529,9 @@ async def uc3_run(
             use_neighbours
             and i + 1 < len(sel)
             and not breaks[i + 1]
-            and "front" in views_by_pano[sel.pano_id[i + 1]]
+            and "front" in views_by_pano[cids[i + 1]]
         ):
-            items += ["NEXT front:", views_by_pano[sel.pano_id[i + 1]]["front"]]
+            items += ["NEXT front:", views_by_pano[cids[i + 1]]["front"]]
         return items, schemas.WindowLabel
 
     ask_kw: dict[str, Any] = {}
@@ -543,10 +547,10 @@ async def uc3_run(
         raw, conf = zip(*(smoothing.pick_slot(wl, asset, side) for wl in labels), strict=True)
         raw, conf = list(raw), list(conf)
         if variant.uc3_kerb_sidewalk_prior and asset == "SIDEWALK":
-            for idx_p, pid in enumerate(sel.pano_id):
+            for idx_p, cid in enumerate(cids):
                 role_key = "left" if side == "LEFT" else "right"
-                im = views_by_pano.get(pid, {}).get(role_key)
-                rv = rv_by_pano.get(pid, {}).get(role_key)
+                im = views_by_pano.get(cid, {}).get(role_key)
+                rv = rv_by_pano.get(cid, {}).get(role_key)
                 if im is not None and rv is not None and raw[idx_p] is not None:
                     full_h = np.zeros((rv.view.height, rv.view.width, 3), dtype=np.uint8)
                     top = max(0, rv.view.height - im.shape[0])

@@ -17,20 +17,36 @@ import pandas as pd
 
 from svi_geo import geo, rosette
 
-_REQUIRED = ("pano_id", "snapshot_id", "capture_time", "lat", "lng")
+_REQUIRED_COORDS = ("snapshot_id", "capture_time", "lat", "lng")
+
+
+def _ensure_capture_id(panos: pd.DataFrame) -> pd.DataFrame:
+    if "capture_id" in panos.columns and "pano_id" in panos.columns:
+        return panos
+    out = panos.copy()
+    if "capture_id" not in out.columns:
+        if "pano_id" not in out.columns:
+            raise ValueError("panos frame missing 'capture_id' (or 'pano_id') column")
+        out["capture_id"] = out["pano_id"]
+    if "pano_id" not in out.columns:
+        out["pano_id"] = out["capture_id"]
+    return out
 
 
 def _prep(panos: pd.DataFrame) -> pd.DataFrame:
-    missing = [c for c in _REQUIRED if c not in panos.columns]
-    if missing:
-        raise ValueError(f"panos frame missing columns {missing}")
-    df = panos.drop_duplicates("pano_id").copy()
+    missing = [c for c in _REQUIRED_COORDS if c not in panos.columns]
+    if missing or ("capture_id" not in panos.columns and "pano_id" not in panos.columns):
+        req = ("capture_id", *_REQUIRED_COORDS)
+        raise ValueError(
+            f"panos frame missing columns {[c for c in req if c not in panos.columns]}"
+        )
+    df = _ensure_capture_id(panos).drop_duplicates("capture_id").copy()
     df["capture_time"] = pd.to_datetime(df["capture_time"], utc=True)
     df["_t"] = (df["capture_time"] - pd.Timestamp("1970-01-01", tz="UTC")).dt.total_seconds()
     lat0, lng0 = float(df["lat"].mean()), float(df["lng"].mean())
     e, n, _ = geo.lla_to_enu(df["lat"].to_numpy(), df["lng"].to_numpy(), 0.0, lat0, lng0, 0.0)
     df["_e"], df["_n"] = e, n
-    return df.sort_values(["snapshot_id", "_t", "pano_id"]).reset_index(drop=True)
+    return df.sort_values(["snapshot_id", "_t", "capture_id"]).reset_index(drop=True)
 
 
 def spacing_stats(panos: pd.DataFrame, max_dt_s: float = 5.0, max_d_m: float = 50.0) -> dict:
@@ -59,7 +75,7 @@ def build_sequences(
     max_gap_m: float | None = None,
     gap_factor: float = 3.0,
 ) -> pd.DataFrame:
-    """Chain panos into drive sequences.
+    """Chain panos into drive sequences keyed by `capture_id`.
 
     Per snapshot, in time order, each pano's predecessor is the spatially nearest earlier pano
     within `max_dt_s` and `max_gap_m` that has no successor yet. `max_gap_m` defaults to
@@ -91,10 +107,10 @@ def build_sequences(
             has_succ[best] = True
     seq_id = np.empty(len(df), dtype=object)
     seq_idx = np.zeros(len(df), int)
-    pano = df["pano_id"].to_numpy()
+    cid = df["capture_id"].to_numpy()
     for i in range(len(df)):
         if pred[i] < 0:
-            seq_id[i] = f"{str(snap[i])[:8]}_{pano[i]}"
+            seq_id[i] = f"{str(snap[i])[:8]}_{cid[i]}"
             seq_idx[i] = 0
         else:
             seq_id[i] = seq_id[pred[i]]
@@ -107,6 +123,37 @@ def build_sequences(
         .sort_values(["seq_id", "seq_idx"])
         .reset_index(drop=True)
     )
+
+
+def select_by_spacing(
+    seq: pd.DataFrame,
+    target_spacing_m: float = 10.0,
+    max_panos: int | None = None,
+) -> pd.DataFrame:
+    """Subsample a sequence so consecutive kept rosettes are at least `target_spacing_m` apart."""
+    if seq.empty:
+        return seq.copy()
+    df = _ensure_capture_id(seq)
+    if "seq_idx" in df.columns:
+        df = df.sort_values("seq_idx").reset_index(drop=True)
+    elif "capture_time" in df.columns:
+        df = df.sort_values(["capture_time", "capture_id"]).reset_index(drop=True)
+    else:
+        df = df.reset_index(drop=True)
+    if target_spacing_m <= 0:
+        return df.head(max_panos).reset_index(drop=True) if max_panos is not None else df
+    lat = df["lat"].to_numpy(dtype=float)
+    lng = df["lng"].to_numpy(dtype=float)
+    keep_idx = [0]
+    last_i = 0
+    for i in range(1, len(df)):
+        if max_panos is not None and len(keep_idx) >= max_panos:
+            break
+        d = float(geo.haversine_m(lat[last_i], lng[last_i], lat[i], lng[i]))
+        if d >= target_spacing_m - 1e-6:
+            keep_idx.append(i)
+            last_i = i
+    return df.iloc[keep_idx].reset_index(drop=True)
 
 
 def travel_bearing(seqs: pd.DataFrame) -> np.ndarray:
@@ -125,9 +172,12 @@ def travel_bearing(seqs: pd.DataFrame) -> np.ndarray:
     return out
 
 
-def neighbours(seqs: pd.DataFrame, pano_id: str, k: int = 2) -> pd.DataFrame:
-    """Panos within k steps of `pano_id` in its sequence (excluding itself), in order."""
-    row = seqs.loc[seqs["pano_id"] == pano_id]
+def neighbours(seqs: pd.DataFrame, capture_id: str, k: int = 2) -> pd.DataFrame:
+    """Rosettes within k steps of `capture_id` in its sequence (excluding itself), in order."""
+    df = _ensure_capture_id(seqs)
+    row = df.loc[df["capture_id"] == capture_id]
+    if row.empty and "pano_id" in df.columns:
+        row = df.loc[df["pano_id"] == capture_id]
     if row.empty:
         return seqs.iloc[0:0]
     sid, i = row.iloc[0]["seq_id"], int(row.iloc[0]["seq_idx"])
@@ -272,13 +322,13 @@ def repeat_pairs(
 
     Two sequences (sid_a, sid_b) captured on distinct UTC calendar days (`capture_time.dt.date`)
     form a repeat pair when:
-      1. At least `min_matched_panos` panos of sequence A lie within `max_sep_m` of a pano in
+      1. At least `min_matched_panos` rosettes of sequence A lie within `max_sep_m` of a rosette in
          sequence B, and
-      2. The path length along sequence A covered by those matched panos is `>= min_overlap_m`.
+      2. The path length along sequence A covered by those matched rosettes is `>= min_overlap_m`.
     """
     if seqs.empty:
         return []
-    df = seqs.drop_duplicates("pano_id").copy()
+    df = _ensure_capture_id(seqs).drop_duplicates("capture_id").copy()
     df["capture_time"] = pd.to_datetime(df["capture_time"], utc=True)
     df["_date"] = df["capture_time"].dt.date
     lat0, lng0 = float(df["lat"].mean()), float(df["lng"].mean())
@@ -315,6 +365,13 @@ def repeat_pairs(
             overlap_m = float(np.sum(np.hypot(np.diff(seg[:, 0]), np.diff(seg[:, 1]))))
             if overlap_m < min_overlap_m:
                 continue
+            matched_pairs = [
+                (
+                    str(ga.loc[int(k), "capture_id"]),
+                    str(gb.loc[int(nearest_b[k]), "capture_id"]),
+                )
+                for k in matched_idx
+            ]
             pairs.append(
                 {
                     "seq_a": str(sid_a),
@@ -323,25 +380,25 @@ def repeat_pairs(
                     "date_b": str(min(dates_b)),
                     "overlap_m": overlap_m,
                     "median_sep_m": float(np.median(min_d[matched_idx])),
-                    "pano_pairs": [
-                        (
-                            str(ga.loc[int(k), "pano_id"]),
-                            str(gb.loc[int(nearest_b[k]), "pano_id"]),
-                        )
-                        for k in matched_idx
-                    ],
+                    "capture_pairs": matched_pairs,
+                    "pano_pairs": matched_pairs,
                 }
             )
     return pairs
 
 
 def blocks(seqs: pd.DataFrame, block_size: int = 5) -> dict[str, str]:
-    """Assign each `pano_id` in `seqs` to a deterministic spatial block of `block_size` consecutive panos."""
+    """Assign each `capture_id` in `seqs` to a deterministic spatial block of `block_size` consecutive rosettes."""
     if block_size <= 0:
         raise ValueError("block_size must be >= 1")
-    df = seqs.drop_duplicates("pano_id").sort_values(["seq_id", "seq_idx"]).reset_index(drop=True)
+    df = (
+        _ensure_capture_id(seqs)
+        .drop_duplicates("capture_id")
+        .sort_values(["seq_id", "seq_idx"])
+        .reset_index(drop=True)
+    )
     out: dict[str, str] = {}
     for sid, g in df.groupby("seq_id", sort=True):
-        for pos, pid in enumerate(g["pano_id"].tolist()):
-            out[str(pid)] = f"{sid}:b{pos // block_size:03d}"
+        for pos, cid in enumerate(g["capture_id"].tolist()):
+            out[str(cid)] = f"{sid}:b{pos // block_size:03d}"
     return out

@@ -18,8 +18,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from svi_geo import data, geo, images, rosette, schemas
 from svi_geo import entities as ent
-from svi_geo import geo, images, rosette, schemas
 from svi_geo import triangulate as tri
 
 DETECT_CLASSES = ("HOUSE", "UTILITY_POLE", "ROAD_SIGN")
@@ -37,6 +37,10 @@ class ViewSpec:
     gcs_uri: str
     pose: Mapping[str, Any]
     view: rosette.PerspectiveView
+
+    @property
+    def capture_id(self) -> str:
+        return self.pano_id
 
 
 def views_for_pano(
@@ -61,10 +65,9 @@ def views_for_pano(
             + yaw_delta_deg
         )
         view = rosette.PerspectiveView(yaw % 360.0, 0.0, eff_hfov, size[0], size[1])
+        cid = str(r.get("capture_id") or r.get("pano_id") or "")
         out.append(
-            ViewSpec(
-                r["pano_id"], k, r["observation_id"], r.get("gcs_uri", ""), r["camera_pose"], view
-            )
+            ViewSpec(cid, k, r["observation_id"], r.get("gcs_uri", ""), r["camera_pose"], view)
         )
     return out
 
@@ -175,13 +178,14 @@ async def detect_panos(
     hfov_scale: float = 1.0,
     seed: int | None = None,
 ) -> DetectionRun:
-    """Render every ground view of every pano in code, ask Gemini for boxes, convert to rays.
+    """Render every ground view of every rosette in code, ask Gemini for boxes, convert to rays.
 
-    `frames` rows need pano_id, cam_k, observation_id, camera_pose and gcs_uri.
+    `frames` rows need capture_id (or pano_id), cam_k, observation_id, camera_pose and gcs_uri.
     """
+    frames = data.ensure_capture_id(frames)
     specs = [
         s
-        for _, g in frames.groupby("pano_id", sort=True)
+        for _, g in frames.groupby("capture_id", sort=True)
         for s in views_for_pano(
             g.to_dict("records"),
             intr,
@@ -226,14 +230,18 @@ def task_renderer(
     """Renderer for self-consistency `ViewTask`s: a small world-oriented square view centred on
     the predicted bearing (poles/signs: `lift_m` above the ground point), rendered in code.
 
-    The view is rendered from whichever ground camera of the task's pano covers it
+    The view is rendered from whichever ground camera of the task's rosette covers it
     (`rosette.best_camera_for_view`), narrowed from `hfov_deg` if needed so that less than
     `max_black` of it falls outside the sensor. Returns (image, view, black_fraction), or None
     when no camera covers even `min_hfov_deg` (the task cannot be checked).
-    `frames` rows need pano_id, cam_k, observation_id, camera_pose and gcs_uri."""
+    `frames` rows need capture_id (or pano_id), cam_k, observation_id, camera_pose and gcs_uri."""
+    frames = data.ensure_capture_id(frames)
     by_pano: dict[str, list[dict]] = defaultdict(list)
     for r in frames.to_dict("records"):
-        by_pano[r["pano_id"]].append(r)
+        cid = str(r.get("capture_id") or r.get("pano_id") or "")
+        by_pano[cid].append(r)
+        if r.get("pano_id") and str(r["pano_id"]) != cid:
+            by_pano[str(r["pano_id"])].append(r)
 
     def render(task) -> tuple[np.ndarray, rosette.PerspectiveView, float] | None:
         lift = lift_m if task.cls in ent.GROUND_CONTACT else 0.0

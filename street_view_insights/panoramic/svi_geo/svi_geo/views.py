@@ -22,8 +22,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from svi_geo import data, geo, rosette
 from svi_geo import entities as ent
-from svi_geo import geo, rosette
 from svi_geo import triangulate as tri
 
 CAM_HEIGHT_M = 2.5
@@ -33,6 +33,7 @@ MARGIN_DEG = 2.0
 HOUSE_MAX_RMS_M = 3.0  # a facade box centre is not a point; allow a few metres of misfit
 
 CANDIDATE_COLUMNS = [
+    "capture_id",
     "pano_id",
     "seq_id",
     "cam_k",
@@ -85,13 +86,14 @@ def house_view_candidates(
     max_dist_m: float = 80.0,
     max_hfov: float = 90.0,
 ) -> pd.DataFrame:
-    """One row per pano with the best camera and view for the house at (lat, lng).
+    """One row per rosette (`capture_id`) with the best camera and view for the house at (lat, lng).
 
-    `cam_k` is None when no camera of that pano can show the whole house (too close, or the
-    needed view would include black border). `frames` rows need pano_id, cam_k,
+    `cam_k` is None when no camera of that rosette can show the whole house (too close, or the
+    needed view would include black border). `frames` rows need capture_id (or pano_id), cam_k,
     observation_id, camera_pose and gcs_uri (and seq_id, if known)."""
+    frames = data.ensure_capture_id(frames)
     rows = []
-    for pid, g in frames.groupby("pano_id", sort=True):
+    for cid, g in frames.groupby("capture_id", sort=True):
         recs = g.to_dict("records")
         ground = [r for r in recs if rosette.is_ground_camera(int(r["cam_k"]))]
         if not ground:
@@ -103,7 +105,8 @@ def house_view_candidates(
         need_w = 2 * math.degrees(math.atan(house_width_m / 2 / max(dist, 1e-3)))
         hfov = max(need_w, hfov_for_vfov(vfov, aspect))
         row = {
-            "pano_id": pid,
+            "capture_id": cid,
+            "pano_id": recs[0].get("pano_id"),
             "seq_id": recs[0].get("seq_id"),
             "cam_k": None,
             "observation_id": None,
@@ -158,39 +161,46 @@ def rank_house_views(
     frames: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Candidates with a camera, ordered by `dist/dist_max + off_axis/off_max` (lower is
-    better, ties by pano_id), at most `max_per_seq` per drive sequence, then the first `n`.
+    better, ties by capture_id), at most `max_per_seq` per drive sequence, then the first `n`.
     When `diversify_days=True` and a `capture_day` column is present (or derived from `frames`),
     interleaves views round-robin across capture days so multi-day passes are represented first.
 
     Always returns a DataFrame with the input columns plus `score`, even when empty."""
     cols = list(cands.columns) + (["score"] if "score" not in cands.columns else [])
-    ok = cands[cands["cam_k"].notna()].copy()
+    cands_norm = data.ensure_capture_id(cands)
+    ok = cands_norm[cands_norm["cam_k"].notna()].copy()
     if ok.empty:
         return pd.DataFrame(columns=cols)
     d_max = max(float(ok["dist_m"].max()), 1e-9)
     o_max = max(float(ok["off_axis_deg"].max()), 1e-9)
     ok["score"] = ok["dist_m"] / d_max + ok["off_axis_deg"] / o_max
-    ok = ok.sort_values(["score", "pano_id"], kind="stable")
-    seq = ok["seq_id"].fillna(ok["pano_id"])
+    ok = ok.sort_values(["score", "capture_id"], kind="stable")
+    seq = ok["seq_id"].fillna(ok["capture_id"])
     ok = ok[seq.groupby(seq).cumcount() < max_per_seq]
     if diversify_days:
-        if "capture_day" not in ok.columns and frames is not None and "pano_id" in frames.columns:
-            if "capture_day" in frames.columns:
-                day_map = frames.drop_duplicates("pano_id").set_index("pano_id")["capture_day"]
-                ok = ok.assign(capture_day=ok["pano_id"].map(day_map))
-            elif "capture_time" in frames.columns:
-                day_map = (
-                    frames.drop_duplicates("pano_id")
-                    .assign(
-                        _d=pd.to_datetime(frames["capture_time"], utc=True).dt.strftime("%Y-%m-%d")
+        if "capture_day" not in ok.columns and frames is not None:
+            fr_norm = data.ensure_capture_id(frames)
+            if "capture_id" in fr_norm.columns:
+                if "capture_day" in fr_norm.columns:
+                    day_map = fr_norm.drop_duplicates("capture_id").set_index("capture_id")[
+                        "capture_day"
+                    ]
+                    ok = ok.assign(capture_day=ok["capture_id"].map(day_map))
+                elif "capture_time" in fr_norm.columns:
+                    day_map = (
+                        fr_norm.drop_duplicates("capture_id")
+                        .assign(
+                            _d=pd.to_datetime(fr_norm["capture_time"], utc=True).dt.strftime(
+                                "%Y-%m-%d"
+                            )
+                        )
+                        .set_index("capture_id")["_d"]
                     )
-                    .set_index("pano_id")["_d"]
-                )
-                ok = ok.assign(capture_day=ok["pano_id"].map(day_map))
+                    ok = ok.assign(capture_day=ok["capture_id"].map(day_map))
         if "capture_day" in ok.columns:
-            day_key = ok["capture_day"].fillna(ok["pano_id"]).astype(str)
+            day_key = ok["capture_day"].fillna(ok["capture_id"]).astype(str)
             ok = ok.assign(_day_round=day_key.groupby(day_key).cumcount())
-            ok = ok.sort_values(["_day_round", "score", "pano_id"], kind="stable").drop(
+            ok = ok.sort_values(["_day_round", "score", "capture_id"], kind="stable").drop(
                 columns=["_day_round"]
             )
     if n is not None:
@@ -333,14 +343,15 @@ def rank_roof_views(
     max_dist_m: float = 80.0,
     max_hfov: float = 90.0,
 ) -> pd.DataFrame:
-    """Up to `n` roof views (one per pano), spread across drive sequences.
+    """Up to `n` roof views (one per rosette `capture_id`), spread across drive sequences.
 
-    A pano qualifies if one of its ground cameras (`best_camera_for_view`) can render a view
+    A rosette qualifies if one of its ground cameras (`best_camera_for_view`) can render a view
     `roof_width_m` wide with the eave and the ridge in frame and no black border. Views are
     scored by `off_axis/off_max + distance outside ROOF_BAND_M / 10 m`, then taken
     round-robin across sequences in score order."""
+    frames = data.ensure_capture_id(frames)
     rows = []
-    for pid, g in frames.groupby("pano_id", sort=True):
+    for cid, g in frames.groupby("capture_id", sort=True):
         ground = [r for r in g.to_dict("records") if rosette.is_ground_camera(int(r["cam_k"]))]
         if not ground:
             continue
@@ -362,7 +373,8 @@ def rank_roof_views(
         r = choice.row
         rows.append(
             {
-                "pano_id": pid,
+                "capture_id": cid,
+                "pano_id": r.get("pano_id"),
                 "seq_id": r.get("seq_id"),
                 "cam_k": int(choice.cam_k),
                 "observation_id": r["observation_id"],
@@ -387,10 +399,10 @@ def rank_roof_views(
     outside = np.maximum(0.0, np.maximum(lo - df["dist_m"], df["dist_m"] - hi))
     o_max = max(float(df["off_axis_deg"].max()), 1e-9)
     df["score"] = df["off_axis_deg"] / o_max + outside / 10.0
-    df = df.sort_values(["score", "pano_id"], kind="stable")
-    seq = df["seq_id"].fillna(df["pano_id"])
+    df = df.sort_values(["score", "capture_id"], kind="stable")
+    seq = df["seq_id"].fillna(df["capture_id"])
     df["_round"] = seq.groupby(seq).cumcount()
-    df = df.sort_values(["_round", "score", "pano_id"], kind="stable").head(n)
+    df = df.sort_values(["_round", "score", "capture_id"], kind="stable").head(n)
     return df.drop(columns="_round").reset_index(drop=True)[cols]
 
 

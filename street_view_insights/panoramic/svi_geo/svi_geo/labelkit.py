@@ -95,8 +95,9 @@ def html_page(title: str, items: Sequence[Mapping[str, str]]) -> str:
 
 
 def consecutive_window(seqs: pd.DataFrame, lat: float, lng: float, n: int) -> list[str]:
-    """`n` consecutive pano ids of the longest drive sequence (`sequence.build_sequences`
-    output), centred on the pano nearest (lat, lng) and clamped to the sequence ends."""
+    """`n` consecutive rosette ids (`capture_id` or `pano_id`) of the longest drive sequence
+    (`sequence.build_sequences` output), centred on the rosette nearest (lat, lng) and clamped to
+    the sequence ends."""
     lens = seqs.groupby("seq_id").size()
     seq = seqs[seqs["seq_id"] == lens.idxmax()].sort_values("seq_idx")
     if len(seq) < n:
@@ -104,4 +105,5 @@ def consecutive_window(seqs: pd.DataFrame, lat: float, lng: float, n: int) -> li
     d = geo.haversine_m(seq["lat"].to_numpy(), seq["lng"].to_numpy(), lat, lng)
     mid = int(np.argmin(d))
     lo = max(0, min(mid - n // 2, len(seq) - n))
-    return [str(p) for p in seq["pano_id"].to_numpy()[lo : lo + n]]
+    id_col = "capture_id" if "capture_id" in seq.columns else "pano_id"
+    return [str(p) for p in seq[id_col].to_numpy()[lo : lo + n]]

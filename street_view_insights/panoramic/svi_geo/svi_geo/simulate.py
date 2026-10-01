@@ -21,8 +21,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from svi_geo import data, geo, rosette, sequence
 from svi_geo import entities as ent
-from svi_geo import geo, rosette, sequence
 from svi_geo import triangulate as tri
 
 CAM_HEIGHT_M = 2.5
@@ -90,7 +90,7 @@ def synthetic_frames(
     seq_id: str = "S0",
     t0: dt.datetime | None = None,
 ) -> pd.DataFrame:
-    """Straight-drive frames in the PANO_META_SQL + normalize_frames layout (7 cams/pano)."""
+    """Straight-drive frames in the rosette + normalize_frames layout (7 cams/rosette)."""
     t0 = t0 or dt.datetime(2024, 5, 1, 12, tzinfo=dt.timezone.utc)
     rows = []
     for i in range(n_panos):
@@ -106,6 +106,7 @@ def synthetic_frames(
             clat, clng, _ = geo.enu_to_lla(ce, cn, 0.0, lat0, lng0)
             rows.append(
                 {
+                    "capture_id": pid,
                     "pano_id": pid,
                     "observation_id": f"o1:{pid}_{k}:5001ee",
                     "snapshot_id": "sim",
@@ -142,9 +143,10 @@ def _ground_frames(frames: pd.DataFrame) -> pd.DataFrame:
 
 
 def _pano_centres(frames: pd.DataFrame, ref) -> dict[str, np.ndarray]:
+    frames = data.ensure_capture_id(frames)
     out = {}
-    for pid, g in _ground_frames(frames).groupby("pano_id", sort=True):
-        out[pid] = np.mean([rosette.camera_center_enu(p, ref) for p in g["camera_pose"]], axis=0)
+    for cid, g in _ground_frames(frames).groupby("capture_id", sort=True):
+        out[cid] = np.mean([rosette.camera_center_enu(p, ref) for p in g["camera_pose"]], axis=0)
     return out
 
 
@@ -162,13 +164,14 @@ def make_scene(
 ) -> Scene:
     """Place objects beside the real drive path (frames need seq_id/seq_idx, as from
     `sequence.build_sequences` merged onto frames, or `synthetic_frames`)."""
+    frames = data.ensure_capture_id(frames)
     rng = np.random.default_rng(seed)
     ref = scene_ref(frames, cam_height_m)
-    panos = frames.drop_duplicates("pano_id").sort_values(["seq_id", "seq_idx"])
+    panos = frames.drop_duplicates("capture_id").sort_values(["seq_id", "seq_idx"])
     panos = panos.reset_index(drop=True)
     travel = sequence.travel_bearing(panos)
     centres = _pano_centres(frames, ref)
-    pids = list(panos["pano_id"])
+    pids = list(panos["capture_id"])
     objs: list[SceneObject] = []
     lo, hi = street_offset_m
     for cls, n in (("UTILITY_POLE", n_poles), ("ROAD_SIGN", n_signs), ("HOUSE", n_houses)):
@@ -231,14 +234,14 @@ def simulate_observations(
     max_range_m: float = 40.0,
     hood_elev_deg: float = -40.0,
 ) -> SimResult:
-    """One detection per (pano, object) seen by a ground camera (the most on-axis one)."""
+    """One detection per (rosette, object) seen by a ground camera (the most on-axis one)."""
     rng = np.random.default_rng(seed)
     ref = scene.ref_lla
     dets: list[SimDetection] = []
     visible: dict[str, int] = {}
     classes = sorted({o.cls for o in scene.objects}) or list(CLASSES)
-    gf = _ground_frames(frames)
-    for pid, g in gf.groupby("pano_id", sort=True):
+    gf = _ground_frames(data.ensure_capture_id(frames))
+    for cid, g in gf.groupby("capture_id", sort=True):
         rows = sorted(g.to_dict("records"), key=lambda r: r["cam_k"])
         d_pos = np.r_[rng.normal(0.0, noise.pos_sigma_m, 2), 0.0] if noise.pos_sigma_m else 0.0
         dyaw = float(rng.normal(0.0, noise.yaw_sigma_deg)) if noise.yaw_sigma_deg else 0.0
@@ -287,7 +290,7 @@ def simulate_observations(
                     cls = others[int(rng.integers(len(others)))]
             conf = float(rng.uniform(0.5, 0.99)) if noise != NOISE_FREE else 0.9
             dets.append(
-                SimDetection(f"{pid}_{o.obj_id}", pid, k, cls, float(u), float(v), conf, o.obj_id)
+                SimDetection(f"{cid}_{o.obj_id}", cid, k, cls, float(u), float(v), conf, o.obj_id)
             )
             n_true += 1
         n_fp = int(rng.binomial(n_true, noise.fp_rate)) if noise.fp_rate else 0
@@ -299,7 +302,7 @@ def simulate_observations(
             v = float(rng.uniform(0.45, 0.75) * intr.height)
             cls = classes[int(rng.integers(len(classes)))]
             conf = float(rng.uniform(0.3, 0.8))
-            dets.append(SimDetection(f"{pid}_fp{j}", pid, k, cls, u, v, conf, None))
+            dets.append(SimDetection(f"{cid}_fp{j}", cid, k, cls, u, v, conf, None))
     return SimResult(dets, visible)
 
 
@@ -310,10 +313,12 @@ def to_observations(
     ref_lla: Sequence[float],
 ) -> list[ent.Observation]:
     """Detections -> world rays with the PIPELINE intrinsics and the REPORTED camera poses."""
-    pose_of = {
-        (r["pano_id"], int(r["cam_k"])): r["camera_pose"]
-        for r in _ground_frames(frames).to_dict("records")
-    }
+    gf = _ground_frames(data.ensure_capture_id(frames))
+    pose_of = {}
+    for r in gf.to_dict("records"):
+        pose_of[(r["capture_id"], int(r["cam_k"]))] = r["camera_pose"]
+        if r.get("pano_id") is not None:
+            pose_of[(r["pano_id"], int(r["cam_k"]))] = r["camera_pose"]
     out = []
     for d in dets:
         pose = pose_of[(d.pano_id, d.cam_k)]

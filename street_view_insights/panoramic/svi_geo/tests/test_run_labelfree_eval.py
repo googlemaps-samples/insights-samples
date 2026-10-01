@@ -55,6 +55,17 @@ def test_build_manifest_is_deterministic_and_verifies_hash():
         mf.assert_same_manifest(m1, m_diff)
 
 
+def test_assert_same_manifest_rejects_old_keys():
+    fr = _make_synthetic_aoi_frames()
+    m_new = mf.build_manifest(fr, aoi="tune", seed=7)
+    assert m_new.get("key_column") == "capture_id"
+    assert "capture_ids" in m_new["uc2_sequences"][0]
+    assert "anchor_capture_id" in m_new["uc1_targets"][0]
+    m_old = {k: v for k, v in m_new.items() if k != "key_column"}
+    with pytest.raises(ValueError, match="capture_id"):
+        mf.assert_same_manifest(m_old, m_new)
+
+
 def test_run_labelfree_eval_offline_writes_results_summary_and_calls(tmp_path):
     import run_labelfree_eval as rle
 

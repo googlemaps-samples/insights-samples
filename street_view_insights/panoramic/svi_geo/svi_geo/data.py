@@ -954,9 +954,102 @@ def split_gcs_uri(uri: str) -> tuple[str, str]:
 # --------------------------------------------------------------------------- frames
 
 
-def normalize_frames(df: pd.DataFrame) -> pd.DataFrame:
-    """Add `cam_k` and a `camera_pose` dict column to PANO_META_SQL output."""
+def ensure_capture_id(df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure `capture_id` is present as primary rosette key and `pano_id` as nullable metadata."""
+    if "capture_id" in df.columns and "pano_id" in df.columns:
+        return df
     out = df.copy()
+    if "capture_id" not in out.columns:
+        if "pano_id" in out.columns:
+            out["capture_id"] = out["pano_id"]
+        else:
+            out["capture_id"] = [f"cap_{i}" for i in range(len(out))]
+    if "pano_id" not in out.columns:
+        out["pano_id"] = out["capture_id"]
+    return out
+
+
+def frames_from_rosettes(rosettes: pd.DataFrame, bucket: str | None = None) -> pd.DataFrame:
+    """Explode rosette rows (`cams` ARRAY<STRUCT>) into one row per camera frame.
+
+    Derives `gcs_uri` via `gcs_uri_for(bucket, snapshot_id, observation_id)` when `bucket` is
+    provided, so `gcs_uri` never needs to be queried from BigQuery.
+    """
+    rosettes = ensure_capture_id(rosettes)
+    passthrough = [
+        c
+        for c in (
+            "map_url",
+            "seq_id",
+            "seq_idx",
+            "step_m",
+            "cum_m",
+            "travel_deg",
+            "gh7",
+            "wkt",
+            "aoi",
+            "target_dist_m",
+            "target_bearing_deg",
+        )
+        if c in rosettes.columns
+    ]
+    rows: list[dict[str, Any]] = []
+    for r in rosettes.to_dict("records"):
+        cid = str(r["capture_id"])
+        pid = r.get("pano_id")
+        snap = str(r["snapshot_id"])
+        ctime = pd.to_datetime(r["capture_time"], utc=True)
+        lat = float(r["lat"])
+        lng = float(r["lng"])
+        alt_raw = r.get("cam_alt")
+        cam_alt = float(alt_raw) if alt_raw is not None and pd.notna(alt_raw) else 0.0
+        extra = {col: r.get(col) for col in passthrough}
+        cams = r.get("cams")
+        for c in () if cams is None else cams:
+            obs_id = str(c["observation_id"])
+            k_raw = c.get("k")
+            cam_k = int(k_raw) if k_raw is not None else int(rosette.camera_index(obs_id) or 0)
+            heading = float(c["heading"])
+            pitch = float(c["pitch"])
+            roll = float(c["roll"])
+            cam_lat = float(c["cam_lat"]) if c.get("cam_lat") is not None else lat
+            cam_lng = float(c["cam_lng"]) if c.get("cam_lng") is not None else lng
+            pose = {
+                "heading": heading,
+                "pitch": pitch,
+                "roll": roll,
+                "latitude": cam_lat,
+                "longitude": cam_lng,
+                "altitude": cam_alt,
+            }
+            uri = gcs_uri_for(bucket, snap, obs_id) if bucket else None
+            rows.append(
+                {
+                    "capture_id": cid,
+                    "pano_id": pid,
+                    "observation_id": obs_id,
+                    "snapshot_id": snap,
+                    "capture_time": ctime,
+                    "lat": lat,
+                    "lng": lng,
+                    "cam_k": cam_k,
+                    "heading": heading,
+                    "pitch": pitch,
+                    "roll": roll,
+                    "cam_lat": cam_lat,
+                    "cam_lng": cam_lng,
+                    "cam_alt": cam_alt,
+                    "camera_pose": pose,
+                    "gcs_uri": uri,
+                    **extra,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def normalize_frames(df: pd.DataFrame) -> pd.DataFrame:
+    """Add `cam_k`, `capture_id`, and a `camera_pose` dict column to frame metadata output."""
+    out = ensure_capture_id(df.copy())
     out["cam_k"] = out["observation_id"].map(rosette.camera_index)
     out["camera_pose"] = [
         {
@@ -975,14 +1068,24 @@ def normalize_frames(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def panos_from_frames(frames: pd.DataFrame) -> pd.DataFrame:
-    """One row per pano (pano_id, snapshot_id, capture_time, lat, lng)."""
-    cols = ["pano_id", "snapshot_id", "capture_time", "lat", "lng"]
+    """One row per rosette (capture_id, pano_id, snapshot_id, capture_time, lat, lng)."""
+    df = ensure_capture_id(frames)
+    base_cols = ["capture_id", "pano_id", "snapshot_id", "capture_time", "lat", "lng"]
+    extra_cols = [
+        c
+        for c in ("seq_id", "seq_idx", "step_m", "cum_m", "travel_deg", "gh7", "wkt", "map_url")
+        if c in df.columns
+    ]
+    cols = base_cols + extra_cols
     return (
-        frames[cols]
-        .drop_duplicates("pano_id")
-        .sort_values(["snapshot_id", "capture_time"])
+        df[cols]
+        .drop_duplicates("capture_id")
+        .sort_values(["snapshot_id", "capture_time", "capture_id"])
         .reset_index(drop=True)
     )
+
+
+rosettes_from_frames = panos_from_frames
 
 
 def make_bigquery_client(project: str = PROJECT, credentials: Any = None) -> bigquery.Client:

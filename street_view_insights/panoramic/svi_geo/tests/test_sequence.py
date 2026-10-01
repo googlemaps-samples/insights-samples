@@ -272,3 +272,139 @@ def test_black_sent_is_the_black_share_of_the_cropped_image(offset, n_rows):
         expect = rosette.view_black_fraction(NARROW, rv.choice.row["camera_pose"], rv.view,
                                              rv.choice.cam_k, max_row=rv.keep_rows)  # fmt: skip
     assert rv.black_sent == pytest.approx(expect)
+
+
+# ----------------------------------------------------------------------------- U3: capture_id re-keying
+
+
+def test_null_pano_id_rosettes_are_kept_and_sequenced():
+    from svi_geo import data
+
+    # 7 rows of one rosette with pano_id=None -> 1 rosette
+    t0 = pd.Timestamp("2024-06-01T10:00:00Z")
+    frames_single = pd.DataFrame(
+        [
+            {
+                "capture_id": "cap_null_1",
+                "pano_id": None,
+                "observation_id": f"o1:cap_null_1_{k}:5001ee",
+                "snapshot_id": "snap_1",
+                "capture_time": t0,
+                "lat": 28.0500,
+                "lng": -81.9600,
+                "heading": 60.0 * k if k < 6 else 0.0,
+                "pitch": 0.0 if k < 6 else 90.0,
+                "roll": 0.0,
+                "cam_lat": 28.0500,
+                "cam_lng": -81.9600,
+                "cam_alt": 35.0,
+            }
+            for k in range(7)
+        ]
+    )
+    panos_single = data.panos_from_frames(frames_single)
+    assert len(panos_single) == 1
+    assert panos_single.iloc[0]["capture_id"] == "cap_null_1"
+    assert pd.isna(panos_single.iloc[0]["pano_id"])
+
+    # Two published panos with a NULL-pano_id capture between -> one sequence of 3
+    lat1, lng1, _ = geo.enu_to_lla(10.0, 0.0, 0.0, 28.0500, -81.9600)
+    lat2, lng2, _ = geo.enu_to_lla(20.0, 0.0, 0.0, 28.0500, -81.9600)
+    three = pd.DataFrame(
+        [
+            {
+                "capture_id": "cap_0",
+                "pano_id": "pub_0",
+                "snapshot_id": "snap_1",
+                "capture_time": t0,
+                "lat": 28.0500,
+                "lng": -81.9600,
+            },
+            {
+                "capture_id": "cap_1",
+                "pano_id": None,
+                "snapshot_id": "snap_1",
+                "capture_time": t0 + pd.Timedelta(seconds=1.5),
+                "lat": float(lat1),
+                "lng": float(lng1),
+            },
+            {
+                "capture_id": "cap_2",
+                "pano_id": "pub_2",
+                "snapshot_id": "snap_1",
+                "capture_time": t0 + pd.Timedelta(seconds=3.0),
+                "lat": float(lat2),
+                "lng": float(lng2),
+            },
+        ]
+    )
+    seqs = sequence.build_sequences(three)
+    assert len(seqs) == 3
+    assert seqs["seq_id"].nunique() == 1
+    assert list(seqs.sort_values("seq_idx")["capture_id"]) == ["cap_0", "cap_1", "cap_2"]
+
+
+def test_sql_islands_match_python_islands_on_fixture():
+    from pathlib import Path
+
+    from sklearn.metrics import adjusted_rand_score
+
+    from svi_geo import data
+
+    fixture_path = Path(__file__).resolve().parent / "fixtures" / "rosettes_lakeland_hashed.parquet"
+    assert fixture_path.is_file()
+    df = pd.read_parquet(fixture_path)
+    assert len(df) == 1010
+    assert df["seq_id"].nunique() == 125
+    assert int(df.groupby("seq_id").size().max()) == 81
+    assert int(df["pano_id"].isna().sum()) == 668
+
+    # Also verify frames_from_rosettes explodes 1010 * 7 = 7070 frames
+    frames = data.frames_from_rosettes(df.head(5), bucket="test-bucket")
+    assert len(frames) == 35
+    assert "capture_id" in frames.columns and "camera_pose" in frames.columns
+    assert all(str(u).startswith("gs://test-bucket/") for u in frames["gcs_uri"])
+
+    # Compare SQL islands (seq_id) vs Python build_sequences(max_dt_s=5, max_gap_m=35)
+    py_seqs = sequence.build_sequences(df, max_dt_s=5.0, max_gap_m=35.0)
+    merged = df[["capture_id", "seq_id", "travel_deg", "lat", "lng"]].merge(
+        py_seqs[["capture_id", "seq_id", "seq_idx"]],
+        on="capture_id",
+        suffixes=("_sql", "_py"),
+    )
+    assert len(merged) == 1010
+    ari = adjusted_rand_score(merged["seq_id_sql"], merged["seq_id_py"])
+    assert ari >= 0.95, f"SQL vs Python sequence partition ARI={ari:.4f} < 0.95"
+
+    # Compare SQL travel_deg vs Python sequence.travel_bearing median abs diff < 1 deg
+    py_tb = sequence.travel_bearing(py_seqs)
+    py_seqs = py_seqs.assign(py_travel_deg=py_tb)
+    comp = df[["capture_id", "travel_deg"]].merge(
+        py_seqs[["capture_id", "py_travel_deg"]], on="capture_id"
+    )
+    valid = comp.dropna(subset=["travel_deg", "py_travel_deg"])
+    diffs = np.abs(
+        geo.angdiff(
+            valid["travel_deg"].to_numpy(dtype=float),
+            valid["py_travel_deg"].to_numpy(dtype=float),
+        )
+    )
+    med_diff = float(np.median(diffs))
+    assert med_diff < 1.0, f"median abs travel bearing diff {med_diff:.3f} deg >= 1.0 deg"
+
+
+def test_no_module_groups_by_pano_id():
+    import re
+    from pathlib import Path
+
+    pkg_dir = Path(sequence.__file__).resolve().parent
+    forbidden = re.compile(
+        r"""groupby\(\s*["']pano_id["']|drop_duplicates\(\s*["']pano_id["']|merge\([^)]*on\s*=\s*["']pano_id["']"""
+    )
+    offenders = []
+    for py_file in sorted(pkg_dir.glob("*.py")):
+        text = py_file.read_text(encoding="utf-8")
+        if forbidden.search(text):
+            offenders.append(py_file.name)
+        assert "pano_id IS NOT NULL" not in text, f"stale filter in {py_file.name}"
+    assert not offenders, f"modules still grouping/deduping/merging by pano_id: {offenders}"

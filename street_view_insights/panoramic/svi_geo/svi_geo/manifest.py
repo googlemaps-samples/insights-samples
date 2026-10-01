@@ -57,7 +57,7 @@ def _select_targets_along_sequences(
 ) -> list[dict[str, Any]]:
     """Deterministically place `n_targets` building/house coordinates beside drive sequences."""
     rng = np.random.default_rng(seed)
-    df = panos.sort_values(["seq_id", "seq_idx"]).reset_index(drop=True)
+    df = data.ensure_capture_id(panos).sort_values(["seq_id", "seq_idx"]).reset_index(drop=True)
     df["travel_deg"] = sequence.travel_bearing(df)
     # Prefer sequences with at least 4 panos so multi-view triangulation has coverage
     seq_counts = df.groupby("seq_id").size()
@@ -78,11 +78,13 @@ def _select_targets_along_sequences(
         de = lateral_offset_m * math.sin(perp_rad) + float(rng.uniform(-1.5, 1.5))
         dn = lateral_offset_m * math.cos(perp_rad) + float(rng.uniform(-1.5, 1.5))
         t_lat, t_lng, _ = geo.enu_to_lla(de, dn, 0.0, float(row["lat"]), float(row["lng"]), 0.0)
+        cid = str(row["capture_id"])
         targets.append(
             {
                 "target_id": f"target_{idx:02d}",
                 "seq_id": str(sid),
-                "anchor_pano_id": str(row["pano_id"]),
+                "anchor_capture_id": cid,
+                "anchor_pano_id": cid,
                 "lat": round(float(t_lat), 7),
                 "lng": round(float(t_lng), 7),
                 "block_id": f"{sid}:b{pos // 5:03d}",
@@ -97,8 +99,8 @@ def _select_sequence_windows(
     window_panos: int,
     repeat_sids: set[str],
 ) -> list[dict[str, Any]]:
-    """Select up to `n_seqs` sequences of up to `window_panos` consecutive panos each."""
-    df = panos.sort_values(["seq_id", "seq_idx"]).reset_index(drop=True)
+    """Select up to `n_seqs` sequences of up to `window_panos` consecutive rosettes each."""
+    df = data.ensure_capture_id(panos).sort_values(["seq_id", "seq_idx"]).reset_index(drop=True)
     grouped = []
     for sid, g in df.groupby("seq_id", sort=True):
         is_rep = 1 if str(sid) in repeat_sids else 0
@@ -110,10 +112,12 @@ def _select_sequence_windows(
         mid = len(g) // 2
         lo = max(0, min(mid - window_panos // 2, len(g) - window_panos))
         sub = g.iloc[lo : lo + window_panos]
+        cids = [str(p) for p in sub["capture_id"].tolist()]
         out.append(
             {
                 "seq_id": sid,
-                "pano_ids": [str(p) for p in sub["pano_id"].tolist()],
+                "capture_ids": cids,
+                "pano_ids": cids,
                 "n_panos": int(len(sub)),
             }
         )
@@ -148,6 +152,7 @@ def build_manifest(
     payload = {
         "aoi": aoi,
         "aoi_name": aoi_name,
+        "key_column": "capture_id",
         "seed": int(seed),
         "n_panos_total": int(len(panos)),
         "n_sequences_total": int(panos["seq_id"].nunique()),
@@ -165,7 +170,9 @@ def build_manifest(
 
 
 def assert_same_manifest(m_before: Mapping[str, Any], m_after: Mapping[str, Any]) -> None:
-    """Refuse before/after comparison if the two manifests do not have the exact same sha256."""
+    """Refuse before/after comparison if the two manifests do not have the exact same sha256 or capture_id key."""
+    if m_before.get("key_column") != "capture_id" or m_after.get("key_column") != "capture_id":
+        raise ValueError("manifest must be keyed on 'capture_id' (rejecting old pano_id manifest)")
     h1 = m_before.get("sha256")
     h2 = m_after.get("sha256")
     if not h1 or not h2 or h1 != h2:

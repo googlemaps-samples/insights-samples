@@ -20,8 +20,8 @@ from scipy.optimize import linear_sum_assignment
 from sklearn.cluster import DBSCAN
 from sklearn.metrics import adjusted_rand_score, v_measure_score
 
+from svi_geo import data, geo, rosette, schemas
 from svi_geo import entities as ent
-from svi_geo import geo, rosette, schemas
 from svi_geo import triangulate as tri
 
 # ----------------------------------------------------------------------------- clustering metrics
@@ -193,8 +193,9 @@ def _visible_views(
 ):
     """(pano_id, row, az, el, range) per pano whose best-facing ground camera sees `point`."""
     out = []
+    frames = data.ensure_capture_id(frames)
     gf = frames[frames["cam_k"].between(0, 5)]
-    for pid, g in gf.groupby("pano_id", sort=True):
+    for cid, g in gf.groupby("capture_id", sort=True):
         rows = g.to_dict("records")
         c = np.mean([rosette.camera_center_enu(r["camera_pose"], ref_lla) for r in rows], axis=0)
         d = point - c
@@ -213,7 +214,7 @@ def _visible_views(
             intr, row["camera_pose"], az, el, int(row["cam_k"]), hood_elev_deg=hood_elev_deg
         )
         if bool(ok):
-            out.append((pid, row, az, el, rh))
+            out.append((cid, row, az, el, rh))
     return out
 
 
