@@ -69,13 +69,14 @@ The notebooks query `imagery-insights-sandbox.imagery_insights___us` (`pano_obse
 
 | SQL Template (`svi_geo.data`) | Dry-Run Bytes | Cold Scan (GB) | Est. On-Demand Cost (`$6.25/TB`) |
 |---|---:|---:|---:|
-| `snapshot_catalog_sql` | `2,318 B` | `0.000002 GB` | `< $0.0001` |
+| `snapshot_catalog_sql` | `2,022 B` | `0.000002 GB` | `< $0.0001` |
 | `cluster_points_sql` (`allow_table_free=True`) | `0 B` | `0.000 GB` | `$0.0000` |
-| `assets_in_aoi_sql` (`cropped_assets_latest`) | `53,341,246 B` | `0.053 GB` | `$0.0003` |
-| `coverage_sql` (geohash-6 cells) | `1,039,581,254 B` | `1.040 GB` | `$0.0065` |
-| `tracks_sql` (drive LineStrings) | `1,426,014,915 B` | `1.426 GB` | `$0.0089` |
-| `rosette_sql` / `multi_aoi_sql` | `1,831,615,879 B` | `1.832 GB` | `$0.0114` |
-| `repeat_pairs_sql` | `1,892,835,442 B` | `1.893 GB` | `$0.0118` |
+| `assets_in_aoi_sql` (`cropped_assets_latest`) | `52,951,813 B` | `0.053 GB` | `$0.0003` |
+| `coverage_sql` (geohash-6 cells) | `1,040,162,652 B` | `1.040 GB` | `$0.0065` |
+| `repeat_pairs_sql` (`pano_observations_all`) | `1,361,514,060 B` | `1.362 GB` | `$0.0085` |
+| `tracks_sql` (drive LineStrings) | `1,424,622,420 B` | `1.425 GB` | `$0.0089` |
+| `multi_aoi_sql` / `skill_id_sql` / `skill_coords_sql` | `1,627,581,204 B` | `1.628 GB` | `$0.0102` |
+| `rosette_sql` / `rosette_target_sql` | `1,830,539,988 B` | `1.831 GB` | `$0.0114` |
 
 ## Running the notebooks
 

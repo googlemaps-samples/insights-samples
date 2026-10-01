@@ -402,11 +402,14 @@ def test_no_module_groups_by_pano_id():
         r"""groupby\(\s*["']pano_id["']|drop_duplicates\(\s*["']pano_id["']|merge\([^)]*on\s*=\s*["']pano_id["']"""
     )
     offenders = []
+    unguarded_pano_filter = re.compile(
+        r"(?<!@include_unpublished OR )\bpano_id\s+IS\s+NOT\s+NULL\b"
+    )
     for py_file in sorted(pkg_dir.glob("*.py")):
         text = py_file.read_text(encoding="utf-8")
         if forbidden.search(text):
             offenders.append(py_file.name)
-        assert "pano_id IS NOT NULL" not in text, f"stale filter in {py_file.name}"
+        assert not unguarded_pano_filter.search(text), f"stale filter in {py_file.name}"
     assert not offenders, f"modules still grouping/deduping/merging by pano_id: {offenders}"
 
 

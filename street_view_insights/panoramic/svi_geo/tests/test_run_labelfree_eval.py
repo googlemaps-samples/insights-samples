@@ -170,3 +170,78 @@ def test_manifest_builder_keys_by_capture_id():
     assert all("capture_ids" in s for s in m["uc2_sequences"])
     assert len(m["repeat_pairs"]) >= 1
     assert all("capture_pairs" in rp for rp in m["repeat_pairs"])
+
+
+def test_load_aoi_frames_uses_multi_aoi_rosettes_and_keeps_null_pano_id(monkeypatch):
+    import run_labelfree_eval as rle
+
+    called_sql = []
+    rosette_df = pd.DataFrame(
+        [
+            {
+                "aoi": "lakeland_fl",
+                "capture_id": "cap_null_1",
+                "pano_id": None,
+                "snapshot_id": "snap1",
+                "capture_time": pd.Timestamp("2025-02-07T15:00:00Z"),
+                "cam_alt": 42.0,
+                "lat": 28.0502,
+                "lng": -81.9601,
+                "wkt": "POINT(-81.9601 28.0502)",
+                "gh7": "djj2zzz",
+                "cams": [
+                    {
+                        "k": 0,
+                        "observation_id": "o1:obs_0:111",
+                        "heading": 10.0,
+                        "pitch": 5.0,
+                        "roll": 0.1,
+                        "cam_lat": 28.0502,
+                        "cam_lng": -81.9601,
+                    }
+                ],
+            },
+            {
+                "aoi": "lakeland_fl",
+                "capture_id": "cap_pub_2",
+                "pano_id": "pano_2",
+                "snapshot_id": "snap1",
+                "capture_time": pd.Timestamp("2025-02-07T15:00:02Z"),
+                "cam_alt": 42.0,
+                "lat": 28.0503,
+                "lng": -81.9601,
+                "wkt": "POINT(-81.9601 28.0503)",
+                "gh7": "djj2zzz",
+                "cams": [
+                    {
+                        "k": 0,
+                        "observation_id": "o1:obs_0:222",
+                        "heading": 12.0,
+                        "pitch": 5.0,
+                        "roll": 0.1,
+                        "cam_lat": 28.0503,
+                        "cam_lng": -81.9601,
+                    }
+                ],
+            },
+        ]
+    )
+
+    class DummyRunner:
+        def __init__(self, *_a, **_kw):
+            pass
+
+        def run(self, sql, params, **_kw):
+            called_sql.append((sql, params))
+            return rosette_df
+
+    monkeypatch.setattr(rle.auth, "get_credentials", lambda: None)
+    monkeypatch.setattr(rle.data, "make_bigquery_client", lambda *_a, **_kw: None)
+    monkeypatch.setattr(rle.data, "QueryRunner", DummyRunner)
+
+    out = rle.load_aoi_frames("test-proj", "test-bucket", "tune", radius_m=400.0)
+    assert len(called_sql) == 1
+    assert "GROUP BY aoi, capture_id, snapshot_id" in called_sql[0][0]
+    assert len(out) == 2
+    assert list(out["capture_id"]) == ["cap_null_1", "cap_pub_2"]
+    assert int(out["pano_id"].isna().sum()) == 1

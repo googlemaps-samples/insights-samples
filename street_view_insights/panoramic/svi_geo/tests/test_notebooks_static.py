@@ -143,7 +143,7 @@ def test_sql_is_parameterised_and_rosette_keyed(nb):
 def test_images_are_prepared_in_code_and_costs_reported(uc_nb):
     code = _code(uc_nb)
     assert "rosette." in code or "pipeline." in code, "views must be rendered in code"
-    assert "estimate_cost" in code and ".cost.summary()" in code
+    assert "estimate_cost" in code and ".cost.summary(" in code
     assert "preview_tokens" in code
     assert "GeminiRunner" in code and "max_usd=" in code
 
@@ -450,7 +450,7 @@ def test_notebooks_print_the_lines_the_live_checker_reads(path):
     assert "rosettes=" in code and "null_pano_id=" in code
     assert "map_rendered=1" in code and "peak_rss_mb=" in code
     if path.stem in UC_STEMS:
-        assert "black_fraction_max=" in code and "runner.cost.summary()" in code
+        assert "black_fraction_max=" in code and "runner.cost.summary(" in code
 
 
 @pytest.mark.parametrize("path", UC_NOTEBOOKS, ids=lambda p: p.stem)

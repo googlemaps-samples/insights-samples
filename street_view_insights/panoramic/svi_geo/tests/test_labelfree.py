@@ -216,6 +216,18 @@ def test_change_detection_signal_vs_shuffle_placebo():
     assert m.value - m.placebo >= 0.45
     assert "consistency != accuracy" in m.disclosure
 
+    # Stratified permutation within prefix keys (e.g. stories:*, exterior_material:*, roof_type:*):
+    # If every house has identical attributes ("stories:1", "exterior_material:SIDING", "roof_type:GABLE"),
+    # unstratified shuffling across prefixes gives ~0.333 placebo whereas stratified shuffling within
+    # each prefix gives 1.000 placebo!
+    prefixed_a = ["stories:1", "exterior_material:SIDING", "roof_type:GABLE"] * 6
+    prefixed_b = ["stories:1", "exterior_material:SIDING", "roof_type:GABLE"] * 6
+    p_blocks = [f"b{i // 3}" for i in range(len(prefixed_a))]
+    m_strat = lf.repeat_pass_agreement_vs_placebo(prefixed_a, prefixed_b, p_blocks, seed=7)
+    assert m_strat.status == "ok"
+    assert m_strat.value == pytest.approx(1.0)
+    assert m_strat.placebo == pytest.approx(1.0)
+
 
 def test_metric_docs_cover_every_metric_and_render_summary():
     assert set(lf.METRIC_DOCS.keys()) == EXPECTED_METRIC_IDS

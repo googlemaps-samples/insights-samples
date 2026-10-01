@@ -16,10 +16,10 @@
   - Added canonical `rosette_sql` (`capture_id` key, server-side `LAG` gaps-and-islands `seq_id` /
     `seq_idx` / `step_m` / `travel_deg`, `ST_DISTANCE`, `ST_AZIMUTH`, `ST_ASTEXT(geog) AS wkt`,
     `ST_GEOHASH(geog, 7) AS gh7`; 1.83 GB cold scan).
-  - Added `snapshot_catalog_sql` (2.3 KB), `coverage_sql` (1.04 GB), `tracks_sql` (1.43 GB),
-    `repeat_pairs_sql` (1.89 GB), `multi_aoi_sql` (1.83 GB), `assets_in_aoi_sql` (0.053 GB), and
-    `0 B` table-free `cluster_points_sql` (`ST_CLUSTERDBSCAN` over `UNNEST(@points)` with
-    `allow_table_free=True`).
+  - Added `snapshot_catalog_sql` (2.0 KB), `coverage_sql` (1.04 GB), `tracks_sql` (1.42 GB),
+    `repeat_pairs_sql` (1.36 GB), `multi_aoi_sql` / `skill_id_sql` / `skill_coords_sql` (1.63 GB),
+    `assets_in_aoi_sql` (0.053 GB), and `0 B` table-free `cluster_points_sql` (`ST_CLUSTERDBSCAN`
+    over `UNNEST(@points)` with `allow_table_free=True`).
   - Added snapshot-keyed Parquet query cache with 35-day TTL cap (`MAX_QUERY_CACHE_TTL_S`),
     bytes sidecar (`bq.last_cost()`), and `svi_geo/data/bytes_manifest.json`.
 - **Gemini 3 Flash & Validated Agentic Vision (`svi_geo/gemini_client.py`, `svi_geo/usecases.py`):**
@@ -37,15 +37,17 @@
   - Added sub-scale JPEG decoding (`images.decode(..., scale=s*)` + `Intrinsics.scaled(s*)`),
     Gaussian anti-aliased perspective remapping (`antialias=True`), `rosette.render_equirect_strip`,
     geometric `views.zoom_view`, `views.redaction_overlap` (`privacy_blob_mask`), and `maps.py`
-    Folium builders (`rosette_tracks_map`, `uc1_house_map`, `uc2_entities_map`, `uc3_segments_map`,
-    `uc4_roof_map`) with mandatory `"Imagery © Google"` attribution.
+    Folium builders + `render_overlay_grid` (`rosette_tracks_map`, `uc1_house_map`,
+    `uc2_entities_map`, `uc3_segments_map`, `uc4_roof_map`) with mandatory `"Imagery © Google"`
+    attribution.
 - **5 Canonical Reference Notebooks (`street_view_insights/panoramic/notebooks/`):**
-  - Added `00_explore_coverage.ipynb` (`O4`, zero-Gemini warm-up) and restructured all 4 UC
-    notebooks around the 7 `concept:*` cells (`sql`, `geometry`, `prompt_schema`, `code_exec`,
-    `validator`, `map`, `cost`), including `O1` (repeat-pass pairs), `O2` (`cropped_assets_latest`
-    audit), and `O3` (clustered index doc appendix).
+  - Added `00_explore_coverage.ipynb` (`O4`, zero-Gemini warm-up with 7-camera contact sheet and
+    360° equirectangular strip) and restructured all 4 UC notebooks around the 7 `concept:*` cells
+    (`sql`, `geometry`, `prompt_schema`, `code_exec`, `validator`, `map`, `cost`), including `O1`
+    (repeat-pass pairs + SSIM diff), `O2` (`cropped_assets_latest` audit), and `O3` (clustered
+    index doc appendix).
 - **26-Metric Label-Free Evaluation (`svi_geo/EVALUATION.md`):**
-  - Regenerated `capture_id`-keyed manifests (`lakeland_fl`, `salt_lake_ut`, `osaka_jp`), added
-    explicit cross-day repeat-pass agreement signals (`M1.7`, `M3.7`), and ran 7 live evaluation
-    passes (`$22.16` total logged spend across `tune`, `heldout`, `stress`, and thinking/media
-    ablation).
+  - Regenerated true `capture_id`-keyed manifests (`lakeland_fl`, `salt_lake_ut`, `osaka_jp`), added
+    cross-day repeat-pass agreement signals (`M1.6`, `M1.7`, `M3.7`) with attribute/slot-stratified
+    permutation placebos, and ran 7 live evaluation passes (`$22.74` total logged spend across
+    `2,466` calls in `tune`, `heldout`, `stress`, and thinking/media ablation).

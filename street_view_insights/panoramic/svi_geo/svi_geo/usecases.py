@@ -829,34 +829,40 @@ async def uc4_run(
 MEASURE_STDOUT_PATTERN = r"MEASURE:\s*\{"
 
 UC4_AGENTIC_PROMPT = (
-    "You MUST use Python code execution with OpenCV/NumPy on the input roof image to detect "
-    "straight line segments in the upper roof region (rows 0.15*H..0.60*H, length >= 20 px), "
-    "compute the dominant near-horizontal eave angle in degrees in [-45, 45] (0 = horizontal), "
-    "optional rake angle in degrees, LSD overlap fraction in [0, 1], and segment count. "
+    "You MUST use Python code execution with OpenCV/NumPy in a single concise script on the input "
+    "roof image to detect straight line segments in the upper roof region (rows 0.15*H..0.60*H, "
+    "length >= 20 px), compute the dominant near-horizontal eave angle in degrees in [-45, 45] "
+    "(0 = horizontal), optional rake angle in degrees, LSD overlap fraction in [0, 1], and segment "
+    "count. Do NOT call plt.show(), plt.savefig(), or save/display any images in code execution. "
     "You MUST print a line starting with `MEASURE: {...}` containing JSON with keys "
     "`eave_angle_deg` and `lsd_overlap_fraction`, then return the final JSON matching the schema."
 )
 
 UC1_AGENTIC_PROMPT = (
-    "You MUST use Python code execution with OpenCV/NumPy on the house facade image to compute "
-    "the horizontal Sobel-y gradient row profile, count prominent window/storey bands, and "
-    "estimate the number of building stories (1..4). You MUST print a line starting with "
-    "`MEASURE: {...}` containing JSON with keys `window_rows` and `estimated_stories`, then "
-    "return the final JSON matching the schema."
+    "You MUST use Python code execution with OpenCV/NumPy in a single concise script on the house "
+    "facade image to compute the horizontal Sobel-y gradient row profile, count prominent "
+    "window/storey bands, and estimate the number of building stories (1..4). Do NOT call "
+    "plt.show(), plt.savefig(), or save/display any images in code execution. You MUST print a "
+    "line starting with `MEASURE: {...}` containing JSON with keys `window_rows` and "
+    "`estimated_stories`, then return the final JSON matching the schema."
 )
 
 UC2_AGENTIC_PROMPT = (
-    "You MUST use Python code execution with OpenCV/NumPy on the utility-pole / sign-post crop "
-    "to detect near-vertical line segments, measure the dominant pole lean angle in degrees "
-    "from vertical in [-45, 45] (0 = perfectly vertical), and vertical support fraction in [0, 1]. "
-    "You MUST print a line starting with `MEASURE: {...}` containing JSON with keys "
-    "`lean_angle_deg` and `vertical_support`, then return the final JSON matching the schema."
+    "You MUST use Python code execution with OpenCV/NumPy in a single concise script on the "
+    "utility-pole / sign-post crop to detect near-vertical line segments, measure the dominant "
+    "pole lean angle in degrees from vertical in [-45, 45] (0 = perfectly vertical), and vertical "
+    "support fraction in [0, 1]. Do NOT call plt.show(), plt.savefig(), or save/display any images "
+    "in code execution. You MUST print a line starting with `MEASURE: {...}` containing JSON with "
+    "keys `lean_angle_deg` and `vertical_support`, then return the final JSON matching the schema."
 )
 
 UC3_AGENTIC_PROMPT = (
-    "You MUST use Python code execution with OpenCV/NumPy on the road surface crop to compute "
-    "the mean luminance (`mean_luma` in 0..255), mean Sobel gradient (`grad_mean`), and row "
-    "index (`change_row_norm` in 0..1000 or null) of the strongest vertical texture change. "
+    "You MUST use Python code execution with OpenCV/NumPy in a single concise script on the road "
+    "surface crop to compute the mean grayscale luminance (`mean_luma = float(np.mean(gray))` in "
+    "0..255), mean Sobel gradient magnitude (`grad_mean = float(np.mean(np.hypot("
+    "cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3), cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3))))`), "
+    "and row index (`change_row_norm` in 0..1000 or null) of the strongest vertical texture change. "
+    "Do NOT call plt.show(), plt.savefig(), or save/display any images in code execution. "
     "You MUST print a line starting with `MEASURE: {...}` containing JSON with keys "
     "`mean_luma` and `grad_mean`, then return the final JSON matching the schema."
 )
@@ -937,7 +943,7 @@ async def uc4_measure_roof_angles(
     seed: int | None = 0,
     code_execution: bool = True,
     thinking_level: str = "LOW",
-    media_resolution: str = "MEDIUM",
+    media_resolution: str = "HIGH",
     validator: Any = None,
     expect_stdout: str = MEASURE_STDOUT_PATTERN,
 ) -> dict[str, Any]:
@@ -1030,7 +1036,8 @@ async def uc1_count_storeys(
     sobel_stories = int(np.clip(len(peaks), 1, 4))
     ref_stories = int(fused_stories) if fused_stories is not None else sobel_stories
     est = int(reply.estimated_stories) if reply is not None else 0
-    delta = min(abs(est - ref_stories), abs(est - sobel_stories))
+    delta = abs(est - sobel_stories)
+    fused_delta = abs(est - ref_stories)
     agree = bool(delta <= int(tol_rows))
     status = "agree" if agree else "disagree"
 
@@ -1041,8 +1048,10 @@ async def uc1_count_storeys(
     return {
         "measurement": reply,
         "trace": trace,
-        "local_stories": ref_stories,
+        "local_stories": sobel_stories,
         "sobel_peaks": sobel_stories,
+        "fused_stories": ref_stories,
+        "fused_stories_delta": fused_delta,
         "delta_rows": delta,
         "agree": agree,
         "agreement_line": f"code_exec_agreement={status}(stories_delta={delta},tol={tol_rows})",
@@ -1143,7 +1152,11 @@ async def uc3_locate_material_boundary(
     image: np.ndarray,
     runner: gc.GeminiRunner,
     *,
+    view: rosette.PerspectiveView | None = None,
+    viterbi_boundary_m: float | None = None,
+    forward_range_m: tuple[float, float] = (3.0, 18.0),
     tol_rel: float = 0.10,
+    tol_m: float = 1.0,
     seed: int | None = 0,
     code_execution: bool = True,
     thinking_level: str = "LOW",
@@ -1151,13 +1164,22 @@ async def uc3_locate_material_boundary(
     validator: Any = None,
     expect_stdout: str = MEASURE_STDOUT_PATTERN,
 ) -> dict[str, Any]:
-    """Run one validated code-execution call on a road/IPM patch and cross-check texture stats."""
+    """Run one validated code-execution call on a road/IPM patch and cross-check texture stats & boundary."""
     import cv2
 
-    h, w = image.shape[:2]
+    work_img = image
+    if view is not None:
+        try:
+            ipm_crop, _ipm_valid = cvc.ground_ipm(image, view, forward_m=forward_range_m)
+            if ipm_crop.size > 0 and np.any(ipm_crop > 0):
+                work_img = ipm_crop
+        except Exception:
+            work_img = image
+
+    h, w = work_img.shape[:2]
     val_fn = validator if validator is not None else (lambda r: None)
     reply, trace = await runner.ask(
-        [UC3_AGENTIC_PROMPT, image],
+        [UC3_AGENTIC_PROMPT, work_img],
         schemas.MaterialBoundaryMeasurement,
         code_execution=code_execution,
         thinking_level=thinking_level,
@@ -1169,17 +1191,52 @@ async def uc3_locate_material_boundary(
     )
     gc.check_code_exec_trace(trace, expect_stdout=expect_stdout, sent_image_shape=(h, w))
 
-    desc = cvc.road_descriptor(image)
+    desc = cvc.road_descriptor(work_img)
     lab_luma = float(desc[0] * 255.0)
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    gray = cv2.cvtColor(work_img, cv2.COLOR_BGR2GRAY) if work_img.ndim == 3 else work_img
     gray_luma = float(gray[gray > 0].mean()) if np.any(gray > 0) else float(gray.mean())
     rep_luma = float(reply.mean_luma) if reply is not None else -1e9
     denom = max(1.0, lab_luma, gray_luma)
     rel_err = min(abs(rep_luma - lab_luma), abs(rep_luma - gray_luma)) / denom
-    agree = bool(rel_err <= float(tol_rel))
+
+    gx = cv2.Sobel(gray.astype(np.float32), cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(gray.astype(np.float32), cv2.CV_32F, 0, 1, ksize=3)
+    g_mag = np.hypot(gx, gy)
+    g_l1 = np.abs(gx) + np.abs(gy)
+    local_grad_l2 = float(g_mag.mean())
+    local_grad_l1 = float((0.5 * g_l1).mean())
+    local_grad_sum = float(g_l1.mean())
+    rep_grad = float(reply.grad_mean) if reply is not None else -1e9
+    grad_denom = max(1.0, local_grad_l2, abs(rep_grad))
+    grad_rel_err = (
+        min(
+            abs(rep_grad - local_grad_l2),
+            abs(rep_grad - local_grad_l1),
+            abs(rep_grad - local_grad_sum),
+        )
+        / grad_denom
+    )
+
+    f_min, f_max = float(forward_range_m[0]), float(forward_range_m[1])
+    if reply is not None and reply.change_row_norm is not None:
+        # Row 0 is far (f_max), row 1000 is near (f_min)
+        est_boundary_m = f_max - (float(reply.change_row_norm) / 1000.0) * (f_max - f_min)
+    else:
+        est_boundary_m = None
+
+    if viterbi_boundary_m is not None and est_boundary_m is not None:
+        boundary_delta_m = abs(float(est_boundary_m) - float(viterbi_boundary_m))
+        boundary_ok = boundary_delta_m <= float(tol_m)
+    else:
+        boundary_delta_m = 0.0
+        boundary_ok = True
+
+    agree = bool(
+        rel_err <= float(tol_rel) and grad_rel_err <= max(float(tol_rel), 0.25) and boundary_ok
+    )
     status = "agree" if agree else "disagree"
 
-    overlay = image.copy() if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    overlay = work_img.copy() if work_img.ndim == 3 else cv2.cvtColor(work_img, cv2.COLOR_GRAY2BGR)
     if reply is not None and reply.change_row_norm is not None:
         ry = int(round(reply.change_row_norm / 1000.0 * h))
         cv2.line(overlay, (0, ry), (w - 1, ry), (11, 87, 208), 2)
@@ -1188,8 +1245,265 @@ async def uc3_locate_material_boundary(
         "trace": trace,
         "local_lab_luma": lab_luma,
         "local_gray_luma": gray_luma,
+        "local_grad_mean": local_grad_l2,
         "rel_error": rel_err,
+        "grad_rel_error": grad_rel_err,
+        "est_boundary_m": est_boundary_m,
+        "boundary_delta_m": boundary_delta_m,
         "agree": agree,
-        "agreement_line": f"code_exec_agreement={status}(luma_rel_err={rel_err:.3f},tol={tol_rel:.2f})",
+        "agreement_line": (
+            f"code_exec_agreement={status}(luma_rel_err={rel_err:.3f},"
+            f"grad_rel_err={grad_rel_err:.3f},tol={tol_rel:.2f})"
+        ),
         "overlay": overlay,
+    }
+
+
+# ------------------------------------------- Optional extensions O1 & O2 (UC2)
+
+REPEAT_PASS_DIFF_PROMPT = (
+    "Compare these two perspective street-view images captured on different dates at the "
+    "same location and bearing. Determine whether there is a genuine physical change to street "
+    "furniture, poles, signs, or building facades (`change_detected=true`) or only lighting, "
+    "shadow, foliage, or parked-vehicle differences (`change_detected=false`)."
+)
+
+
+def _compute_ssim_and_heatmap(img_a: np.ndarray, img_b: np.ndarray) -> tuple[float, np.ndarray]:
+    import cv2
+
+    g1 = cv2.cvtColor(img_a, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    g2 = cv2.cvtColor(img_b, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    if g1.shape != g2.shape:
+        g2 = cv2.resize(g2, (g1.shape[1], g1.shape[0]))
+    c1 = (0.01 * 255) ** 2
+    c2 = (0.03 * 255) ** 2
+    mu1 = cv2.GaussianBlur(g1, (11, 11), 1.5)
+    mu2 = cv2.GaussianBlur(g2, (11, 11), 1.5)
+    mu1_sq = mu1 * mu1
+    mu2_sq = mu2 * mu2
+    mu1_mu2 = mu1 * mu2
+    sigma1_sq = cv2.GaussianBlur(g1 * g1, (11, 11), 1.5) - mu1_sq
+    sigma2_sq = cv2.GaussianBlur(g2 * g2, (11, 11), 1.5) - mu2_sq
+    sigma12 = cv2.GaussianBlur(g1 * g2, (11, 11), 1.5) - mu1_mu2
+    ssim_map = ((2 * mu1_mu2 + c1) * (2 * sigma12 + c2)) / (
+        (mu1_sq + mu2_sq + c1) * (sigma1_sq + sigma2_sq + c2)
+    )
+    ssim_val = float(np.clip(np.mean(ssim_map), -1.0, 1.0))
+    abs_diff = np.abs(g1 - g2).astype(np.uint8)
+    heatmap = cv2.applyColorMap(abs_diff, cv2.COLORMAP_INFERNO)
+    return ssim_val, heatmap
+
+
+async def uc2_repeat_pass_diff(
+    repeat_pairs_df: pd.DataFrame,
+    frames: pd.DataFrame,
+    intr: rosette.Intrinsics,
+    fetch: Callable[[str], bytes],
+    runner: gc.GeminiRunner,
+    *,
+    width: int = 768,
+    height: int = 576,
+    seed: int = 0,
+) -> dict[str, Any]:
+    """Render aligned cross-day views for a repeat-pass pair, compute SSIM/absdiff, and query RepeatPassDiff (O1)."""
+    from svi_geo import data
+
+    frames_norm = data.ensure_capture_id(frames)
+    pair_row: dict[str, Any] | None = None
+    sub_a = pd.DataFrame()
+    sub_b = pd.DataFrame()
+
+    if repeat_pairs_df is not None and not repeat_pairs_df.empty:
+        for r in repeat_pairs_df.to_dict("records"):
+            aid = str(r.get("a_id") or "")
+            bid = str(r.get("b_id") or "")
+            sa = frames_norm[frames_norm["capture_id"].astype(str) == aid]
+            sb = frames_norm[frames_norm["capture_id"].astype(str) == bid]
+            if not sa.empty and not sb.empty:
+                pair_row = r
+                sub_a, sub_b = sa, sb
+                break
+
+    if sub_a.empty or sub_b.empty:
+        cids = frames_norm["capture_id"].dropna().unique().tolist()
+        if len(cids) >= 2:
+            sub_a = frames_norm[frames_norm["capture_id"] == cids[0]]
+            sub_b = frames_norm[frames_norm["capture_id"] == cids[1]]
+            pair_row = {"a_id": str(cids[0]), "b_id": str(cids[1]), "sep_m": 0.0, "days_apart": 1}
+        elif len(cids) == 1:
+            sub_a = frames_norm[frames_norm["capture_id"] == cids[0]]
+            sub_b = sub_a
+            pair_row = {"a_id": str(cids[0]), "b_id": str(cids[0]), "sep_m": 0.0, "days_apart": 0}
+        else:
+            raise ValueError("no frames available for uc2_repeat_pass_diff")
+
+    rec_a = [r for r in sub_a.to_dict("records") if rosette.is_ground_camera(int(r["cam_k"]))]
+    rec_b = [r for r in sub_b.to_dict("records") if rosette.is_ground_camera(int(r["cam_k"]))]
+    r0_a = rec_a[0] if rec_a else sub_a.to_dict("records")[0]
+    bearing = float(r0_a["camera_pose"]["heading"])
+    choice_b = rosette.best_camera_for_view(
+        rec_b or sub_b.to_dict("records"), intr, bearing, 0.0, width / height, min_hfov=60.0
+    )
+    r0_b = (
+        choice_b.row
+        if choice_b is not None
+        else (rec_b[0] if rec_b else sub_b.to_dict("records")[0])
+    )
+
+    v_obj = rosette.PerspectiveView(bearing, 0.0, 70.0, width, height)
+    scale = images.decode_scale_for_view(width, 70.0)
+    raw_a = images.decode(fetch(r0_a["gcs_uri"]), scale=scale)
+    raw_b = images.decode(fetch(r0_b["gcs_uri"]), scale=scale)
+    img_a = rosette.render_perspective(
+        raw_a, intr, r0_a["camera_pose"], v_obj, int(r0_a["cam_k"]), antialias=True, mask_hood=True
+    )
+    img_b = rosette.render_perspective(
+        raw_b, intr, r0_b["camera_pose"], v_obj, int(r0_b["cam_k"]), antialias=True, mask_hood=True
+    )
+    ssim_val, heatmap = _compute_ssim_and_heatmap(img_a, img_b)
+    verdict = await runner.ask(
+        [REPEAT_PASS_DIFF_PROMPT, img_a, img_b],
+        schemas.RepeatPassDiff,
+        seed=seed,
+    )
+    return {
+        "pair": pair_row,
+        "img_a": img_a,
+        "img_b": img_b,
+        "diff_heatmap": heatmap,
+        "ssim": ssim_val,
+        "verdict": verdict,
+    }
+
+
+async def uc2_asset_audit(
+    assets_df: pd.DataFrame,
+    located_entities: Sequence[Any],
+    frames: pd.DataFrame,
+    intr: rosette.Intrinsics,
+    fetch: Callable[[str], bytes],
+    runner: gc.GeminiRunner,
+    *,
+    max_assets: int = 3,
+    match_radius_m: float = 15.0,
+    seed: int = 0,
+) -> dict[str, Any]:
+    """Project `cropped_assets_latest` inventory into rosette views, match against located entities,
+    and confirm the closest asset with Gemini `PresenceCheck` (O2)."""
+    import math
+
+    from svi_geo import data, geo, maps
+
+    if assets_df is None or assets_df.empty:
+        return {
+            "audit_df": pd.DataFrame(
+                columns=[
+                    "asset_id",
+                    "asset_type",
+                    "lat",
+                    "lng",
+                    "nearest_entity_m",
+                    "matched",
+                    "proj_u",
+                    "proj_v",
+                ]
+            ),
+            "matched_count": 0,
+            "gemini_confirmed": False,
+        }
+
+    frames_norm = data.ensure_capture_id(frames)
+    ground_rows = [
+        r for r in frames_norm.to_dict("records") if rosette.is_ground_camera(int(r["cam_k"]))
+    ]
+    records_out: list[dict[str, Any]] = []
+    first_crop: np.ndarray | None = None
+    first_type: str = "ROAD_SIGN"
+
+    for row in assets_df.head(max(1, int(max_assets) * 3)).to_dict("records"):
+        wkt = row.get("wkt")
+        if wkt:
+            try:
+                alat, alng = maps.parse_wkt_point(str(wkt))
+            except ValueError:
+                alat, alng = float(row["lat"]), float(row["lng"])
+        else:
+            alat, alng = float(row["lat"]), float(row["lng"])
+
+        best_ent_m = float("inf")
+        for e in located_entities or ():
+            elat = getattr(e, "lat", None) if not isinstance(e, Mapping) else e.get("lat")
+            elng = getattr(e, "lng", None) if not isinstance(e, Mapping) else e.get("lng")
+            if elat is not None and elng is not None:
+                d_e = float(geo.haversine_m(alat, alng, float(elat), float(elng)))
+                if d_e < best_ent_m:
+                    best_ent_m = d_e
+        matched = bool(best_ent_m <= float(match_radius_m))
+
+        proj_u, proj_v = float("nan"), float("nan")
+        if ground_rows:
+            dists = [
+                float(
+                    geo.haversine_m(
+                        r["camera_pose"]["latitude"], r["camera_pose"]["longitude"], alat, alng
+                    )
+                )
+                for r in ground_rows
+            ]
+            best_idx = int(np.argmin(dists))
+            r_near = ground_rows[best_idx]
+            pose = r_near["camera_pose"]
+            brg = float(geo.bearing_deg(pose["latitude"], pose["longitude"], alat, alng))
+            v_obj = rosette.PerspectiveView(brg, 0.0, 60.0, 640, 480)
+            u_px, v_px, ok_px = v_obj.bearing_to_pixel(brg, 0.0)
+            if bool(ok_px):
+                proj_u, proj_v = float(u_px), float(v_px)
+            if first_crop is None and len(records_out) < max_assets:
+                try:
+                    scale = images.decode_scale_for_view(640, 60.0)
+                    raw_im = images.decode(fetch(r_near["gcs_uri"]), scale=scale)
+                    first_crop = rosette.render_perspective(
+                        raw_im,
+                        intr,
+                        pose,
+                        v_obj,
+                        int(r_near["cam_k"]),
+                        antialias=True,
+                        mask_hood=True,
+                    )
+                    first_type = str(row.get("asset_type") or "ASSET")
+                except Exception:
+                    first_crop = None
+
+        records_out.append(
+            {
+                "asset_id": str(row.get("asset_id") or ""),
+                "asset_type": str(row.get("asset_type") or ""),
+                "lat": alat,
+                "lng": alng,
+                "nearest_entity_m": best_ent_m if math.isfinite(best_ent_m) else None,
+                "matched": matched,
+                "proj_u": proj_u,
+                "proj_v": proj_v,
+            }
+        )
+
+    audit_df = pd.DataFrame(records_out)
+    gemini_confirmed = False
+    if first_crop is not None:
+        chk = await runner.ask(
+            [
+                f"Is a street asset matching `{first_type}` visible near the centre of this view?",
+                first_crop,
+            ],
+            schemas.PresenceCheck,
+            seed=seed,
+        )
+        gemini_confirmed = bool(chk and chk.present)
+
+    return {
+        "audit_df": audit_df,
+        "matched_count": int(audit_df["matched"].sum()) if not audit_df.empty else 0,
+        "gemini_confirmed": gemini_confirmed,
     }

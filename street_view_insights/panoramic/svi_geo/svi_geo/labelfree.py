@@ -333,9 +333,15 @@ def repeat_pass_agreement_vs_placebo(
         else [f"p{i:03d}" for i in range(len(valid_idx))]
     )
     rng = np.random.default_rng(seed)
+    prefixes = np.asarray([s.split(":", 1)[0] if ":" in s else "" for s in a_arr], dtype=object)
+    uniq_prefixes = list(dict.fromkeys(prefixes.tolist()))
     shuf_scores = []
     for _ in range(int(n_shuffles)):
-        perm_b = rng.permutation(b_arr)
+        perm_b = b_arr.copy()
+        for pfx in uniq_prefixes:
+            idx = np.flatnonzero(prefixes == pfx)
+            if idx.size > 1:
+                perm_b[idx] = rng.permutation(perm_b[idx])
         shuf_scores.append(float(np.mean(a_arr == perm_b)))
     placebo_val = float(np.mean(shuf_scores))
 
@@ -643,10 +649,10 @@ METRIC_DOCS: dict[str, dict[str, str]] = {
     },
     "M4.6": {
         "uc": "UC4",
-        "name": "3-view eave triangulation and held-out reprojection residual",
+        "name": "3-view eave reprojection hit rate (@5 deg)",
         "signal": "a",
         "role": "secondary",
-        "measures": "3D geometric consistency of an eave line triangulated from 2 views and reprojected into a 3rd view.",
+        "measures": "Fraction of 3-view eave endpoints whose reprojected line angle in view 3 is within 5 deg.",
         "does_not_measure": "Views where fewer than 3 cameras see the same eave.",
     },
 }

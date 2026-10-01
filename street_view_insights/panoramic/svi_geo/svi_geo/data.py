@@ -71,6 +71,8 @@ TEMPLATE_CEILINGS_BYTES: dict[str, int] = {
     "tracks_sql": 1_500_000_000,
     "multi_aoi_sql": 1_750_000_000,
     "assets_in_aoi_sql": 100_000_000,
+    "skill_coords_sql": 1_850_000_000,
+    "skill_id_sql": 1_850_000_000,
 }
 # Imagery Insights datasets whose pano views may be queried. Extend with the comma-separated
 # environment variable SVI_ALLOWED_DATASETS (e.g. a dataset linked in another region).
@@ -434,7 +436,9 @@ WITH frames AS (
   WHERE ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
                    ST_GEOGPOINT(@lng, @lat), @radius_m)
     AND (@snapshot_id IS NULL OR snapshot_id = @snapshot_id)
-    AND (@include_unpublished OR COALESCE(pano_id, '') != '')
+    AND (@include_unpublished OR pano_id IS NOT NULL)
+    AND (@t_start IS NULL OR capture_time >= @t_start)
+    AND (@t_end IS NULL OR capture_time < @t_end)
 ),
 rosettes AS (
   SELECT capture_id, snapshot_id,
@@ -497,6 +501,8 @@ def rosette_params(
     include_unpublished: bool = True,
     max_dt_ms: int = 5000,
     max_step_m: float = 35.0,
+    t_start: dt.datetime | None = None,
+    t_end: dt.datetime | None = None,
     tlat: float | None = None,
     tlng: float | None = None,
     include_target: bool = False,
@@ -510,6 +516,8 @@ def rosette_params(
         "include_unpublished": (bool(include_unpublished), "BOOL"),
         "max_dt_ms": (int(max_dt_ms), "INT64"),
         "max_step_m": (float(max_step_m), "FLOAT64"),
+        "t_start": (t_start, "TIMESTAMP"),
+        "t_end": (t_end, "TIMESTAMP"),
     }
     if include_target or tlat is not None or tlng is not None:
         out["tlat"] = (float(lat if tlat is None else tlat), "FLOAT64")
@@ -725,7 +733,7 @@ WITH rosettes AS (
   FROM `__TABLE__`
   WHERE ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
                    ST_GEOGPOINT(@lng, @lat), @radius_m)
-    AND (@include_unpublished OR COALESCE(pano_id, '') != '')
+    AND (@include_unpublished OR pano_id IS NOT NULL)
   GROUP BY capture_id, snapshot_id
 ),
 seq AS (
@@ -782,17 +790,20 @@ WITH frames AS (
          ST_GEOGPOINT(capture_location.longitude, capture_location.latitude) AS geog,
          CAST(REGEXP_EXTRACT(observation_id, r'_(\\d)(?::|$)') AS INT64) AS k,
          camera_pose.heading AS heading, camera_pose.pitch AS pitch, camera_pose.roll AS roll,
+         camera_pose.altitude AS cam_alt,
+         camera_pose.latitude AS cam_lat, camera_pose.longitude AS cam_lng,
          (SELECT a.name FROM UNNEST(@aois) AS a
           WHERE ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
                            ST_GEOGPOINT(a.lng, a.lat), @radius_m) LIMIT 1) AS aoi
   FROM `__TABLE__`
-  WHERE (@include_unpublished OR COALESCE(pano_id, '') != '')
+  WHERE (@include_unpublished OR pano_id IS NOT NULL)
 )
 SELECT aoi, capture_id, ANY_VALUE(pano_id) AS pano_id, snapshot_id, MIN(capture_time) AS capture_time,
+       ANY_VALUE(cam_alt) AS cam_alt,
        ST_Y(ANY_VALUE(geog)) AS lat, ST_X(ANY_VALUE(geog)) AS lng,
        ST_ASTEXT(ANY_VALUE(geog)) AS wkt,
        ST_GEOHASH(ANY_VALUE(geog), 7) AS gh7,
-       ARRAY_AGG(STRUCT(k, observation_id, heading, pitch, roll) ORDER BY k) AS cams
+       ARRAY_AGG(STRUCT(k, observation_id, heading, pitch, roll, cam_lat, cam_lng) ORDER BY k) AS cams
 FROM frames WHERE aoi IS NOT NULL
 GROUP BY aoi, capture_id, snapshot_id
 """
@@ -820,6 +831,7 @@ def multi_aoi_rosette_params(
 
 _ASSETS_IN_AOI_TEMPLATE = """
 SELECT asset_id, asset_type, location.latitude AS lat, location.longitude AS lng, detection_time,
+       ST_ASTEXT(ST_GEOGPOINT(location.longitude, location.latitude)) AS wkt,
        ST_DISTANCE(ST_GEOGPOINT(location.longitude, location.latitude), ST_GEOGPOINT(@lng, @lat)) AS dist_m
 FROM `__TABLE__`
 WHERE ST_DWITHIN(ST_GEOGPOINT(location.longitude, location.latitude), ST_GEOGPOINT(@lng, @lat), @radius_m)
@@ -842,6 +854,52 @@ def assets_in_aoi_params(
         "lng": (float(lng), "FLOAT64"),
         "radius_m": (float(radius_m), "FLOAT64"),
     }
+
+
+_SKILL_FIELDS = """
+  capture_id, pano_id, observation_id, snapshot_id, capture_time,
+  capture_location.latitude AS lat, capture_location.longitude AS lng,
+  camera_pose.heading AS heading, camera_pose.pitch AS pitch, camera_pose.roll AS roll"""
+
+_SKILL_COORDS_TEMPLATE = (
+    "SELECT"
+    + _SKILL_FIELDS
+    + """
+FROM `__TABLE__`
+WHERE ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
+                 ST_GEOGPOINT(@lng, @lat), @radius_m)
+"""
+)
+
+_SKILL_ID_TEMPLATE = (
+    """WITH hit AS (
+  SELECT capture_location.latitude AS lat, capture_location.longitude AS lng
+  FROM `__TABLE__`
+  WHERE observation_id = @id OR capture_id = @id OR pano_id = @id
+  LIMIT 1
+)
+SELECT hit.lat AS hit_lat, hit.lng AS hit_lng,"""
+    + _SKILL_FIELDS
+    + """
+FROM `__TABLE__`, hit
+WHERE ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
+                 ST_GEOGPOINT(hit.lng, hit.lat), @radius_m)
+"""
+)
+
+
+def skill_coords_sql(table: str = PANO_LATEST) -> str:
+    """Standalone skill coordinate query template."""
+    if not is_pano_table(table):
+        raise DisallowedTable(table)
+    return _SKILL_COORDS_TEMPLATE.replace("__TABLE__", table)
+
+
+def skill_id_sql(table: str = PANO_LATEST) -> str:
+    """Standalone skill ID lookup query template."""
+    if not is_pano_table(table):
+        raise DisallowedTable(table)
+    return _SKILL_ID_TEMPLATE.replace("__TABLE__", table)
 
 
 def compute_bytes_manifest(
@@ -910,6 +968,22 @@ def compute_bytes_manifest(
             assets_in_aoi_params(lat=28.0502, lng=-81.9601, radius_m=250.0),
             False,
         ),
+        (
+            "skill_coords_sql",
+            skill_coords_sql(),
+            {
+                "lat": (28.0502, "FLOAT64"),
+                "lng": (-81.9601, "FLOAT64"),
+                "radius_m": (45.0, "FLOAT64"),
+            },
+            False,
+        ),
+        (
+            "skill_id_sql",
+            skill_id_sql(),
+            {"id": ("sample_id", "STRING"), "radius_m": (45.0, "FLOAT64")},
+            False,
+        ),
     ]
     templates_out: dict[str, dict[str, Any]] = {}
     for name, sql, params, table_free in specs:
@@ -938,6 +1012,7 @@ def compute_bytes_manifest(
 
 _PANO_META_TEMPLATE = """
 SELECT
+  capture_id,
   pano_id,
   observation_id,
   snapshot_id,
@@ -951,12 +1026,12 @@ SELECT
   camera_pose.longitude AS cam_lng,
   camera_pose.altitude AS cam_alt
 FROM `__TABLE__`
-WHERE COALESCE(pano_id, '') != ''
+WHERE (@include_unpublished OR pano_id IS NOT NULL)
   AND (@snapshot_id IS NULL OR snapshot_id = @snapshot_id)
   AND (@radius_m IS NULL OR ST_DWITHIN(
         ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
         ST_GEOGPOINT(@lng, @lat), @radius_m))
-  AND (@sample_mod IS NULL OR MOD(ABS(FARM_FINGERPRINT(pano_id)), @sample_mod) = @sample_rem)
+  AND (@sample_mod IS NULL OR MOD(ABS(FARM_FINGERPRINT(COALESCE(capture_id, pano_id, observation_id))), @sample_mod) = @sample_rem)
   AND (@t_start IS NULL OR capture_time >= @t_start)
   AND (@t_end IS NULL OR capture_time < @t_end)
 """
@@ -982,6 +1057,7 @@ def pano_meta_params(
     sample_rem: int = 0,
     t_start: dt.datetime | None = None,
     t_end: dt.datetime | None = None,
+    include_unpublished: bool = True,
 ) -> dict[str, tuple[Any, str]]:
     """Typed parameters for PANO_META_SQL (None disables a filter)."""
     return {
@@ -993,11 +1069,13 @@ def pano_meta_params(
         "sample_rem": (int(sample_rem), "INT64"),
         "t_start": (t_start, "TIMESTAMP"),
         "t_end": (t_end, "TIMESTAMP"),
+        "include_unpublished": (bool(include_unpublished), "BOOL"),
     }
 
 
 _MULTI_AOI_TEMPLATE = """
 SELECT
+  capture_id,
   pano_id,
   observation_id,
   snapshot_id,
@@ -1011,7 +1089,7 @@ SELECT
   camera_pose.longitude AS cam_lng,
   camera_pose.altitude AS cam_alt
 FROM `__TABLE__`
-WHERE COALESCE(pano_id, '') != ''
+WHERE (@include_unpublished OR pano_id IS NOT NULL)
   AND EXISTS (
     SELECT 1 FROM UNNEST(@aois) AS a
     WHERE ST_DWITHIN(
@@ -1027,10 +1105,16 @@ def multi_aoi_meta_sql(table: str = PANO_LATEST) -> str:
     return _MULTI_AOI_TEMPLATE.replace("__TABLE__", table)
 
 
-def multi_aoi_params(aois: Sequence[tuple[float, float]], radius_m: float) -> list[QueryParam]:
+def multi_aoi_params(
+    aois: Sequence[tuple[float, float]],
+    radius_m: float,
+    *,
+    include_unpublished: bool = True,
+) -> list[QueryParam]:
     return [
         aoi_array_param("aois", aois),
         bigquery.ScalarQueryParameter("radius_m", "FLOAT64", float(radius_m)),
+        bigquery.ScalarQueryParameter("include_unpublished", "BOOL", bool(include_unpublished)),
     ]
 
 

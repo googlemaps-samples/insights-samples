@@ -516,3 +516,34 @@ def test_target_framing_columns_present_and_bearing_matches_geo_bearing():
         assert isinstance(bc, dict)
         assert 0 <= int(bc["k"]) < 6
         assert float(bc["off_axis_deg"]) <= 40.0
+
+
+def test_rosette_sql_supports_t_start_t_end_and_skill_templates():
+    import datetime as dt
+
+    sql = data.rosette_sql()
+    assert "@t_start" in sql and "@t_end" in sql
+    assert "COALESCE(pano_id, '')" not in sql
+    assert "(@include_unpublished OR pano_id IS NOT NULL)" in sql
+
+    t0 = dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc)
+    t1 = dt.datetime(2025, 1, 1, tzinfo=dt.timezone.utc)
+    params = {p.name: p for p in data.build_params(data.rosette_params(t_start=t0, t_end=t1))}
+    assert params["t_start"].type_ == "TIMESTAMP"
+    assert params["t_start"].value == t0
+    assert params["t_end"].type_ == "TIMESTAMP"
+    assert params["t_end"].value == t1
+
+    # pano_meta_sql and multi_aoi_meta_sql also select capture_id and use @include_unpublished
+    p_sql = data.pano_meta_sql()
+    assert "capture_id" in p_sql and "@include_unpublished" in p_sql
+    assert "COALESCE(pano_id, '')" not in p_sql
+    m_sql = data.multi_aoi_meta_sql()
+    assert "capture_id" in m_sql and "@include_unpublished" in m_sql
+    assert "COALESCE(pano_id, '')" not in m_sql
+
+    # skill templates are registered in TEMPLATE_CEILINGS_BYTES
+    assert "skill_coords_sql" in data.TEMPLATE_CEILINGS_BYTES
+    assert "skill_id_sql" in data.TEMPLATE_CEILINGS_BYTES
+    data.assert_allowed_table(data.skill_coords_sql())
+    data.assert_allowed_table(data.skill_id_sql())

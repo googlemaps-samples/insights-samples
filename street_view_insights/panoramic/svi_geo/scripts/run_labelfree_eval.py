@@ -383,12 +383,60 @@ async def evaluate_uc1(
             if v0 is not None and v1 is not None:
                 total += 1
                 matches += int(v0 == v1)
-                rep_pairs_a.append(f"{k}:{v0}")
-                rep_pairs_b.append(f"{k}:{v1}")
-                rep_pair_blocks.append(str(t["block_id"]))
         if total > 0:
             agree_num_den.append((float(matches), float(total)))
             block_ids.append(t["block_id"])
+
+        # M1.6 & M1.7: Cross-day repeat-pass attribute agreement on disjoint capture dates
+        ranked_dates = ranked.copy()
+        if "capture_time" not in ranked_dates.columns and "capture_time" in frames.columns:
+            ct_map = frames.drop_duplicates("capture_id").set_index("capture_id")["capture_time"]
+            ranked_dates["capture_time"] = ranked_dates["capture_id"].map(ct_map)
+        if "capture_time" in ranked_dates.columns:
+            ranked_dates["_day"] = pd.to_datetime(
+                ranked_dates["capture_time"], utc=True
+            ).dt.strftime("%Y-%m-%d")
+        else:
+            ranked_dates["_day"] = None
+        uniq_days = sorted(ranked_dates["_day"].dropna().unique().tolist())
+        if len(uniq_days) < 2 and "capture_time" in frames.columns:
+            # Expand search radius slightly to find cross-day repeat-pass views of the same target
+            _, ranked_wide = uc.uc1_select_views(
+                frames,
+                t["lat"],
+                t["lng"],
+                intr,
+                max_dist_m=60.0,
+                max_per_seq=6,
+                n=10,
+                variant=variant,
+            )
+            if not ranked_wide.empty and "capture_time" in ranked_wide.columns:
+                ranked_dates = ranked_wide.copy()
+                ranked_dates["_day"] = pd.to_datetime(
+                    ranked_dates["capture_time"], utc=True
+                ).dt.strftime("%Y-%m-%d")
+                uniq_days = sorted(ranked_dates["_day"].dropna().unique().tolist())
+        if len(uniq_days) >= 2:
+            day_a_df = ranked_dates[ranked_dates["_day"] == uniq_days[0]].drop(columns=["_day"])
+            day_b_df = ranked_dates[ranked_dates["_day"] != uniq_days[0]].drop(columns=["_day"])
+            if not day_a_df.empty and not day_b_df.empty:
+                out_day_a = await uc.uc1_run(
+                    day_a_df, fetch, student_runner, intr, width=w1, height=h1, variant=variant
+                )
+                out_day_b = await uc.uc1_run(
+                    day_b_df, fetch, student_runner, intr, width=w1, height=h1, variant=variant
+                )
+                for k in ("stories", "exterior_material", "roof_type"):
+                    va = out_day_a["attrs"][k][0]
+                    vb = out_day_b["attrs"][k][0]
+                    if va is not None and vb is not None:
+                        _add_cluster(
+                            repeat_by_block, str(t["block_id"]), 1.0 if va == vb else 0.0, 1.0
+                        )
+                        rep_pairs_a.append(f"{k}:{va}")
+                        rep_pairs_b.append(f"{k}:{vb}")
+                        rep_pair_blocks.append(str(t["block_id"]))
 
         # M1.2 location repeatability + split-half rays
         loc0 = base_out["location"]
@@ -448,12 +496,65 @@ async def evaluate_uc1(
             )
             if t_rec["result"] is not None:
                 teacher_in_frame.append(1 if t_rec["result"].get("fully_in_frame") else 0)
-                t_mat = t_rec["result"].get("exterior_material")
-                s_mat = base_out["attrs"]["exterior_material"][0]
-                if t_mat and s_mat and t_mat != "UNKNOWN":
-                    _add_cluster(
-                        repeat_by_block, t["block_id"], 1.0 if t_mat == s_mat else 0.0, 1.0
+
+    # Also evaluate explicit repeat_pairs from manifest if fewer than 2 targets had multi-day views
+    if len(rep_pairs_a) < 6 and manifest.get("repeat_pairs"):
+        key_col = "capture_id" if "capture_id" in frames.columns else "pano_id"
+        w1, h1 = variant.uc1_view_size
+        for rp_idx, rp in enumerate(manifest["repeat_pairs"][:2]):
+            c_pairs = rp.get("capture_pairs") or rp.get("pano_pairs") or []
+            if not c_pairs:
+                continue
+            ids_a = {str(pair[0]) for pair in c_pairs}
+            ids_b = {str(pair[1]) for pair in c_pairs}
+            sub_a = frames[frames[key_col].astype(str).isin(ids_a)]
+            sub_b = frames[frames[key_col].astype(str).isin(ids_b)]
+            if sub_a.empty or sub_b.empty:
+                continue
+            step = max(1, len(c_pairs) // 4)
+            for p_idx in range(0, len(c_pairs), step):
+                if len(rep_pairs_a) >= 9:
+                    break
+                cid_a = str(c_pairs[p_idx][0])
+                anc_rows = sub_a[sub_a[key_col].astype(str) == cid_a]
+                anchor_row = anc_rows.iloc[0] if not anc_rows.empty else sub_a.iloc[0]
+                for de_m, dn_m in ((16.0, 0.0), (-16.0, 0.0), (0.0, 16.0), (0.0, -16.0)):
+                    tlat_arr, tlng_arr, _ = geo.enu_to_lla(
+                        de_m,
+                        dn_m,
+                        0.0,
+                        float(anchor_row["lat"]),
+                        float(anchor_row["lng"]),
+                        0.0,
                     )
+                    tlat, tlng = float(tlat_arr), float(tlng_arr)
+                    _, rk_a = uc.uc1_select_views(
+                        sub_a, tlat, tlng, intr, max_per_seq=4, n=3, variant=variant
+                    )
+                    _, rk_b = uc.uc1_select_views(
+                        sub_b, tlat, tlng, intr, max_per_seq=4, n=3, variant=variant
+                    )
+                    if rk_a.empty or rk_b.empty:
+                        continue
+                    out_a = await uc.uc1_run(
+                        rk_a, fetch, student_runner, intr, width=w1, height=h1, variant=variant
+                    )
+                    out_b = await uc.uc1_run(
+                        rk_b, fetch, student_runner, intr, width=w1, height=h1, variant=variant
+                    )
+                    blk = f"{blocks_map.get(cid_a, f'rp_{rp_idx}')}:p{p_idx}"
+                    added = 0
+                    for k in ("stories", "exterior_material", "roof_type"):
+                        va = out_a["attrs"][k][0]
+                        vb = out_b["attrs"][k][0]
+                        if va is not None and vb is not None:
+                            _add_cluster(repeat_by_block, blk, 1.0 if va == vb else 0.0, 1.0)
+                            rep_pairs_a.append(f"{k}:{va}")
+                            rep_pairs_b.append(f"{k}:{vb}")
+                            rep_pair_blocks.append(blk)
+                            added += 1
+                    if added > 0:
+                        break
 
     per_cluster: dict[str, tuple[float, float]] = {}
     for b, (num, den) in zip(block_ids, agree_num_den, strict=True):
@@ -506,7 +607,7 @@ async def evaluate_uc1(
     m1_6 = _ratio_measurement(
         repeat_by_block,
         seed=seed,
-        disclosure=lf.TEACHER_DISCLOSURE,
+        disclosure="cross-day repeat-pass consistency != accuracy",
         missing_reason="no multi-pass house attribute pairs",
     )
 
@@ -1470,8 +1571,11 @@ def load_aoi_frames(
     bucket: str,
     aoi: str,
     radius_m: float = 400.0,
+    *,
+    include_unpublished: bool = True,
 ) -> pd.DataFrame:
-    """Load multi-AOI metadata from `pano_observations_all` (cached under DEFAULT_QUERY_CACHE)."""
+    """Load multi-AOI rosettes from `pano_observations_all` (cached under DEFAULT_QUERY_CACHE)
+    and expand to frames via `data.frames_from_rosettes` (preserving `pano_id IS NULL` rows)."""
     creds = auth.get_credentials()
     bq = data.QueryRunner(
         data.make_bigquery_client(project, creds),
@@ -1479,25 +1583,21 @@ def load_aoi_frames(
         cache_dir=data.DEFAULT_QUERY_CACHE,
     )
     table = data.pano_table(project, data.DATASET, "pano_observations_all")
-    centres = [mf.AOI_CENTRES["tune"], mf.AOI_CENTRES["heldout"], mf.AOI_CENTRES["stress"]]
-    raw = bq.run(data.multi_aoi_meta_sql(table), data.multi_aoi_params(centres, radius_m))
-    norm = data.normalize_frames(raw)
-    assigned = data.assign_nearest_aoi(
-        norm,
-        {
-            "lakeland_fl": mf.AOI_CENTRES["tune"],
-            "salt_lake_ut": mf.AOI_CENTRES["heldout"],
-            "osaka_jp": mf.AOI_CENTRES["stress"],
-        },
-        max_dist_m=radius_m * 1.5,
+    aois_named = {
+        "lakeland_fl": mf.AOI_CENTRES["tune"],
+        "salt_lake_ut": mf.AOI_CENTRES["heldout"],
+        "osaka_jp": mf.AOI_CENTRES["stress"],
+    }
+    rosettes = bq.run(
+        data.multi_aoi_sql(table),
+        data.multi_aoi_rosette_params(
+            aois_named, radius_m=radius_m, include_unpublished=include_unpublished
+        ),
+        template_name="multi_aoi_sql",
     )
     target_name = mf.CANONICAL_AOI_NAME.get(aoi, aoi)
-    sub = assigned[assigned["aoi"] == target_name].copy()
-    sub["gcs_uri"] = [
-        data.gcs_uri_for(bucket, s, o)
-        for s, o in zip(sub["snapshot_id"], sub["observation_id"], strict=True)
-    ]
-    return sub.reset_index(drop=True)
+    sub_rosettes = rosettes[rosettes["aoi"] == target_name].copy()
+    return data.frames_from_rosettes(sub_rosettes, bucket=bucket).reset_index(drop=True)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

@@ -455,15 +455,75 @@ def test_uc1_uc2_uc3_agentic_measurements_validate_and_crosscheck():
     assert out_uc2["agreement_line"].startswith("code_exec_agreement=agree(")
 
     # UC3 road texture / material boundary
+    import cv2
+
     from svi_geo import cvchecks as cvc
 
     desc = cvc.road_descriptor(img)
     expected_luma = float(desc[0] * 255.0)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
+    gx = cv2.Sobel(gray.astype(np.float32), cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(gray.astype(np.float32), cv2.CV_32F, 0, 1, ksize=3)
+    expected_grad = float(np.hypot(gx, gy).mean())
     b_uc3 = _ScriptedCodeExecBackend(
-        f'{{"change_row_norm": 500, "mean_luma": {expected_luma:.2f}, "grad_mean": 4.0, "confidence": 0.9}}',
-        f'MEASURE: {{"change_row_norm": 500, "mean_luma": {expected_luma:.2f}, "grad_mean": 4.0}}\n',
+        f'{{"change_row_norm": 500, "mean_luma": {expected_luma:.2f}, "grad_mean": {expected_grad:.2f}, "confidence": 0.9}}',
+        f'MEASURE: {{"change_row_norm": 500, "mean_luma": {expected_luma:.2f}, "grad_mean": {expected_grad:.2f}}}\n',
     )
     r_uc3 = gemini_client.GeminiRunner(b_uc3, max_calls=5)
-    out_uc3 = asyncio.run(uc.uc3_locate_material_boundary(img, r_uc3))
+    out_uc3 = asyncio.run(
+        uc.uc3_locate_material_boundary(img, r_uc3, viterbi_boundary_m=10.5, tol_m=1.0)
+    )
     assert out_uc3["agree"] is True
     assert out_uc3["agreement_line"].startswith("code_exec_agreement=agree(")
+
+    # Disagreeing Viterbi boundary (> 1.0 m off) flips agree to False
+    r_uc3_bad = gemini_client.GeminiRunner(b_uc3, max_calls=5)
+    out_uc3_bad = asyncio.run(
+        uc.uc3_locate_material_boundary(img, r_uc3_bad, viterbi_boundary_m=15.0, tol_m=1.0)
+    )
+    assert out_uc3_bad["agree"] is False
+
+
+def test_uc2_repeat_pass_diff_and_asset_audit():
+    import pandas as pd
+
+    fr = _attach_uris(sim.synthetic_frames(4, 10.0, 28.0502, -81.9601, travel_deg=0.0))
+    cids = fr["capture_id"].unique().tolist()
+    rp_df = pd.DataFrame([{"a_id": cids[0], "b_id": cids[1], "days_apart": 14, "sep_m": 2.1}])
+
+    def reply_fn(_idx, _parts, schema):
+        if schema is schemas.RepeatPassDiff:
+            return '{"change_detected": false, "change_summary": "Same utility pole, seasonal shadow shift only.", "changed_box_2d": null, "confidence": 0.91}'
+        return '{"present": true, "confidence": 0.93, "box_2d": [300, 400, 700, 600]}'
+
+    runner = gemini_client.GeminiRunner(_ScriptedBackend(reply_fn), max_calls=10)
+    diff_out = asyncio.run(
+        uc.uc2_repeat_pass_diff(
+            rp_df, fr, rosette.DEFAULT_INTRINSICS, _dummy_fetch, runner, width=320, height=240
+        )
+    )
+    assert -1.0 <= diff_out["ssim"] <= 1.0
+    assert diff_out["diff_heatmap"].shape == (240, 320, 3)
+    assert diff_out["verdict"].change_detected is False
+
+    assets_df = pd.DataFrame(
+        [
+            {
+                "asset_id": "a1",
+                "asset_type": "ASSET_CLASS_UTILITY_POLE",
+                "lat": 28.05022,
+                "lng": -81.96010,
+                "wkt": "POINT(-81.96010 28.05022)",
+                "dist_m": 2.5,
+            }
+        ]
+    )
+    loc_ents = [{"entity_id": "e1", "lat": 28.05023, "lng": -81.96010}]
+    audit_out = asyncio.run(
+        uc.uc2_asset_audit(
+            assets_df, loc_ents, fr, rosette.DEFAULT_INTRINSICS, _dummy_fetch, runner
+        )
+    )
+    assert audit_out["matched_count"] == 1
+    assert audit_out["gemini_confirmed"] is True
+    assert len(audit_out["audit_df"]) == 1
