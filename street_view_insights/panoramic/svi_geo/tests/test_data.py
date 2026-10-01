@@ -265,3 +265,48 @@ def test_guarded_client_accepts_a_configured_dataset():
         client=None, allowed_tables=eu, allowed_datasets=("imagery_insights___eu",)
     )
     assert g.allowed_tables == eu
+
+
+def test_rosette_sql_groups_by_capture_id_and_never_filters_pano_id():
+    sql = data.rosette_sql(data.PANO_LATEST)
+    assert "GROUP BY capture_id, snapshot_id" in sql
+    assert (
+        "ARRAY_AGG(STRUCT(k, observation_id, heading, pitch, roll, cam_lat, cam_lng) ORDER BY k)"
+        in sql
+    )
+    assert "ST_AZIMUTH" in sql
+    assert "ST_DISTANCE" in sql
+    assert "ST_ASTEXT(geog) AS wkt" in sql
+    assert "ST_GEOHASH(geog, 7) AS gh7" in sql
+    assert "cam_lat" in sql and "cam_lng" in sql
+    assert "@include_unpublished" in sql
+    assert "WHERE pano_id IS NOT NULL" not in sql
+    assert "AND pano_id IS NOT NULL" not in sql
+    assert "gcs_uri" not in sql.lower()
+    assert "{" not in sql and "}" not in sql
+    data.assert_allowed_table(sql)
+
+    params = data.rosette_params(lat=28.0502, lng=-81.9601, radius_m=250.0)
+    built = {p.name: p for p in data.build_params(params)}
+    assert built["include_unpublished"].value is True
+    assert built["max_dt_ms"].value == 5000
+    assert built["max_step_m"].value == 35.0
+
+
+def test_all_canonical_sql_templates_pass_guards_and_never_select_gcs_uri():
+    templates = {
+        "rosette_sql": data.rosette_sql(),
+        "rosette_target_sql": data.rosette_sql(include_target=True),
+        "snapshot_catalog_sql": data.snapshot_catalog_sql(),
+        "repeat_pairs_sql": data.repeat_pairs_sql(),
+        "coverage_sql": data.coverage_sql(),
+        "tracks_sql": data.tracks_sql(),
+        "multi_aoi_sql": data.multi_aoi_sql(),
+        "assets_in_aoi_sql": data.assets_in_aoi_sql(),
+    }
+    for name, sql in templates.items():
+        assert "gcs_uri" not in sql.lower(), name
+        assert "{" not in sql and "}" not in sql, name
+        data.assert_allowed_table(sql)
+    cluster_sql = data.cluster_points_sql()
+    assert "ST_CLUSTERDBSCAN" in cluster_sql and "UNNEST(@points)" in cluster_sql

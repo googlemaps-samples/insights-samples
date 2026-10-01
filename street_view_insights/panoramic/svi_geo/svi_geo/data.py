@@ -33,10 +33,45 @@ PROJECT = "imagery-insights-sandbox"
 DATASET = "imagery_insights___us"
 PANO_LATEST = f"{PROJECT}.{DATASET}.pano_observations_latest"
 PANO_ALL = f"{PROJECT}.{DATASET}.pano_observations_all"
-ALLOWED_TABLES = frozenset({PANO_LATEST, PANO_ALL})
+SNAP_TABLE = f"{PROJECT}.{DATASET}.snapshots"
+CROPPED_ASSETS_LATEST = f"{PROJECT}.{DATASET}.cropped_assets_latest"
+FULL_FRAME_ASSETS_LATEST = f"{PROJECT}.{DATASET}.full_frame_assets_latest"
+FORBIDDEN_MARKERS = (
+    "full_frame_observations",
+    "cropped_observations",
+    "all_observations",
+    "all_assets",
+)
+PANO_VIEWS = (
+    "pano_observations_latest",
+    "pano_observations_all",
+    "snapshots",
+    "cropped_assets_latest",
+    "full_frame_assets_latest",
+)
+ALLOWED_TABLES = frozenset(
+    {
+        PANO_LATEST,
+        PANO_ALL,
+        SNAP_TABLE,
+        CROPPED_ASSETS_LATEST,
+        FULL_FRAME_ASSETS_LATEST,
+    }
+)
 HARD_MAX_BYTES = 2_000_000_000
-FORBIDDEN_MARKERS = ("full_frame_", "cropped_", "all_observations", "all_assets")
-PANO_VIEWS = ("pano_observations_latest", "pano_observations_all")
+MAX_UNNEST_POINTS = 5000
+BYTES_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "data" / "bytes_manifest.json"
+TEMPLATE_CEILINGS_BYTES: dict[str, int] = {
+    "rosette_sql": 1_950_000_000,
+    "rosette_target_sql": 1_950_000_000,
+    "snapshot_catalog_sql": 1_000_000,
+    "cluster_points_sql": 0,
+    "repeat_pairs_sql": 1_450_000_000,
+    "coverage_sql": 1_100_000_000,
+    "tracks_sql": 1_500_000_000,
+    "multi_aoi_sql": 1_750_000_000,
+    "assets_in_aoi_sql": 100_000_000,
+}
 # Imagery Insights datasets whose pano views may be queried. Extend with the comma-separated
 # environment variable SVI_ALLOWED_DATASETS (e.g. a dataset linked in another region).
 DEFAULT_ALLOWED_DATASETS = (DATASET,)
@@ -66,8 +101,7 @@ class UnsafeSql(ValueError):
 
 
 def is_pano_table(name: str, datasets: Sequence[str] | None = None) -> bool:
-    """True for `<project>.<dataset>.pano_observations_latest|all` with an allow-listed dataset
-    (`datasets`, default `allowed_datasets()`) in any project."""
+    """True for `<project>.<dataset>.<view>` with an allow-listed dataset and view."""
     datasets = allowed_datasets() if datasets is None else datasets
     parts = (name or "").split(".")
     return (
@@ -119,12 +153,23 @@ def referenced_tables(sql: str) -> set[str]:
     return out
 
 
-def assert_allowed_table(sql: str, allowed: frozenset[str] = ALLOWED_TABLES) -> None:
+def assert_allowed_table(
+    sql: str,
+    allowed: frozenset[str] = ALLOWED_TABLES,
+    *,
+    allow_table_free: bool = False,
+) -> None:
     lowered = sql.lower()
     for marker in FORBIDDEN_MARKERS:
         if marker in lowered:
             raise DisallowedTable(f"forbidden table marker {marker!r} in SQL")
     tables = referenced_tables(sql)
+    if allow_table_free:
+        if "`" in sql or tables:
+            raise DisallowedTable(f"table-free SQL must not reference tables: {sorted(tables)}")
+        if "unnest(@" not in lowered:
+            raise DisallowedTable("table-free SQL must query UNNEST(@param)")
+        return
     if not tables:
         raise DisallowedTable("no fully-qualified table found in SQL")
     bad = sorted(t for t in tables if t not in allowed)
@@ -184,6 +229,26 @@ def aoi_array_param(name: str, aois: Sequence[tuple[float, float]]) -> bigquery.
     )
 
 
+def named_aoi_array_param(
+    name: str, aois: Mapping[str, tuple[float, float]] | Sequence[tuple[str, float, float]]
+) -> bigquery.ArrayQueryParameter:
+    """ARRAY<STRUCT<name STRING, lat FLOAT64, lng FLOAT64>> parameter for multi_aoi_sql."""
+    items = [(k, v[0], v[1]) for k, v in aois.items()] if isinstance(aois, Mapping) else list(aois)
+    return bigquery.ArrayQueryParameter(
+        name,
+        "STRUCT",
+        [
+            bigquery.StructQueryParameter(
+                None,
+                bigquery.ScalarQueryParameter("name", "STRING", str(aoi_name)),
+                bigquery.ScalarQueryParameter("lat", "FLOAT64", float(lat)),
+                bigquery.ScalarQueryParameter("lng", "FLOAT64", float(lng)),
+            )
+            for aoi_name, lat, lng in items
+        ],
+    )
+
+
 def _param_key(p: QueryParam) -> Any:
     if isinstance(p, bigquery.ArrayQueryParameter):
         return (p.name, "ARRAY", repr(p.to_api_repr()))
@@ -213,21 +278,38 @@ class QueryRunner:
         self.allowed_tables = requested
         self.log = log
         self.cache_dir = cache_dir
-        self.cache_ttl_s = cache_ttl_s
+        self.cache_ttl_s = min(float(cache_ttl_s), 35 * 24 * 3600.0)
         self.last_dry_run_bytes: int | None = None
         self.total_billed_estimate = 0
 
-    def dry_run(self, sql: str, params: Params | None = None) -> int:
-        self._check(sql)
+    def dry_run(
+        self,
+        sql: str,
+        params: Params | None = None,
+        *,
+        allow_table_free: bool = False,
+    ) -> int:
+        self._check(sql, allow_table_free=allow_table_free)
         cfg = bigquery.QueryJobConfig(
             dry_run=True, use_query_cache=False, query_parameters=build_params(params)
         )
         job = self.client.query(sql, job_config=cfg)
         self.last_dry_run_bytes = int(job.total_bytes_processed or 0)
+        if allow_table_free and self.last_dry_run_bytes != 0:
+            raise QueryTooExpensive(
+                f"table-free SQL must dry-run to 0 bytes, got {self.last_dry_run_bytes:,}"
+            )
         return self.last_dry_run_bytes
 
-    def run(self, sql: str, params: Params | None = None, refresh: bool = False) -> pd.DataFrame:
-        self._check(sql)
+    def run(
+        self,
+        sql: str,
+        params: Params | None = None,
+        refresh: bool = False,
+        *,
+        allow_table_free: bool = False,
+    ) -> pd.DataFrame:
+        self._check(sql, allow_table_free=allow_table_free)
         cache_file = self._cache_file(sql, params)
         if (
             not refresh
@@ -238,7 +320,7 @@ class QueryRunner:
             if self.log:
                 self.log(f"[bigquery] local cache hit {cache_file.name} (0 bytes billed)")
             return pd.read_parquet(cache_file)
-        n = self.dry_run(sql, params)
+        n = self.dry_run(sql, params, allow_table_free=allow_table_free)
         if self.log:
             self.log(f"[bigquery] dry run: {n / 1e9:.3f} GB (cap {self.max_bytes / 1e9:.1f} GB)")
         if n > self.max_bytes:
@@ -260,13 +342,470 @@ class QueryRunner:
         key = json.dumps([sql, [_param_key(p) for p in build_params(params)]], sort_keys=True)
         return Path(self.cache_dir) / f"{hashlib.sha256(key.encode()).hexdigest()[:24]}.parquet"
 
-    def _check(self, sql: str) -> None:
+    def _check(self, sql: str, *, allow_table_free: bool = False) -> None:
         if "{" in sql or "}" in sql:
             raise UnsafeSql("SQL contains braces; build SQL with @params, not string formatting")
-        assert_allowed_table(sql, self.allowed_tables)
+        assert_allowed_table(sql, self.allowed_tables, allow_table_free=allow_table_free)
 
 
-# --------------------------------------------------------------------------- SQL
+# --------------------------------------------------------------------------- Canonical SQL (§2)
+
+_ROSETTE_SQL_TEMPLATE = """
+WITH frames AS (
+  SELECT capture_id, pano_id, snapshot_id, capture_time, map_url,
+         ST_GEOGPOINT(capture_location.longitude, capture_location.latitude) AS geog,
+         CAST(REGEXP_EXTRACT(observation_id, r'_(\\d)(?::|$)') AS INT64) AS k,
+         observation_id,
+         camera_pose.heading AS heading, camera_pose.pitch AS pitch, camera_pose.roll AS roll,
+         camera_pose.altitude AS cam_alt,
+         camera_pose.latitude AS cam_lat, camera_pose.longitude AS cam_lng
+  FROM `__TABLE__`
+  WHERE ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
+                   ST_GEOGPOINT(@lng, @lat), @radius_m)
+    AND (@snapshot_id IS NULL OR snapshot_id = @snapshot_id)
+    AND (@include_unpublished OR COALESCE(pano_id, '') != '')
+),
+rosettes AS (
+  SELECT capture_id, snapshot_id,
+         ANY_VALUE(pano_id) AS pano_id, MIN(capture_time) AS capture_time,
+         ANY_VALUE(geog) AS geog, ANY_VALUE(map_url) AS map_url, ANY_VALUE(cam_alt) AS cam_alt,
+         ARRAY_AGG(STRUCT(k, observation_id, heading, pitch, roll, cam_lat, cam_lng) ORDER BY k) AS cams,
+         COUNT(*) AS n_frames
+  FROM frames GROUP BY capture_id, snapshot_id
+),
+seq AS (
+  SELECT *, LAG(geog) OVER w AS g_prev, LAG(capture_time) OVER w AS t_prev, LEAD(geog) OVER w AS g_next
+  FROM rosettes WINDOW w AS (PARTITION BY snapshot_id ORDER BY capture_time, capture_id)
+),
+brk AS (
+  SELECT *, IF(g_prev IS NULL OR TIMESTAMP_DIFF(capture_time, t_prev, MILLISECOND) > @max_dt_ms
+                OR ST_DISTANCE(geog, g_prev) > @max_step_m, 1, 0) AS is_break,
+         ST_AZIMUTH(geog, g_next) AS az_next, ST_AZIMUTH(g_prev, geog) AS az_prev
+  FROM seq
+),
+isl AS (
+  SELECT *, CONCAT(SUBSTR(snapshot_id, 1, 8), '_', CAST(SUM(is_break) OVER
+              (PARTITION BY snapshot_id ORDER BY capture_time, capture_id) AS STRING)) AS seq_id
+  FROM brk
+)
+SELECT capture_id, pano_id, snapshot_id, capture_time, map_url, cam_alt, n_frames, cams,
+       ST_Y(geog) AS lat, ST_X(geog) AS lng, ST_ASTEXT(geog) AS wkt, seq_id,
+       ROW_NUMBER() OVER (PARTITION BY seq_id ORDER BY capture_time, capture_id) AS seq_idx,
+       IF(is_break = 1, NULL, ST_DISTANCE(geog, g_prev)) AS step_m,
+       SUM(IF(is_break = 1, 0, ST_DISTANCE(geog, g_prev))) OVER (PARTITION BY seq_id ORDER BY capture_time, capture_id) AS cum_m,
+       MOD(CAST(ROUND(COALESCE(az_next, az_prev) * 180 / ACOS(-1)) AS INT64) + 360, 360) AS travel_deg,
+       ST_GEOHASH(geog, 7) AS gh7__TARGET_COLS__
+FROM isl ORDER BY snapshot_id, capture_time, capture_id
+"""
+
+_ROSETTE_TARGET_COLS = """,
+       ST_DISTANCE(geog, ST_GEOGPOINT(COALESCE(@tlng, @lng), COALESCE(@tlat, @lat))) AS target_dist_m,
+       ROUND(ST_AZIMUTH(geog, ST_GEOGPOINT(COALESCE(@tlng, @lng), COALESCE(@tlat, @lat))) * 180 / ACOS(-1), 3) AS target_bearing_deg,
+       (SELECT AS STRUCT c.k, c.observation_id, c.heading,
+               ABS(MOD(CAST(ROUND(c.heading - (ST_AZIMUTH(geog, ST_GEOGPOINT(COALESCE(@tlng, @lng), COALESCE(@tlat, @lat))) * 180 / ACOS(-1))) AS INT64) + 540, 360) - 180) AS off_axis_deg
+        FROM UNNEST(cams) AS c WHERE c.k < 6 ORDER BY off_axis_deg LIMIT 1) AS best_cam"""
+
+
+def rosette_sql(table: str = PANO_LATEST, *, include_target: bool = False) -> str:
+    """Canonical capture_id-keyed rosette query with SQL-side sequences, bearings and cams."""
+    if not is_pano_table(table):
+        raise DisallowedTable(table)
+    target_cols = _ROSETTE_TARGET_COLS if include_target else ""
+    return _ROSETTE_SQL_TEMPLATE.replace("__TABLE__", table).replace("__TARGET_COLS__", target_cols)
+
+
+ROSETTE_SQL = rosette_sql(PANO_LATEST)
+
+
+def rosette_params(
+    *,
+    lat: float,
+    lng: float,
+    radius_m: float,
+    snapshot_id: str | None = None,
+    include_unpublished: bool = True,
+    max_dt_ms: int = 5000,
+    max_step_m: float = 35.0,
+    tlat: float | None = None,
+    tlng: float | None = None,
+    include_target: bool = False,
+) -> dict[str, tuple[Any, str]]:
+    """Typed parameters for `rosette_sql`."""
+    out: dict[str, tuple[Any, str]] = {
+        "lat": (float(lat), "FLOAT64"),
+        "lng": (float(lng), "FLOAT64"),
+        "radius_m": (float(radius_m), "FLOAT64"),
+        "snapshot_id": (snapshot_id, "STRING"),
+        "include_unpublished": (bool(include_unpublished), "BOOL"),
+        "max_dt_ms": (int(max_dt_ms), "INT64"),
+        "max_step_m": (float(max_step_m), "FLOAT64"),
+    }
+    if include_target or tlat is not None or tlng is not None:
+        out["tlat"] = (float(lat if tlat is None else tlat), "FLOAT64")
+        out["tlng"] = (float(lng if tlng is None else tlng), "FLOAT64")
+    return out
+
+
+_SNAPSHOT_CATALOG_TEMPLATE = """
+SELECT snapshot_id, subscription_id, creation_time,
+       TIMESTAMP_ADD(creation_time, INTERVAL 35 DAY) AS expires_about,
+       ARRAY_TO_STRING(product_types, ',') AS tiers
+FROM `__TABLE__`
+WHERE 'SV_PANO' IN UNNEST(product_types)
+ORDER BY creation_time DESC
+"""
+
+
+def snapshot_catalog_sql(table: str = SNAP_TABLE) -> str:
+    """Catalog of SV_PANO snapshots with approximate 35-day expiry timestamps."""
+    if not is_pano_table(table):
+        raise DisallowedTable(table)
+    return _SNAPSHOT_CATALOG_TEMPLATE.replace("__TABLE__", table)
+
+
+_CLUSTER_POINTS_SQL = """
+SELECT p.entity_id, p.cls, p.lat, p.lng,
+       ST_CLUSTERDBSCAN(ST_GEOGPOINT(p.lng, p.lat), @eps_m, @min_pts) OVER (PARTITION BY p.cls) AS cluster_id
+FROM UNNEST(@points) AS p
+ORDER BY p.cls, cluster_id, p.entity_id
+"""
+
+
+def cluster_points_sql() -> str:
+    """Table-free ST_CLUSTERDBSCAN query over UNNEST(@points) (0 bytes scanned)."""
+    return _CLUSTER_POINTS_SQL
+
+
+def cluster_points_params(
+    points: Sequence[Mapping[str, Any]],
+    *,
+    eps_m: float = 8.0,
+    min_pts: int = 1,
+) -> list[QueryParam]:
+    """Parameters for `cluster_points_sql` (capped at MAX_UNNEST_POINTS)."""
+    if len(points) > MAX_UNNEST_POINTS:
+        raise ValueError(f"points length {len(points)} exceeds cap {MAX_UNNEST_POINTS}")
+    structs = [
+        bigquery.StructQueryParameter(
+            None,
+            bigquery.ScalarQueryParameter("entity_id", "STRING", str(pt["entity_id"])),
+            bigquery.ScalarQueryParameter("cls", "STRING", str(pt["cls"])),
+            bigquery.ScalarQueryParameter("lat", "FLOAT64", float(pt["lat"])),
+            bigquery.ScalarQueryParameter("lng", "FLOAT64", float(pt["lng"])),
+        )
+        for pt in points
+    ]
+    return [
+        bigquery.ArrayQueryParameter("points", "STRUCT", structs),
+        bigquery.ScalarQueryParameter("eps_m", "FLOAT64", float(eps_m)),
+        bigquery.ScalarQueryParameter("min_pts", "INT64", int(min_pts)),
+    ]
+
+
+_REPEAT_PAIRS_TEMPLATE = """
+WITH p AS (
+  SELECT capture_id, snapshot_id, MIN(capture_time) AS t, DATE(MIN(capture_time)) AS d,
+         ANY_VALUE(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude)) AS g
+  FROM `__TABLE__`
+  WHERE ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
+                   ST_GEOGPOINT(@lng, @lat), @radius_m)
+  GROUP BY capture_id, snapshot_id
+),
+pairs AS (
+  SELECT a.capture_id AS a_id, b.capture_id AS b_id,
+         a.snapshot_id AS a_snapshot_id, b.snapshot_id AS b_snapshot_id,
+         a.d AS a_day, b.d AS b_day,
+         ST_DISTANCE(a.g, b.g) AS sep_m, DATE_DIFF(b.d, a.d, DAY) AS days_apart,
+         ROW_NUMBER() OVER (PARTITION BY a.capture_id, b.d ORDER BY ST_DISTANCE(a.g, b.g)) AS rn
+  FROM p AS a JOIN p AS b
+    ON a.d < b.d AND ST_DWITHIN(a.g, b.g, @pair_m)
+)
+SELECT a_id, b_id, a_snapshot_id, b_snapshot_id, a_day, b_day, days_apart, sep_m
+FROM pairs WHERE rn = 1
+ORDER BY a_day, b_day, sep_m
+"""
+
+
+def repeat_pairs_sql(table: str = PANO_LATEST) -> str:
+    """Matched repeat-pass rosette pairs across distinct capture days within `@pair_m`."""
+    if not is_pano_table(table):
+        raise DisallowedTable(table)
+    return _REPEAT_PAIRS_TEMPLATE.replace("__TABLE__", table)
+
+
+def repeat_pairs_params(
+    *,
+    lat: float,
+    lng: float,
+    radius_m: float = 250.0,
+    pair_m: float = 6.0,
+) -> dict[str, tuple[Any, str]]:
+    return {
+        "lat": (float(lat), "FLOAT64"),
+        "lng": (float(lng), "FLOAT64"),
+        "radius_m": (float(radius_m), "FLOAT64"),
+        "pair_m": (float(pair_m), "FLOAT64"),
+    }
+
+
+_COVERAGE_TEMPLATE = """
+WITH p AS (
+  SELECT capture_id, MIN(capture_time) AS t,
+         ANY_VALUE(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude)) AS g
+  FROM `__TABLE__`
+  WHERE capture_location.latitude BETWEEN @lat_min AND @lat_max
+    AND capture_location.longitude BETWEEN @lng_min AND @lng_max
+  GROUP BY capture_id
+)
+SELECT ST_GEOHASH(g, 6) AS gh6, COUNT(*) AS rosettes, COUNT(DISTINCT DATE(t)) AS capture_days,
+       MIN(t) AS t_min, MAX(t) AS t_max, ST_ASTEXT(ST_CENTROID_AGG(g)) AS centroid_wkt
+FROM p GROUP BY gh6 HAVING rosettes >= @min_rosettes
+ORDER BY capture_days DESC, rosettes DESC LIMIT 200
+"""
+
+
+def coverage_sql(table: str = PANO_LATEST) -> str:
+    """Geohash-6 coverage summary inside a lat/lng bounding box."""
+    if not is_pano_table(table):
+        raise DisallowedTable(table)
+    return _COVERAGE_TEMPLATE.replace("__TABLE__", table)
+
+
+def coverage_params(
+    *,
+    lat_min: float = 27.9,
+    lat_max: float = 28.2,
+    lng_min: float = -82.1,
+    lng_max: float = -81.8,
+    min_rosettes: int = 20,
+) -> dict[str, tuple[Any, str]]:
+    return {
+        "lat_min": (float(lat_min), "FLOAT64"),
+        "lat_max": (float(lat_max), "FLOAT64"),
+        "lng_min": (float(lng_min), "FLOAT64"),
+        "lng_max": (float(lng_max), "FLOAT64"),
+        "min_rosettes": (int(min_rosettes), "INT64"),
+    }
+
+
+_TRACKS_TEMPLATE = """
+WITH rosettes AS (
+  SELECT capture_id, snapshot_id,
+         ANY_VALUE(pano_id) AS pano_id, MIN(capture_time) AS capture_time,
+         ANY_VALUE(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude)) AS geog
+  FROM `__TABLE__`
+  WHERE ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
+                   ST_GEOGPOINT(@lng, @lat), @radius_m)
+    AND (@include_unpublished OR COALESCE(pano_id, '') != '')
+  GROUP BY capture_id, snapshot_id
+),
+seq AS (
+  SELECT *, LAG(geog) OVER w AS g_prev, LAG(capture_time) OVER w AS t_prev
+  FROM rosettes WINDOW w AS (PARTITION BY snapshot_id ORDER BY capture_time, capture_id)
+),
+brk AS (
+  SELECT *, IF(g_prev IS NULL OR TIMESTAMP_DIFF(capture_time, t_prev, MILLISECOND) > @max_dt_ms
+                OR ST_DISTANCE(geog, g_prev) > @max_step_m, 1, 0) AS is_break
+  FROM seq
+),
+isl AS (
+  SELECT *, CONCAT(SUBSTR(snapshot_id, 1, 8), '_', CAST(SUM(is_break) OVER
+              (PARTITION BY snapshot_id ORDER BY capture_time, capture_id) AS STRING)) AS seq_id
+  FROM brk
+)
+SELECT seq_id, COUNT(*) AS n_rosettes, COUNTIF(pano_id IS NULL) AS n_null_pano_id,
+       MIN(capture_time) AS t0, DATE(MIN(capture_time)) AS capture_day,
+       ST_LENGTH(ST_MAKELINE(ARRAY_AGG(geog ORDER BY capture_time, capture_id))) AS len_m,
+       ST_ASGEOJSON(ST_MAKELINE(ARRAY_AGG(geog ORDER BY capture_time, capture_id))) AS track_geojson
+FROM isl GROUP BY seq_id HAVING n_rosettes >= 2 ORDER BY n_rosettes DESC
+"""
+
+
+def tracks_sql(table: str = PANO_LATEST) -> str:
+    """Sequence track LineStrings and GeoJSON per SQL sequence."""
+    if not is_pano_table(table):
+        raise DisallowedTable(table)
+    return _TRACKS_TEMPLATE.replace("__TABLE__", table)
+
+
+def tracks_params(
+    *,
+    lat: float,
+    lng: float,
+    radius_m: float = 250.0,
+    include_unpublished: bool = True,
+    max_dt_ms: int = 5000,
+    max_step_m: float = 35.0,
+) -> dict[str, tuple[Any, str]]:
+    return {
+        "lat": (float(lat), "FLOAT64"),
+        "lng": (float(lng), "FLOAT64"),
+        "radius_m": (float(radius_m), "FLOAT64"),
+        "include_unpublished": (bool(include_unpublished), "BOOL"),
+        "max_dt_ms": (int(max_dt_ms), "INT64"),
+        "max_step_m": (float(max_step_m), "FLOAT64"),
+    }
+
+
+_MULTI_AOI_ROSETTE_TEMPLATE = """
+WITH frames AS (
+  SELECT capture_id, pano_id, snapshot_id, capture_time, observation_id,
+         ST_GEOGPOINT(capture_location.longitude, capture_location.latitude) AS geog,
+         CAST(REGEXP_EXTRACT(observation_id, r'_(\\d)(?::|$)') AS INT64) AS k,
+         camera_pose.heading AS heading, camera_pose.pitch AS pitch, camera_pose.roll AS roll,
+         (SELECT a.name FROM UNNEST(@aois) AS a
+          WHERE ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
+                           ST_GEOGPOINT(a.lng, a.lat), @radius_m) LIMIT 1) AS aoi
+  FROM `__TABLE__`
+  WHERE (@include_unpublished OR COALESCE(pano_id, '') != '')
+)
+SELECT aoi, capture_id, ANY_VALUE(pano_id) AS pano_id, snapshot_id, MIN(capture_time) AS capture_time,
+       ST_Y(ANY_VALUE(geog)) AS lat, ST_X(ANY_VALUE(geog)) AS lng,
+       ST_ASTEXT(ANY_VALUE(geog)) AS wkt,
+       ST_GEOHASH(ANY_VALUE(geog), 7) AS gh7,
+       ARRAY_AGG(STRUCT(k, observation_id, heading, pitch, roll) ORDER BY k) AS cams
+FROM frames WHERE aoi IS NOT NULL
+GROUP BY aoi, capture_id, snapshot_id
+"""
+
+
+def multi_aoi_sql(table: str = PANO_LATEST) -> str:
+    """Multi-AOI capture_id-keyed rosette query in one table scan."""
+    if not is_pano_table(table):
+        raise DisallowedTable(table)
+    return _MULTI_AOI_ROSETTE_TEMPLATE.replace("__TABLE__", table)
+
+
+def multi_aoi_rosette_params(
+    aois: Mapping[str, tuple[float, float]] | Sequence[tuple[str, float, float]],
+    radius_m: float = 1500.0,
+    *,
+    include_unpublished: bool = True,
+) -> list[QueryParam]:
+    return [
+        named_aoi_array_param("aois", aois),
+        bigquery.ScalarQueryParameter("radius_m", "FLOAT64", float(radius_m)),
+        bigquery.ScalarQueryParameter("include_unpublished", "BOOL", bool(include_unpublished)),
+    ]
+
+
+_ASSETS_IN_AOI_TEMPLATE = """
+SELECT asset_id, asset_type, location.latitude AS lat, location.longitude AS lng, detection_time,
+       ST_DISTANCE(ST_GEOGPOINT(location.longitude, location.latitude), ST_GEOGPOINT(@lng, @lat)) AS dist_m
+FROM `__TABLE__`
+WHERE ST_DWITHIN(ST_GEOGPOINT(location.longitude, location.latitude), ST_GEOGPOINT(@lng, @lat), @radius_m)
+ORDER BY dist_m
+"""
+
+
+def assets_in_aoi_sql(table: str = CROPPED_ASSETS_LATEST) -> str:
+    """Metadata-only asset inventory inside an AOI (no gcs_uri)."""
+    if not is_pano_table(table):
+        raise DisallowedTable(table)
+    return _ASSETS_IN_AOI_TEMPLATE.replace("__TABLE__", table)
+
+
+def assets_in_aoi_params(
+    *, lat: float, lng: float, radius_m: float = 250.0
+) -> dict[str, tuple[Any, str]]:
+    return {
+        "lat": (float(lat), "FLOAT64"),
+        "lng": (float(lng), "FLOAT64"),
+        "radius_m": (float(radius_m), "FLOAT64"),
+    }
+
+
+def compute_bytes_manifest(
+    runner: QueryRunner,
+    *,
+    output_path: Path | None = BYTES_MANIFEST_PATH,
+) -> dict[str, Any]:
+    """Dry-run every canonical SQL template, verify ceilings, and write `bytes_manifest.json`."""
+    specs: list[tuple[str, str, Params | None, bool]] = [
+        (
+            "rosette_sql",
+            rosette_sql(),
+            rosette_params(lat=28.0502, lng=-81.9601, radius_m=250.0),
+            False,
+        ),
+        (
+            "rosette_target_sql",
+            rosette_sql(include_target=True),
+            rosette_params(
+                lat=28.05047,
+                lng=-81.96015,
+                radius_m=80.0,
+                tlat=28.05047,
+                tlng=-81.96015,
+                include_target=True,
+            ),
+            False,
+        ),
+        ("snapshot_catalog_sql", snapshot_catalog_sql(), None, False),
+        (
+            "cluster_points_sql",
+            cluster_points_sql(),
+            cluster_points_params(
+                [
+                    {"entity_id": "e1", "cls": "UTILITY_POLE", "lat": 28.0502, "lng": -81.9601},
+                    {"entity_id": "e2", "cls": "UTILITY_POLE", "lat": 28.05023, "lng": -81.96012},
+                ]
+            ),
+            True,
+        ),
+        (
+            "repeat_pairs_sql",
+            repeat_pairs_sql(),
+            repeat_pairs_params(lat=28.0502, lng=-81.9601, radius_m=250.0, pair_m=6.0),
+            False,
+        ),
+        ("coverage_sql", coverage_sql(), coverage_params(), False),
+        (
+            "tracks_sql",
+            tracks_sql(),
+            tracks_params(lat=28.0502, lng=-81.9601, radius_m=250.0),
+            False,
+        ),
+        (
+            "multi_aoi_sql",
+            multi_aoi_sql(),
+            multi_aoi_rosette_params(
+                [("tune", 28.05, -81.96), ("heldout", 40.76, -111.91), ("stress", 34.71, 135.54)],
+                radius_m=1500.0,
+            ),
+            False,
+        ),
+        (
+            "assets_in_aoi_sql",
+            assets_in_aoi_sql(),
+            assets_in_aoi_params(lat=28.0502, lng=-81.9601, radius_m=250.0),
+            False,
+        ),
+    ]
+    templates_out: dict[str, dict[str, Any]] = {}
+    for name, sql, params, table_free in specs:
+        n_bytes = runner.dry_run(sql, params, allow_table_free=table_free)
+        ceiling = TEMPLATE_CEILINGS_BYTES[name]
+        templates_out[name] = {
+            "dry_run_bytes": n_bytes,
+            "dry_run_gb": round(n_bytes / 1e9, 6),
+            "ceiling_bytes": ceiling,
+            "ceiling_gb": round(ceiling / 1e9, 6),
+            "usd_at_6_25_per_tb": round((n_bytes / 1e12) * 6.25, 5),
+        }
+    manifest = {
+        "project": PROJECT,
+        "dataset": DATASET,
+        "hard_max_bytes": HARD_MAX_BYTES,
+        "templates": templates_out,
+    }
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    return manifest
+
+
+# --------------------------------------------------------------------------- Legacy frame SQL
 
 _PANO_META_TEMPLATE = """
 SELECT
@@ -283,7 +822,7 @@ SELECT
   camera_pose.longitude AS cam_lng,
   camera_pose.altitude AS cam_alt
 FROM `__TABLE__`
-WHERE pano_id IS NOT NULL
+WHERE COALESCE(pano_id, '') != ''
   AND (@snapshot_id IS NULL OR snapshot_id = @snapshot_id)
   AND (@radius_m IS NULL OR ST_DWITHIN(
         ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
@@ -343,7 +882,7 @@ SELECT
   camera_pose.longitude AS cam_lng,
   camera_pose.altitude AS cam_alt
 FROM `__TABLE__`
-WHERE pano_id IS NOT NULL
+WHERE COALESCE(pano_id, '') != ''
   AND EXISTS (
     SELECT 1 FROM UNNEST(@aois) AS a
     WHERE ST_DWITHIN(

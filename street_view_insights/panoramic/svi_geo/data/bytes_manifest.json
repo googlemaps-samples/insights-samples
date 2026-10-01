@@ -1,0 +1,70 @@
+{
+  "project": "imagery-insights-sandbox",
+  "dataset": "imagery_insights___us",
+  "hard_max_bytes": 2000000000,
+  "templates": {
+    "rosette_sql": {
+      "dry_run_bytes": 1830539988,
+      "dry_run_gb": 1.83054,
+      "ceiling_bytes": 1950000000,
+      "ceiling_gb": 1.95,
+      "usd_at_6_25_per_tb": 0.01144
+    },
+    "rosette_target_sql": {
+      "dry_run_bytes": 1830539988,
+      "dry_run_gb": 1.83054,
+      "ceiling_bytes": 1950000000,
+      "ceiling_gb": 1.95,
+      "usd_at_6_25_per_tb": 0.01144
+    },
+    "snapshot_catalog_sql": {
+      "dry_run_bytes": 2022,
+      "dry_run_gb": 2e-06,
+      "ceiling_bytes": 1000000,
+      "ceiling_gb": 0.001,
+      "usd_at_6_25_per_tb": 0.0
+    },
+    "cluster_points_sql": {
+      "dry_run_bytes": 0,
+      "dry_run_gb": 0.0,
+      "ceiling_bytes": 0,
+      "ceiling_gb": 0.0,
+      "usd_at_6_25_per_tb": 0.0
+    },
+    "repeat_pairs_sql": {
+      "dry_run_bytes": 1361514060,
+      "dry_run_gb": 1.361514,
+      "ceiling_bytes": 1450000000,
+      "ceiling_gb": 1.45,
+      "usd_at_6_25_per_tb": 0.00851
+    },
+    "coverage_sql": {
+      "dry_run_bytes": 1040162652,
+      "dry_run_gb": 1.040163,
+      "ceiling_bytes": 1100000000,
+      "ceiling_gb": 1.1,
+      "usd_at_6_25_per_tb": 0.0065
+    },
+    "tracks_sql": {
+      "dry_run_bytes": 1424622420,
+      "dry_run_gb": 1.424622,
+      "ceiling_bytes": 1500000000,
+      "ceiling_gb": 1.5,
+      "usd_at_6_25_per_tb": 0.0089
+    },
+    "multi_aoi_sql": {
+      "dry_run_bytes": 1627581204,
+      "dry_run_gb": 1.627581,
+      "ceiling_bytes": 1750000000,
+      "ceiling_gb": 1.75,
+      "usd_at_6_25_per_tb": 0.01017
+    },
+    "assets_in_aoi_sql": {
+      "dry_run_bytes": 52951813,
+      "dry_run_gb": 0.052952,
+      "ceiling_bytes": 100000000,
+      "ceiling_gb": 0.1,
+      "usd_at_6_25_per_tb": 0.00033
+    }
+  }
+}
