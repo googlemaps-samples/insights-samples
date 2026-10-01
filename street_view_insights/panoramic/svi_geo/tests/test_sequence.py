@@ -408,3 +408,19 @@ def test_no_module_groups_by_pano_id():
             offenders.append(py_file.name)
         assert "pano_id IS NOT NULL" not in text, f"stale filter in {py_file.name}"
     assert not offenders, f"modules still grouping/deduping/merging by pano_id: {offenders}"
+
+
+def test_stride_selects_target_spacing():
+    from pathlib import Path
+
+    fixture_path = Path(__file__).resolve().parent / "fixtures" / "rosettes_lakeland_hashed.parquet"
+    df = pd.read_parquet(fixture_path)
+    longest_sid = df.groupby("seq_id").size().idxmax()
+    seq_df = df[df["seq_id"] == longest_sid].sort_values("seq_idx").reset_index(drop=True)
+    assert len(seq_df) == 81
+
+    selected = sequence.select_by_spacing(seq_df, target_spacing_m=10.0, max_panos=12)
+    assert len(selected) == 12
+    assert list(selected["seq_idx"]) == sorted(selected["seq_idx"])
+    steps = np.diff(selected["cum_m"].to_numpy(dtype=float))
+    assert float(np.median(steps)) >= 8.5

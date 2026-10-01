@@ -310,3 +310,139 @@ def test_all_canonical_sql_templates_pass_guards_and_never_select_gcs_uri():
         data.assert_allowed_table(sql)
     cluster_sql = data.cluster_points_sql()
     assert "ST_CLUSTERDBSCAN" in cluster_sql and "UNNEST(@points)" in cluster_sql
+
+
+def test_snapshot_catalog_sql_and_expiry():
+    import datetime as dt
+    import warnings
+
+    sql = data.snapshot_catalog_sql()
+    assert "SV_PANO" in sql and "expires_about" in sql and "INTERVAL 35 DAY" in sql
+    now = dt.datetime(2026, 10, 1, 12, 0, tzinfo=dt.timezone.utc)
+    catalog = pd.DataFrame(
+        [
+            {
+                "snapshot_id": "21d75cd4-aaaa-bbbb-cccc-000000000001",
+                "creation_time": now - dt.timedelta(days=34),
+                "expires_about": now + dt.timedelta(days=1),
+                "description": "expiring soon",
+            },
+            {
+                "snapshot_id": "99e81ab2-aaaa-bbbb-cccc-000000000002",
+                "creation_time": now - dt.timedelta(days=5),
+                "expires_about": now + dt.timedelta(days=30),
+                "description": "fresh",
+            },
+        ]
+    )
+    rosettes = pd.DataFrame(
+        {
+            "capture_id": ["c1", "c2", "c3"],
+            "pano_id": ["p1", None, None],
+            "snapshot_id": [
+                "21d75cd4-aaaa-bbbb-cccc-000000000001",
+                "21d75cd4-aaaa-bbbb-cccc-000000000001",
+                "99e81ab2-aaaa-bbbb-cccc-000000000002",
+            ],
+            "seq_id": ["s1", "s1", "s2"],
+            "capture_time": [now, now, now],
+        }
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        info = data.summarize_snapshots(
+            rosettes, catalog, now=now, bq_bytes=1830539988, bq_cached=False
+        )
+    assert (
+        info["summary_line"]
+        == "snapshots=21d75cd4,99e81ab2 rosettes=3 null_pano_id=2 sequences=2 bq_bytes=1830539988 bq_cached=0"
+    )
+    assert len(info["warnings"]) == 1 and "21d75cd4" in info["warnings"][0]
+    assert len(caught) == 1
+
+    # Empty rosettes raises with available snapshot list
+    with pytest.raises(ValueError, match="21d75cd4"):
+        data.summarize_snapshots(rosettes.iloc[0:0], catalog, now=now)
+
+
+def test_cache_key_includes_snapshot_set_version_template_and_ttl_capped_35d(tmp_path, monkeypatch):
+    import json
+
+    import svi_geo
+
+    df = pd.DataFrame({"a": [1, 2]})
+    client = FakeClient(dry_bytes=1234, df=df)
+    runner = data.QueryRunner(
+        client,
+        cache_dir=tmp_path,
+        cache_ttl_s=90 * 86400,  # > 35 days -> capped to 35 days
+        snapshot_ids=["snap_b", "snap_a"],
+    )
+    assert runner.cache_ttl_s == pytest.approx(35 * 86400.0)
+
+    params = data.rosette_params(lat=28.05, lng=-81.96, radius_m=250.0)
+    sql = data.rosette_sql()
+    p1 = runner._cache_file(sql, params, template_name="rosette_sql")
+    p_same = runner._cache_file(
+        sql, params, template_name="rosette_sql", snapshot_ids=["snap_a", "snap_b"]
+    )
+    assert p1 == p_same
+
+    p_diff_snap = runner._cache_file(
+        sql, params, template_name="rosette_sql", snapshot_ids=["snap_a", "snap_c"]
+    )
+    p_diff_tpl = runner._cache_file(sql, params, template_name="other_template")
+    assert p1 != p_diff_snap
+    assert p1 != p_diff_tpl
+
+    monkeypatch.setattr(svi_geo, "__version__", "9.9.9")
+    p_diff_ver = runner._cache_file(sql, params, template_name="rosette_sql")
+    assert p1 != p_diff_ver
+    monkeypatch.undo()
+
+    # Running writes both .parquet and .json sidecar
+    out = runner.run(sql, params, template_name="rosette_sql")
+    assert out.equals(df)
+    assert p1.exists()
+    sidecar = p1.with_suffix(".json")
+    assert sidecar.exists()
+    meta = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert meta["dry_run_bytes"] == 1234
+    assert meta["billed_bytes"] == 1234
+    assert meta["snapshot_ids"] == ["snap_a", "snap_b"]
+    assert meta["template_name"] == "rosette_sql"
+
+
+def test_last_cost_reports_bytes_usd(tmp_path):
+    df = pd.DataFrame({"a": [1]})
+    client = FakeClient(dry_bytes=1_830_539_988, df=df)
+    runner = data.QueryRunner(client, cache_dir=tmp_path, snapshot_ids=["snap_1"])
+    sql = data.rosette_sql()
+    params = data.rosette_params()
+
+    runner.run(sql, params, template_name="rosette_sql")
+    cost_cold = runner.last_cost()
+    assert cost_cold["bytes"] == 1_830_539_988
+    assert cost_cold["dry_run_bytes"] == 1_830_539_988
+    assert cost_cold["cached"] is False
+    expected_usd = 1_830_539_988 / (1024**4) * 6.25
+    assert cost_cold["usd"] == pytest.approx(expected_usd)
+
+    # Second run hits local parquet cache -> 0 bytes billed, $0.00, cached=True
+    runner.run(sql, params, template_name="rosette_sql")
+    cost_cached = runner.last_cost()
+    assert cost_cached["bytes"] == 0
+    assert cost_cached["dry_run_bytes"] == 1_830_539_988
+    assert cost_cached["usd"] == 0.0
+    assert cost_cached["cached"] is True
+
+
+def test_include_unpublished_param_toggles_predicate():
+    sql = data.rosette_sql()
+    assert "@include_unpublished" in sql
+    p_true = {p.name: p for p in data.build_params(data.rosette_params(include_unpublished=True))}
+    p_false = {p.name: p for p in data.build_params(data.rosette_params(include_unpublished=False))}
+    assert p_true["include_unpublished"].type_ == "BOOL"
+    assert p_true["include_unpublished"].value is True
+    assert p_false["include_unpublished"].type_ == "BOOL"
+    assert p_false["include_unpublished"].value is False

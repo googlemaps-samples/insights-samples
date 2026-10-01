@@ -267,6 +267,7 @@ class QueryRunner:
         cache_dir: str | Path | None = None,
         cache_ttl_s: float = 7 * 24 * 3600,
         allowed_datasets: Sequence[str] | None = None,
+        snapshot_ids: Sequence[str] | None = None,
     ):
         if max_bytes > HARD_MAX_BYTES:
             raise ValueError(f"max_bytes must be <= {HARD_MAX_BYTES}")
@@ -279,7 +280,10 @@ class QueryRunner:
         self.log = log
         self.cache_dir = cache_dir
         self.cache_ttl_s = min(float(cache_ttl_s), 35 * 24 * 3600.0)
+        self.snapshot_ids: tuple[str, ...] = tuple(sorted(str(s) for s in (snapshot_ids or ())))
         self.last_dry_run_bytes: int | None = None
+        self.last_billed_bytes: int = 0
+        self.last_cached: bool = False
         self.total_billed_estimate = 0
 
     def dry_run(
@@ -308,15 +312,28 @@ class QueryRunner:
         refresh: bool = False,
         *,
         allow_table_free: bool = False,
+        template_name: str = "",
+        snapshot_ids: Sequence[str] | None = None,
     ) -> pd.DataFrame:
         self._check(sql, allow_table_free=allow_table_free)
-        cache_file = self._cache_file(sql, params)
+        cache_file = self._cache_file(
+            sql, params, template_name=template_name, snapshot_ids=snapshot_ids
+        )
         if (
             not refresh
             and cache_file is not None
             and cache_file.exists()
             and time.time() - cache_file.stat().st_mtime < self.cache_ttl_s
         ):
+            self.last_cached = True
+            self.last_billed_bytes = 0
+            sidecar = cache_file.with_suffix(".json")
+            if sidecar.exists():
+                try:
+                    meta = json.loads(sidecar.read_text(encoding="utf-8"))
+                    self.last_dry_run_bytes = int(meta.get("dry_run_bytes", 0))
+                except Exception:  # noqa: BLE001
+                    pass
             if self.log:
                 self.log(f"[bigquery] local cache hit {cache_file.name} (0 bytes billed)")
             return pd.read_parquet(cache_file)
@@ -329,17 +346,71 @@ class QueryRunner:
             maximum_bytes_billed=self.max_bytes, query_parameters=build_params(params)
         )
         job = self.client.query(sql, job_config=cfg)
-        self.total_billed_estimate += n
+        billed = int(getattr(job, "total_bytes_billed", None) or n)
+        self.last_cached = False
+        self.last_billed_bytes = billed
+        self.total_billed_estimate += billed
         df = job.to_dataframe()
         if cache_file is not None:
+            import svi_geo
+
             cache_file.parent.mkdir(parents=True, exist_ok=True)
             df.to_parquet(cache_file)
+            snaps = sorted(
+                str(s) for s in (snapshot_ids if snapshot_ids is not None else self.snapshot_ids)
+            )
+            sidecar_payload = {
+                "dry_run_bytes": int(n),
+                "billed_bytes": int(billed),
+                "job_id": str(getattr(job, "job_id", "") or ""),
+                "created": dt.datetime.now(dt.timezone.utc).isoformat(),
+                "snapshot_ids": snaps,
+                "template_name": str(template_name),
+                "version": str(getattr(svi_geo, "__version__", "0.1.0")),
+            }
+            cache_file.with_suffix(".json").write_text(
+                json.dumps(sidecar_payload, indent=2, sort_keys=True), encoding="utf-8"
+            )
         return df
 
-    def _cache_file(self, sql: str, params: Params | None) -> Path | None:
+    def last_cost(self) -> dict[str, Any]:
+        """Return `{bytes, dry_run_bytes, usd, cached}` for the most recent query (`$6.25 / TiB`)."""
+        billed = 0 if self.last_cached else int(self.last_billed_bytes or 0)
+        dry = int(self.last_dry_run_bytes or 0)
+        usd = float(billed / (1024**4) * 6.25)
+        return {
+            "bytes": billed,
+            "dry_run_bytes": dry,
+            "usd": usd,
+            "cached": bool(self.last_cached),
+        }
+
+    def _cache_file(
+        self,
+        sql: str,
+        params: Params | None,
+        *,
+        template_name: str = "",
+        snapshot_ids: Sequence[str] | None = None,
+    ) -> Path | None:
         if self.cache_dir is None:
             return None
-        key = json.dumps([sql, [_param_key(p) for p in build_params(params)]], sort_keys=True)
+        import svi_geo
+
+        snaps = sorted(
+            str(s) for s in (snapshot_ids if snapshot_ids is not None else self.snapshot_ids)
+        )
+        ver = str(getattr(svi_geo, "__version__", "0.1.0"))
+        key = json.dumps(
+            [
+                str(template_name),
+                sql,
+                [_param_key(p) for p in build_params(params)],
+                snaps,
+                ver,
+            ],
+            sort_keys=True,
+        )
         return Path(self.cache_dir) / f"{hashlib.sha256(key.encode()).hexdigest()[:24]}.parquet"
 
     def _check(self, sql: str, *, allow_table_free: bool = False) -> None:
@@ -419,9 +490,9 @@ ROSETTE_SQL = rosette_sql(PANO_LATEST)
 
 def rosette_params(
     *,
-    lat: float,
-    lng: float,
-    radius_m: float,
+    lat: float = 28.0502,
+    lng: float = -81.9601,
+    radius_m: float = 250.0,
     snapshot_id: str | None = None,
     include_unpublished: bool = True,
     max_dt_ms: int = 5000,
@@ -461,6 +532,64 @@ def snapshot_catalog_sql(table: str = SNAP_TABLE) -> str:
     if not is_pano_table(table):
         raise DisallowedTable(table)
     return _SNAPSHOT_CATALOG_TEMPLATE.replace("__TABLE__", table)
+
+
+def summarize_snapshots(
+    rosettes: pd.DataFrame,
+    catalog: pd.DataFrame | None = None,
+    *,
+    now: dt.datetime | None = None,
+    warn_within_days: float = 3.0,
+    bq_bytes: int = 0,
+    bq_cached: bool = False,
+) -> dict[str, Any]:
+    """Join returned `snapshot_id`s to `catalog`, warn on imminent expiry, and build the checker line."""
+    import warnings
+
+    if rosettes.empty:
+        avail = (
+            ", ".join(str(s)[:8] for s in catalog["snapshot_id"].tolist())
+            if catalog is not None and not catalog.empty and "snapshot_id" in catalog.columns
+            else "none"
+        )
+        raise ValueError(f"AOI query returned 0 rosettes; available SV_PANO snapshots: {avail}")
+    now_dt = now or dt.datetime.now(dt.timezone.utc)
+    snap_ids = (
+        sorted(str(s) for s in rosettes["snapshot_id"].dropna().unique().tolist())
+        if "snapshot_id" in rosettes.columns
+        else []
+    )
+    snap_short = ",".join(s[:8] for s in snap_ids) or "none"
+    n_rosettes = int(len(rosettes))
+    n_null_pano = int(rosettes["pano_id"].isna().sum()) if "pano_id" in rosettes.columns else 0
+    n_seqs = int(rosettes["seq_id"].nunique()) if "seq_id" in rosettes.columns else 0
+    summary_line = (
+        f"snapshots={snap_short} rosettes={n_rosettes} null_pano_id={n_null_pano} "
+        f"sequences={n_seqs} bq_bytes={int(bq_bytes)} bq_cached={1 if bq_cached else 0}"
+    )
+
+    warnings_list: list[str] = []
+    snap_records: list[dict[str, Any]] = []
+    if catalog is not None and not catalog.empty and "snapshot_id" in catalog.columns:
+        cat_by_id = {str(r["snapshot_id"]): r for r in catalog.to_dict("records")}
+        for sid in snap_ids:
+            rec = cat_by_id.get(sid)
+            if rec is None:
+                continue
+            snap_records.append(rec)
+            exp = rec.get("expires_about")
+            if exp is not None and pd.notna(exp):
+                exp_dt = pd.to_datetime(exp, utc=True).to_pydatetime()
+                if exp_dt < now_dt + dt.timedelta(days=float(warn_within_days)):
+                    msg = f"Snapshot {sid[:8]} expires soon ({exp_dt.isoformat()})"
+                    warnings_list.append(msg)
+                    warnings.warn(msg, UserWarning, stacklevel=2)
+    return {
+        "summary_line": summary_line,
+        "warnings": warnings_list,
+        "snapshots": snap_records,
+        "snapshot_ids": snap_ids,
+    }
 
 
 _CLUSTER_POINTS_SQL = """
