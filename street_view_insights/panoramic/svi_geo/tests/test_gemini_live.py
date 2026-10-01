@@ -242,3 +242,29 @@ def test_low_thinking_uses_fewer_thought_tokens_than_medium(svi_project, rendere
     assert out_low is not None and out_med is not None
     print(f"thoughts_tokens: LOW={r_low.cost.thoughts_tokens} MEDIUM={r_med.cost.thoughts_tokens}")
     assert r_low.cost.thoughts_tokens <= r_med.cost.thoughts_tokens
+
+
+@pytest.mark.live
+def test_live_uc4_measure_roof_angles_within_4deg(svi_project):
+    """U11 live check: uc4_measure_roof_angles eave angle agrees within +-4 deg of roof.py fitLine."""
+    import cv2
+    import numpy as np
+
+    from svi_geo import usecases as uc
+
+    # Synthetic 640x480 house facade + roof with a clear horizontal eave line at row 160 (angle 0.0 deg)
+    img = np.full((480, 640, 3), 235, dtype=np.uint8)
+    img[160:380, 80:560] = (140, 155, 175)  # facade wall below eave
+    img[80:160, 80:560] = (70, 80, 95)  # roof band above eave
+    cv2.line(img, (80, 160), (560, 160), (20, 20, 20), 4)
+
+    client = gemini_client.make_vertex_client(svi_project, credentials=auth.get_credentials())
+    backend = gemini_client.VertexGeminiBackend(
+        client, thinking_level="MEDIUM", media_resolution="HIGH"
+    )
+    r = gemini_client.GeminiRunner(backend, max_calls=3, concurrency=1)
+    res = asyncio.run(uc.uc4_measure_roof_angles(img, r, tol_deg=4.0))
+    assert res["agree"] is True, f"Expected agreement within 4 deg, got {res['agreement_line']}"
+    assert res["delta_deg"] <= 4.0
+    assert r.cost.code_exec_runs >= 1
+    assert r.cost.code_exec_ok == r.cost.code_exec_runs

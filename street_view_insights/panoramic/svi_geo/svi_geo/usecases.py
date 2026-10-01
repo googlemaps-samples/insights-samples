@@ -818,3 +818,350 @@ async def uc4_run(
         ),
         "redaction_overlap_max": max(redactions, default=0.0),
     }
+
+
+# --------------------------------------------------- Agentic-vision cells (U11)
+
+MEASURE_STDOUT_PATTERN = r"MEASURE:\s*\{"
+
+UC4_AGENTIC_PROMPT = (
+    "You MUST use Python code execution with OpenCV/NumPy on the input roof image to detect "
+    "straight line segments in the upper roof region (rows 0.15*H..0.60*H, length >= 20 px), "
+    "compute the dominant near-horizontal eave angle in degrees in [-45, 45] (0 = horizontal), "
+    "optional rake angle in degrees, LSD overlap fraction in [0, 1], and segment count. "
+    "You MUST print a line starting with `MEASURE: {...}` containing JSON with keys "
+    "`eave_angle_deg` and `lsd_overlap_fraction`, then return the final JSON matching the schema."
+)
+
+UC1_AGENTIC_PROMPT = (
+    "You MUST use Python code execution with OpenCV/NumPy on the house facade image to compute "
+    "the horizontal Sobel-y gradient row profile, count prominent window/storey bands, and "
+    "estimate the number of building stories (1..4). You MUST print a line starting with "
+    "`MEASURE: {...}` containing JSON with keys `window_rows` and `estimated_stories`, then "
+    "return the final JSON matching the schema."
+)
+
+UC2_AGENTIC_PROMPT = (
+    "You MUST use Python code execution with OpenCV/NumPy on the utility-pole / sign-post crop "
+    "to detect near-vertical line segments, measure the dominant pole lean angle in degrees "
+    "from vertical in [-45, 45] (0 = perfectly vertical), and vertical support fraction in [0, 1]. "
+    "You MUST print a line starting with `MEASURE: {...}` containing JSON with keys "
+    "`lean_angle_deg` and `vertical_support`, then return the final JSON matching the schema."
+)
+
+UC3_AGENTIC_PROMPT = (
+    "You MUST use Python code execution with OpenCV/NumPy on the road surface crop to compute "
+    "the mean luminance (`mean_luma` in 0..255), mean Sobel gradient (`grad_mean`), and row "
+    "index (`change_row_norm` in 0..1000 or null) of the strongest vertical texture change. "
+    "You MUST print a line starting with `MEASURE: {...}` containing JSON with keys "
+    "`mean_luma` and `grad_mean`, then return the final JSON matching the schema."
+)
+
+
+def _local_eave_angle_and_overlay(
+    image: np.ndarray, roof_box: Sequence[float] | None = None
+) -> tuple[float, np.ndarray]:
+    import math
+
+    import cv2
+
+    h, w = image.shape[:2]
+    if roof_box is not None and len(roof_box) == 4:
+        x0, y0, x1, y1 = (float(v) for v in roof_box)
+    else:
+        x0, y0, x1, y1 = 0.05 * w, 0.12 * h, 0.95 * w, 0.60 * h
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    det = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD)
+    raw = det.detect(gray)[0]
+    segs = np.zeros((0, 4), dtype=float) if raw is None else raw.reshape(-1, 4).astype(float)
+
+    overlay = image.copy() if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    pts_for_fit: list[tuple[float, float]] = []
+    angles: list[float] = []
+    weights: list[float] = []
+    for ax, ay, bx, by in segs:
+        mx, my = 0.5 * (ax + bx), 0.5 * (ay + by)
+        if not (x0 <= mx <= x1 and y0 <= my <= y1):
+            continue
+        length = math.hypot(bx - ax, by - ay)
+        if length < 20.0:
+            continue
+        dx, dy = (bx - ax, by - ay) if bx >= ax else (ax - bx, ay - by)
+        ang = math.degrees(math.atan2(dy, max(1e-6, dx)))
+        if abs(ang) <= 35.0:
+            angles.append(ang)
+            weights.append(length)
+            pts_for_fit.extend([(ax, ay), (bx, by)])
+            cv2.line(
+                overlay,
+                (int(round(ax)), int(round(ay))),
+                (int(round(bx)), int(round(by))),
+                (46, 160, 67),
+                2,
+            )
+
+    if len(pts_for_fit) >= 4:
+        arr = np.asarray(pts_for_fit, dtype=np.float32)
+        vx, vy, cx, cy = cv2.fitLine(arr, cv2.DIST_HUBER, 0, 0.01, 0.01)
+        vx_f, vy_f = float(vx[0]), float(vy[0])
+        if vx_f < 0:
+            vx_f, vy_f = -vx_f, -vy_f
+        local_deg = float(math.degrees(math.atan2(vy_f, max(1e-6, vx_f))))
+        if angles:
+            # Anchor to length-weighted median angle when multiple heights shift a single line fit
+            order = np.argsort(angles)
+            cum = np.cumsum(np.asarray(weights)[order])
+            med_deg = float(np.asarray(angles)[order][np.searchsorted(cum, 0.5 * cum[-1])])
+            if abs(local_deg - med_deg) > 2.0:
+                local_deg = med_deg
+        c_x, c_y = float(cx[0]), float(cy[0])
+        rad = math.radians(local_deg)
+        p1 = (int(round(c_x - 120 * math.cos(rad))), int(round(c_y - 120 * math.sin(rad))))
+        p2 = (int(round(c_x + 120 * math.cos(rad))), int(round(c_y + 120 * math.sin(rad))))
+        cv2.line(overlay, p1, p2, (11, 87, 208), 2)
+    else:
+        local_deg = 0.0
+    return local_deg, overlay
+
+
+async def uc4_measure_roof_angles(
+    image: np.ndarray,
+    runner: gc.GeminiRunner,
+    *,
+    roof_box: Sequence[float] | None = None,
+    tol_deg: float = 4.0,
+    seed: int | None = 0,
+) -> dict[str, Any]:
+    """Run one validated code-execution call on a roof crop and cross-check eave angle locally."""
+    h, w = image.shape[:2]
+    reply, trace = await runner.ask(
+        [UC4_AGENTIC_PROMPT, image],
+        schemas.RoofAngleMeasurement,
+        code_execution=True,
+        thinking_level="MEDIUM",
+        media_resolution="HIGH",
+        expect_stdout=MEASURE_STDOUT_PATTERN,
+        validator=lambda r: None,
+        seed=seed,
+        return_trace=True,
+    )
+    gc.check_code_exec_trace(trace, expect_stdout=MEASURE_STDOUT_PATTERN, sent_image_shape=(h, w))
+    local_deg, overlay = _local_eave_angle_and_overlay(image, roof_box=roof_box)
+    delta = (
+        abs(float(reply.eave_angle_deg) - float(local_deg)) if reply is not None else float("inf")
+    )
+    agree = bool(delta <= float(tol_deg))
+    status = "agree" if agree else "disagree"
+    return {
+        "measurement": reply,
+        "trace": trace,
+        "local_eave_angle_deg": local_deg,
+        "delta_deg": delta,
+        "agree": agree,
+        "agreement_line": f"code_exec_agreement={status}(eave_delta_deg={delta:.2f},tol={tol_deg:.1f})",
+        "overlay": overlay,
+    }
+
+
+async def uc1_count_storeys(
+    image: np.ndarray,
+    runner: gc.GeminiRunner,
+    *,
+    box_2d: Sequence[int] | None = None,
+    fused_stories: int | None = None,
+    tol_rows: int = 1,
+    seed: int | None = 0,
+) -> dict[str, Any]:
+    """Run one validated code-execution call on the best house crop and cross-check storey count."""
+    import cv2
+
+    h, w = image.shape[:2]
+    crop = image
+    if box_2d is not None and len(box_2d) == 4:
+        x0, y0, x1, y1 = (int(round(v)) for v in schemas.box_2d_to_pixels(box_2d, w, h))
+        x0, x1 = max(0, min(x0, w - 1)), max(1, min(x1, w))
+        y0, y1 = max(0, min(y0, h - 1)), max(1, min(y1, h))
+        if x1 - x0 >= 16 and y1 - y0 >= 16:
+            crop = image[y0:y1, x0:x1]
+    ch, cw = crop.shape[:2]
+    reply, trace = await runner.ask(
+        [UC1_AGENTIC_PROMPT, crop],
+        schemas.StoreyRowMeasurement,
+        code_execution=True,
+        thinking_level="MEDIUM",
+        media_resolution="HIGH",
+        expect_stdout=MEASURE_STDOUT_PATTERN,
+        validator=lambda r: None,
+        seed=seed,
+        return_trace=True,
+    )
+    gc.check_code_exec_trace(trace, expect_stdout=MEASURE_STDOUT_PATTERN, sent_image_shape=(ch, cw))
+
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    gy = np.abs(cv2.Sobel(gray.astype(np.float32), cv2.CV_32F, 0, 1, ksize=3))
+    prof = gy.mean(axis=1)
+    k = max(3, ch // 15)
+    smooth = np.convolve(prof, np.ones(k) / k, mode="same")
+    thresh = float(np.percentile(smooth, 65.0))
+    min_sep = max(4, int(0.18 * ch))
+    peaks: list[int] = []
+    for r_idx in range(min_sep // 2, ch - min_sep // 2):
+        if smooth[r_idx] >= thresh and smooth[r_idx] == np.max(
+            smooth[max(0, r_idx - min_sep // 2) : min(ch, r_idx + min_sep // 2 + 1)]
+        ):
+            if not peaks or r_idx - peaks[-1] >= min_sep:
+                peaks.append(r_idx)
+    sobel_stories = int(np.clip(len(peaks), 1, 4))
+    ref_stories = int(fused_stories) if fused_stories is not None else sobel_stories
+    est = int(reply.estimated_stories) if reply is not None else 0
+    delta = min(abs(est - ref_stories), abs(est - sobel_stories))
+    agree = bool(delta <= int(tol_rows))
+    status = "agree" if agree else "disagree"
+
+    overlay = crop.copy() if crop.ndim == 3 else cv2.cvtColor(crop, cv2.COLOR_GRAY2BGR)
+    for yn in reply.row_y_centres_norm if reply else []:
+        ry = int(round(yn / 1000.0 * ch))
+        cv2.line(overlay, (0, ry), (cw - 1, ry), (11, 87, 208), 2)
+    return {
+        "measurement": reply,
+        "trace": trace,
+        "local_stories": ref_stories,
+        "sobel_peaks": sobel_stories,
+        "delta_rows": delta,
+        "agree": agree,
+        "agreement_line": f"code_exec_agreement={status}(stories_delta={delta},tol={tol_rows})",
+        "overlay": overlay,
+    }
+
+
+async def uc2_measure_post_lean(
+    image: np.ndarray,
+    runner: gc.GeminiRunner,
+    *,
+    box_px: Sequence[float] | None = None,
+    tol_deg: float = 3.0,
+    seed: int | None = 0,
+) -> dict[str, Any]:
+    """Run one validated code-execution call on a located pole/sign crop and cross-check lean angle."""
+    import math
+
+    import cv2
+
+    h, w = image.shape[:2]
+    if box_px is None or len(box_px) != 4:
+        box_px = (0.35 * w, 0.15 * h, 0.65 * w, 0.85 * h)
+    x0, y0, x1, y1 = (float(v) for v in box_px)
+    ix0 = max(0, int(round(min(x0, x1))) - 12)
+    ix1 = min(w, int(round(max(x0, x1))) + 12)
+    iy0 = max(0, int(round(min(y0, y1))) - 8)
+    iy1 = min(h, int(round(max(y0, y1))) + 8)
+    crop = image[iy0:iy1, ix0:ix1] if (ix1 - ix0 >= 8 and iy1 - iy0 >= 8) else image
+    ch, cw = crop.shape[:2]
+
+    reply, trace = await runner.ask(
+        [UC2_AGENTIC_PROMPT, crop],
+        schemas.PostLeanMeasurement,
+        code_execution=True,
+        thinking_level="MEDIUM",
+        media_resolution="HIGH",
+        expect_stdout=MEASURE_STDOUT_PATTERN,
+        validator=lambda r: None,
+        seed=seed,
+        return_trace=True,
+    )
+    gc.check_code_exec_trace(trace, expect_stdout=MEASURE_STDOUT_PATTERN, sent_image_shape=(ch, cw))
+
+    local_sup = cvc.vertical_post_support(image, box_px, max_tilt_deg=12.0)
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    raw = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD).detect(gray)[0]
+    segs = np.zeros((0, 4), dtype=float) if raw is None else raw.reshape(-1, 4).astype(float)
+    leans: list[float] = []
+    weights: list[float] = []
+    overlay = crop.copy() if crop.ndim == 3 else cv2.cvtColor(crop, cv2.COLOR_GRAY2BGR)
+    for ax, ay, bx, by in segs:
+        dx = bx - ax
+        dy = by - ay
+        if dy < 0:
+            dx, dy = -dx, -dy
+        if dy < 6.0:
+            continue
+        lean = math.degrees(math.atan2(dx, dy))
+        if abs(lean) <= 15.0:
+            leans.append(lean)
+            weights.append(math.hypot(dx, dy))
+            cv2.line(
+                overlay,
+                (int(round(ax)), int(round(ay))),
+                (int(round(bx)), int(round(by))),
+                (46, 160, 67),
+                2,
+            )
+    if leans:
+        order = np.argsort(leans)
+        cum = np.cumsum(np.asarray(weights)[order])
+        local_lean = float(np.asarray(leans)[order][np.searchsorted(cum, 0.5 * cum[-1])])
+    else:
+        local_lean = 0.0
+    delta = abs(float(reply.lean_angle_deg) - local_lean) if reply is not None else float("inf")
+    agree = bool(delta <= float(tol_deg))
+    status = "agree" if agree else "disagree"
+    return {
+        "measurement": reply,
+        "trace": trace,
+        "local_lean_angle_deg": local_lean,
+        "local_vertical_support": local_sup,
+        "delta_deg": delta,
+        "agree": agree,
+        "agreement_line": f"code_exec_agreement={status}(lean_delta_deg={delta:.2f},tol={tol_deg:.1f})",
+        "overlay": overlay,
+    }
+
+
+async def uc3_locate_material_boundary(
+    image: np.ndarray,
+    runner: gc.GeminiRunner,
+    *,
+    tol_rel: float = 0.10,
+    seed: int | None = 0,
+) -> dict[str, Any]:
+    """Run one validated code-execution call on a road/IPM patch and cross-check texture stats."""
+    import cv2
+
+    h, w = image.shape[:2]
+    reply, trace = await runner.ask(
+        [UC3_AGENTIC_PROMPT, image],
+        schemas.MaterialBoundaryMeasurement,
+        code_execution=True,
+        thinking_level="MEDIUM",
+        media_resolution="HIGH",
+        expect_stdout=MEASURE_STDOUT_PATTERN,
+        validator=lambda r: None,
+        seed=seed,
+        return_trace=True,
+    )
+    gc.check_code_exec_trace(trace, expect_stdout=MEASURE_STDOUT_PATTERN, sent_image_shape=(h, w))
+
+    desc = cvc.road_descriptor(image)
+    lab_luma = float(desc[0] * 255.0)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    gray_luma = float(gray[gray > 0].mean()) if np.any(gray > 0) else float(gray.mean())
+    rep_luma = float(reply.mean_luma) if reply is not None else -1e9
+    denom = max(1.0, lab_luma, gray_luma)
+    rel_err = min(abs(rep_luma - lab_luma), abs(rep_luma - gray_luma)) / denom
+    agree = bool(rel_err <= float(tol_rel))
+    status = "agree" if agree else "disagree"
+
+    overlay = image.copy() if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    if reply is not None and reply.change_row_norm is not None:
+        ry = int(round(reply.change_row_norm / 1000.0 * h))
+        cv2.line(overlay, (0, ry), (w - 1, ry), (11, 87, 208), 2)
+    return {
+        "measurement": reply,
+        "trace": trace,
+        "local_lab_luma": lab_luma,
+        "local_gray_luma": gray_luma,
+        "rel_error": rel_err,
+        "agree": agree,
+        "agreement_line": f"code_exec_agreement={status}(luma_rel_err={rel_err:.3f},tol={tol_rel:.2f})",
+        "overlay": overlay,
+    }

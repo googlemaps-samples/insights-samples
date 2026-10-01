@@ -446,3 +446,73 @@ def test_include_unpublished_param_toggles_predicate():
     assert p_true["include_unpublished"].value is True
     assert p_false["include_unpublished"].type_ == "BOOL"
     assert p_false["include_unpublished"].value is False
+
+
+def test_unnest_only_sql_allowed_only_with_explicit_flag_and_zero_bytes():
+    sql = data.cluster_points_sql()
+    # Without allow_table_free=True, table-free SQL is rejected
+    with pytest.raises(data.DisallowedTable):
+        data.assert_allowed_table(sql, allow_table_free=False)
+    # With allow_table_free=True, UNNEST(@points) SQL is accepted
+    data.assert_allowed_table(sql, allow_table_free=True)
+    # Table references or backticks are rejected when allow_table_free=True
+    with pytest.raises(data.DisallowedTable):
+        data.assert_allowed_table(
+            f"SELECT capture_id FROM `{data.PANO_LATEST}`, UNNEST(@points)", allow_table_free=True
+        )
+    with pytest.raises(data.DisallowedTable):
+        data.assert_allowed_table("SELECT 1", allow_table_free=True)
+
+    # Dry-run must be 0 bytes when allow_table_free=True
+    pts = [{"entity_id": "e1", "cls": "HOUSE", "lat": 28.05, "lng": -81.96}]
+    params = data.cluster_points_params(pts)
+    runner_zero = data.QueryRunner(FakeClient(dry_bytes=0, df=pd.DataFrame()))
+    assert runner_zero.dry_run(sql, params, allow_table_free=True) == 0
+
+    runner_nonzero = data.QueryRunner(FakeClient(dry_bytes=1024, df=pd.DataFrame()))
+    with pytest.raises(data.QueryTooExpensive, match="0 bytes"):
+        runner_nonzero.dry_run(sql, params, allow_table_free=True)
+
+
+def test_dbscan_sql_param_shape_and_point_cap():
+    pts = [
+        {"entity_id": "e1", "cls": "UTILITY_POLE", "lat": 28.0502, "lng": -81.9601},
+        {"entity_id": "e2", "cls": "ROAD_SIGN", "lat": 28.0503, "lng": -81.9602},
+    ]
+    params = {p.name: p for p in data.cluster_points_params(pts, eps_m=4.5, min_pts=2)}
+    assert set(params) == {"points", "eps_m", "min_pts"}
+    assert params["points"].array_type == "STRUCT"
+    assert len(params["points"].values) == 2
+    assert params["eps_m"].value == pytest.approx(4.5)
+    assert params["min_pts"].value == 2
+
+    too_many = [
+        {"entity_id": f"e{i}", "cls": "UTILITY_POLE", "lat": 28.05, "lng": -81.96}
+        for i in range(data.MAX_UNNEST_POINTS + 1)
+    ]
+    with pytest.raises(ValueError, match="exceeds cap"):
+        data.cluster_points_params(too_many)
+
+
+def test_target_framing_columns_present_and_bearing_matches_geo_bearing():
+    from pathlib import Path
+
+    from svi_geo import geo
+
+    sql = data.rosette_sql(include_target=True)
+    for col in ("target_dist_m", "target_bearing_deg", "best_cam"):
+        assert col in sql
+
+    fix_path = Path(__file__).resolve().parent / "fixtures" / "rosettes_lakeland_hashed.parquet"
+    rosettes = pd.read_parquet(fix_path).head(25)
+    tlat, tlng = 28.05047, -81.96015
+    framed = data.attach_target_framing(rosettes, tlat=tlat, tlng=tlng)
+    for col in ("target_dist_m", "target_bearing_deg", "best_cam"):
+        assert col in framed.columns
+    for row in framed.itertuples():
+        expected_brg = float(geo.bearing_deg(row.lat, row.lng, tlat, tlng))
+        assert abs(float(geo.angdiff(row.target_bearing_deg, expected_brg))) <= 0.5
+        bc = row.best_cam
+        assert isinstance(bc, dict)
+        assert 0 <= int(bc["k"]) < 6
+        assert float(bc["off_axis_deg"]) <= 40.0

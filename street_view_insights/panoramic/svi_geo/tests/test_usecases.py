@@ -353,3 +353,117 @@ def test_uc2_peak_rss_reduced_with_scaled_decode():
 
     assert scale == 0.5
     assert peak_scaled <= 0.60 * peak_full
+
+
+class _ScriptedCodeExecBackend:
+    def __init__(self, reply_text: str, stdout_text: str | None = 'MEASURE: {"ok": 1}\n'):
+        self.reply_text = reply_text
+        self.stdout_text = stdout_text
+        self.model = gemini_client.DEFAULT_MODEL
+        self.location = "global"
+
+    async def generate(self, parts, schema, code_execution=False, **kw):
+        steps = []
+        if code_execution and self.stdout_text is not None:
+            steps.append(
+                gemini_client.CodeExecStep(
+                    language="PYTHON",
+                    code="import cv2, numpy as np\nprint('MEASURE: {\"ok\": 1}')",
+                    outcome="OUTCOME_OK",
+                    stdout=self.stdout_text,
+                )
+            )
+        return gemini_client.RawReply(
+            text=self.reply_text,
+            usage={
+                "prompt_token_count": 300,
+                "tool_use_prompt_token_count": 120,
+                "candidates_token_count": 60,
+                "thoughts_token_count": 80,
+            },
+            code_outputs=[self.stdout_text] if self.stdout_text else [],
+            exec_trace=gemini_client.CodeExecTrace(steps=steps),
+        )
+
+
+def test_uc4_measure_roof_angles_validates_trace_and_flags_disagreement():
+    img = images_from_dummy()
+    # Agreeing model angle (0.5 deg vs horizontal 0.0 deg line, tolerance 4.0 deg)
+    b_ok = _ScriptedCodeExecBackend(
+        '{"eave_angle_deg": 0.5, "rake_angle_deg": null, "lsd_overlap_fraction": 0.75, "n_segments": 3, "confidence": 0.92}',
+        'MEASURE: {"eave_angle_deg": 0.5, "lsd_overlap_fraction": 0.75}\n',
+    )
+    runner_ok = gemini_client.GeminiRunner(b_ok, max_calls=5)
+    res_ok = asyncio.run(uc.uc4_measure_roof_angles(img, runner_ok))
+    assert res_ok["agree"] is True
+    assert res_ok["agreement_line"].startswith("code_exec_agreement=agree(")
+    assert runner_ok.cost.code_exec_runs == 1
+    assert runner_ok.cost.code_exec_ok == 1
+
+    # Disagreeing model angle (18.0 deg vs 0.0 deg -> > 4.0 deg tolerance)
+    b_bad = _ScriptedCodeExecBackend(
+        '{"eave_angle_deg": 18.0, "rake_angle_deg": null, "lsd_overlap_fraction": 0.75, "n_segments": 3, "confidence": 0.92}',
+        'MEASURE: {"eave_angle_deg": 18.0, "lsd_overlap_fraction": 0.75}\n',
+    )
+    runner_bad = gemini_client.GeminiRunner(b_bad, max_calls=5)
+    res_bad = asyncio.run(uc.uc4_measure_roof_angles(img, runner_bad))
+    assert res_bad["agree"] is False
+    assert res_bad["agreement_line"].startswith("code_exec_agreement=disagree(")
+
+    # Model skips code execution -> CodeExecNotUsed counted as failure
+    b_skip = _ScriptedCodeExecBackend(
+        '{"eave_angle_deg": 0.5, "rake_angle_deg": null, "lsd_overlap_fraction": 0.75, "n_segments": 3, "confidence": 0.92}',
+        stdout_text=None,
+    )
+    runner_skip = gemini_client.GeminiRunner(b_skip, max_calls=5)
+    with pytest.raises(gemini_client.CodeExecNotUsed):
+        asyncio.run(uc.uc4_measure_roof_angles(img, runner_skip))
+    assert runner_skip.cost.failures >= 1
+
+
+def images_from_dummy() -> np.ndarray:
+    from svi_geo import images
+
+    return images.decode(_dummy_fetch("dummy"), scale=0.25)
+
+
+def test_uc1_uc2_uc3_agentic_measurements_validate_and_crosscheck():
+    img = images_from_dummy()
+    h, w = img.shape[:2]
+
+    # UC1 storey count
+    b_uc1 = _ScriptedCodeExecBackend(
+        '{"window_rows": 2, "estimated_stories": 2, "row_y_centres_norm": [350, 650], "confidence": 0.9}',
+        'MEASURE: {"window_rows": 2, "estimated_stories": 2}\n',
+    )
+    r_uc1 = gemini_client.GeminiRunner(b_uc1, max_calls=5)
+    out_uc1 = asyncio.run(
+        uc.uc1_count_storeys(img, r_uc1, box_2d=[200, 300, 800, 700], fused_stories=2)
+    )
+    assert "code_exec_agreement=" in out_uc1["agreement_line"]
+
+    # UC2 pole lean angle
+    b_uc2 = _ScriptedCodeExecBackend(
+        '{"lean_angle_deg": 0.4, "vertical_support": 0.85, "confidence": 0.91}',
+        'MEASURE: {"lean_angle_deg": 0.4, "vertical_support": 0.85}\n',
+    )
+    r_uc2 = gemini_client.GeminiRunner(b_uc2, max_calls=5)
+    out_uc2 = asyncio.run(
+        uc.uc2_measure_post_lean(img, r_uc2, box_px=(0.45 * w, 0.30 * h, 0.55 * w, 0.65 * h))
+    )
+    assert out_uc2["agree"] is True
+    assert out_uc2["agreement_line"].startswith("code_exec_agreement=agree(")
+
+    # UC3 road texture / material boundary
+    from svi_geo import cvchecks as cvc
+
+    desc = cvc.road_descriptor(img)
+    expected_luma = float(desc[0] * 255.0)
+    b_uc3 = _ScriptedCodeExecBackend(
+        f'{{"change_row_norm": 500, "mean_luma": {expected_luma:.2f}, "grad_mean": 4.0, "confidence": 0.9}}',
+        f'MEASURE: {{"change_row_norm": 500, "mean_luma": {expected_luma:.2f}, "grad_mean": 4.0}}\n',
+    )
+    r_uc3 = gemini_client.GeminiRunner(b_uc3, max_calls=5)
+    out_uc3 = asyncio.run(uc.uc3_locate_material_boundary(img, r_uc3))
+    assert out_uc3["agree"] is True
+    assert out_uc3["agreement_line"].startswith("code_exec_agreement=agree(")

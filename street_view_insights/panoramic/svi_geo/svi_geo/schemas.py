@@ -365,3 +365,65 @@ class RoofTrace(BaseModel):
     roof_visible: bool
     edges: list[RoofEdge] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
+
+
+class RoofAngleMeasurement(BaseModel):
+    """Agentic-vision (code execution) LSD eave/rake angle measurement on a roof view (UC4)."""
+
+    eave_angle_deg: float = Field(ge=-89.0, le=89.0)
+    rake_angle_deg: float | None = Field(default=None, ge=-89.0, le=89.0)
+    lsd_overlap_fraction: float = Field(ge=0.0, le=1.0)
+    n_segments: int = Field(ge=0)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class StoreyRowMeasurement(BaseModel):
+    """Agentic-vision (code execution) horizontal window-row / storey count on a house crop (UC1)."""
+
+    window_rows: int = Field(ge=0, le=10)
+    estimated_stories: int = Field(ge=1, le=10)
+    row_y_centres_norm: list[int] = Field(
+        default_factory=list, description="normalised y row centres in 0..1000"
+    )
+    confidence: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("row_y_centres_norm")
+    @classmethod
+    def _valid_centres(cls, v: list[int]) -> list[int]:
+        _check_in_range(v, "row_y_centres_norm")
+        return [int(c) for c in v]
+
+
+class PostLeanMeasurement(BaseModel):
+    """Agentic-vision (code execution) vertical lean-angle measurement on a pole/sign crop (UC2)."""
+
+    lean_angle_deg: float = Field(
+        ge=-45.0, le=45.0, description="lean angle in degrees from vertical"
+    )
+    vertical_support: float = Field(ge=0.0, le=1.0)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class MaterialBoundaryMeasurement(BaseModel):
+    """Agentic-vision (code execution) road texture & transition measurement on an IPM/road crop (UC3)."""
+
+    change_row_norm: int | None = Field(
+        default=None, ge=0, le=1000, description="normalised row 0..1000 of material transition"
+    )
+    mean_luma: float = Field(ge=0.0, le=255.0)
+    grad_mean: float = Field(ge=0.0)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class RepeatPassDiff(BaseModel):
+    """Pairwise repeat-pass change detection verdict across two capture dates (O1)."""
+
+    change_detected: bool
+    change_summary: str
+    changed_box_2d: list[int] | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("changed_box_2d")
+    @classmethod
+    def _valid_box(cls, v):
+        return _check_box(v)

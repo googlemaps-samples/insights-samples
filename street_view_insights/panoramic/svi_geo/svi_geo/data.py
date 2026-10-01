@@ -1217,5 +1217,55 @@ def panos_from_frames(frames: pd.DataFrame) -> pd.DataFrame:
 rosettes_from_frames = panos_from_frames
 
 
+def attach_target_framing(
+    rosettes: pd.DataFrame,
+    *,
+    tlat: float,
+    tlng: float,
+) -> pd.DataFrame:
+    """Ensure `target_dist_m`, `target_bearing_deg`, and `best_cam` are present on `rosettes`.
+
+    Matches the columns computed server-side by `rosette_sql(include_target=True)`.
+    """
+    from svi_geo import geo
+
+    out = rosettes.copy()
+    if {"target_dist_m", "target_bearing_deg", "best_cam"} <= set(out.columns):
+        return out
+    dists: list[float] = []
+    bearings: list[float] = []
+    best_cams: list[dict[str, Any] | None] = []
+    for r in out.itertuples(index=False):
+        lat = float(r.lat)
+        lng = float(r.lng)
+        d_m = float(geo.haversine_m(lat, lng, float(tlat), float(tlng)))
+        brg = float(geo.bearing_deg(lat, lng, float(tlat), float(tlng)))
+        dists.append(d_m)
+        bearings.append(brg)
+        cams_raw = getattr(r, "cams", None)
+        best: dict[str, Any] | None = None
+        if cams_raw is not None:
+            for c in list(cams_raw):
+                c_dict = dict(c) if isinstance(c, Mapping) else c.__dict__
+                k = int(c_dict.get("k", 99))
+                if k >= 6:
+                    continue
+                hdg = float(c_dict.get("heading", 0.0))
+                off = abs(float(geo.angdiff(hdg, brg)))
+                cand = {
+                    "k": k,
+                    "observation_id": str(c_dict.get("observation_id", "")),
+                    "heading": hdg,
+                    "off_axis_deg": round(off, 1),
+                }
+                if best is None or off < float(best["off_axis_deg"]):
+                    best = cand
+        best_cams.append(best)
+    out["target_dist_m"] = dists
+    out["target_bearing_deg"] = bearings
+    out["best_cam"] = best_cams
+    return out
+
+
 def make_bigquery_client(project: str = PROJECT, credentials: Any = None) -> bigquery.Client:
     return bigquery.Client(project=project, credentials=credentials)
