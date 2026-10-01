@@ -215,3 +215,30 @@ def test_pinned_code_exec_schema_mode_still_works(svi_project):
     assert out.count == 3
     for got, exp in zip(sorted(out.widths_px), expected_widths, strict=True):
         assert abs(got - exp) <= 3
+
+
+@pytest.mark.live
+def test_low_thinking_uses_fewer_thought_tokens_than_medium(svi_project, rendered_view):
+    """U5 live check: LOW thinking_level uses <= thought tokens than MEDIUM on the same input."""
+    client = gemini_client.make_vertex_client(svi_project, credentials=auth.get_credentials())
+    prompt = pipeline.detection_prompt()
+
+    be_low = gemini_client.VertexGeminiBackend(
+        client, thinking_level="LOW", media_resolution="MEDIUM"
+    )
+    r_low = gemini_client.GeminiRunner(be_low, max_calls=2, concurrency=1)
+
+    be_med = gemini_client.VertexGeminiBackend(
+        client, thinking_level="MEDIUM", media_resolution="MEDIUM"
+    )
+    r_med = gemini_client.GeminiRunner(be_med, max_calls=2, concurrency=1)
+
+    async def _run_both():
+        low = await r_low.ask([prompt, rendered_view], schemas.FrameDetections, seed=42)
+        med = await r_med.ask([prompt, rendered_view], schemas.FrameDetections, seed=42)
+        return low, med
+
+    out_low, out_med = asyncio.run(_run_both())
+    assert out_low is not None and out_med is not None
+    print(f"thoughts_tokens: LOW={r_low.cost.thoughts_tokens} MEDIUM={r_med.cost.thoughts_tokens}")
+    assert r_low.cost.thoughts_tokens <= r_med.cost.thoughts_tokens

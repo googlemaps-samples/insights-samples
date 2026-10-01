@@ -437,3 +437,273 @@ def test_runner_prices_follow_the_backend_model():
 
     runner = gc.GeminiRunner(ModelBackend([]), log=None)
     assert runner.cost.prices == gc.PRICES_BY_MODEL[_m("2.5-pro")]
+
+
+# --------------------------------------------------------------------------- U5: CodeExecTrace, fallback, cost, 429, preview
+
+
+def test_no_model_fallback_by_default(monkeypatch):
+    models_seen = []
+
+    async def _fast_sleep(_delay):
+        return None
+
+    monkeypatch.setattr(asyncio, "sleep", _fast_sleep)
+
+    class _FakeModels:
+        async def generate_content(self, *, model, contents, config):
+            models_seen.append(model)
+            raise TimeoutError("simulated timeout")
+
+    class _FakeAio:
+        models = _FakeModels()
+
+    class _FakeClient:
+        aio = _FakeAio()
+
+    parts = gc.build_parts(["hi"])
+    be = gc.VertexGeminiBackend(_FakeClient(), model=_m("3.1-pro-preview"))
+    assert be.fallback_model is None
+    with pytest.raises(TimeoutError):
+        asyncio.run(be.generate(parts, schemas.PresenceCheck, timeout_s=0.01))
+    assert models_seen == [_m("3.1-pro-preview")] * 3
+
+    # When fallback_model is explicitly configured, it logs and uses fallback on retry
+    models_seen.clear()
+    logs = []
+    be_fb = gc.VertexGeminiBackend(
+        _FakeClient(),
+        model=_m("3.1-pro-preview"),
+        fallback_model=_m("2.5-pro"),
+        log=logs.append,
+    )
+    with pytest.raises(TimeoutError):
+        asyncio.run(be_fb.generate(parts, schemas.PresenceCheck, timeout_s=0.01))
+    assert models_seen[0] == _m("3.1-pro-preview")
+    assert models_seen[1] == _m("2.5-pro")
+    assert be_fb.fallbacks >= 1
+    assert any("fallback" in m for m in logs)
+
+
+def test_check_code_exec_trace_rejects_missing_code_bad_outcome_or_network_imports():
+    img = _img(120, 160)
+    ok_png = images.encode_jpeg(img)
+    good_step = gc.CodeExecStep(
+        code="import cv2\nprint('MEASURE: {\"angle\": 12.3}')",
+        language="PYTHON",
+        outcome="OUTCOME_OK",
+        stdout='MEASURE: {"angle": 12.3}\n',
+        inline_images=[ok_png],
+    )
+    trace = gc.CodeExecTrace(steps=[good_step])
+    checked = gc.check_code_exec_trace(
+        trace, expect_stdout=r"MEASURE:\s*\{", sent_image_shape=img.shape[:2]
+    )
+    assert checked is trace
+
+    # 1. Missing executable_code -> CodeExecNotUsed
+    with pytest.raises(gc.CodeExecNotUsed):
+        gc.check_code_exec_trace(gc.CodeExecTrace(steps=[]))
+
+    # 2. Bad outcome -> CodeExecValidationError
+    bad_outcome = gc.CodeExecTrace(
+        steps=[
+            gc.CodeExecStep(
+                code="x = 1", language="PYTHON", outcome="OUTCOME_FAILED", stdout="Traceback"
+            )
+        ]
+    )
+    with pytest.raises(gc.CodeExecValidationError, match="OUTCOME_OK"):
+        gc.check_code_exec_trace(bad_outcome)
+
+    # 3. Network / subprocess imports -> CodeExecValidationError
+    for forbidden_code in [
+        "import requests\nrequests.get('http://example.com')",
+        "import urllib.request",
+        "import subprocess\nsubprocess.run(['ls'])",
+        "import os\nos.system('id')",
+        "open('/etc/passwd', 'w')",
+    ]:
+        bad_code = gc.CodeExecTrace(
+            steps=[
+                gc.CodeExecStep(
+                    code=forbidden_code,
+                    language="PYTHON",
+                    outcome="OUTCOME_OK",
+                    stdout="MEASURE: {}",
+                )
+            ]
+        )
+        with pytest.raises(gc.CodeExecValidationError):
+            gc.check_code_exec_trace(bad_code)
+
+    # 4. Missing expected stdout pattern -> CodeExecValidationError
+    with pytest.raises(gc.CodeExecValidationError, match="stdout"):
+        gc.check_code_exec_trace(
+            gc.CodeExecTrace(
+                steps=[
+                    gc.CodeExecStep(
+                        code="print('hello')",
+                        language="PYTHON",
+                        outcome="OUTCOME_OK",
+                        stdout="hello\n",
+                    )
+                ]
+            ),
+            expect_stdout=r"MEASURE:\s*\{",
+        )
+
+    # 5. Returned inline image aspect ratio mismatch (> 2%) -> CodeExecValidationError
+    wrong_aspect = images.encode_jpeg(_img(200, 100))
+    with pytest.raises(gc.CodeExecValidationError, match="aspect"):
+        gc.check_code_exec_trace(
+            gc.CodeExecTrace(
+                steps=[
+                    gc.CodeExecStep(
+                        code="x = 1",
+                        language="PYTHON",
+                        outcome="OUTCOME_OK",
+                        stdout='MEASURE: {"a": 1}',
+                        inline_images=[wrong_aspect],
+                    )
+                ]
+            ),
+            sent_image_shape=(120, 160),
+        )
+
+
+def test_runner_code_exec_reasks_on_deadline_and_tracks_runs():
+    class TraceBackend(FakeBackend):
+        async def generate(self, parts, schema, code_execution=False, **kw):
+            self.seen.append((parts, schema, code_execution, kw))
+            if len(self.seen) == 1:
+                trace = gc.CodeExecTrace(
+                    steps=[
+                        gc.CodeExecStep(
+                            code="while True: pass",
+                            language="PYTHON",
+                            outcome="OUTCOME_DEADLINE_EXCEEDED",
+                            stdout="",
+                        )
+                    ]
+                )
+                return gc.RawReply('{"present": true, "confidence": 0.9}', None, exec_trace=trace)
+            trace = gc.CodeExecTrace(
+                steps=[
+                    gc.CodeExecStep(
+                        code="print('MEASURE: {\"present\": true}')",
+                        language="PYTHON",
+                        outcome="OUTCOME_OK",
+                        stdout='MEASURE: {"present": true}\n',
+                    )
+                ]
+            )
+            return gc.RawReply(
+                '{"present": true, "confidence": 0.9}',
+                {
+                    "prompt_token_count": 500,
+                    "tool_use_prompt_token_count": 300,
+                    "candidates_token_count": 50,
+                },
+                code_outputs=['MEASURE: {"present": true}\n'],
+                exec_trace=trace,
+            )
+
+    be = TraceBackend([])
+    runner = gc.GeminiRunner(be, max_calls=5, log=None)
+    res, trace = asyncio.run(
+        runner.ask(
+            ["measure", _img(120, 160)],
+            schemas.PresenceCheck,
+            code_execution=True,
+            validator=lambda r: None,
+            expect_stdout=r"MEASURE:\s*\{",
+            return_trace=True,
+        )
+    )
+    assert res is not None and res.present is True
+    assert trace.ok
+    assert len(be.seen) == 2
+    assert runner.cost.code_exec_runs == 2
+    assert runner.cost.code_exec_ok == 1
+
+
+def test_cost_tracker_counts_tool_cached_media_tokens():
+    c = gc.CostTracker(prices={"input_per_m": 1.50, "output_per_m": 9.00})
+    c.add(
+        {
+            "prompt_token_count": 1000,
+            "tool_use_prompt_token_count": 500,
+            "cached_content_token_count": 400,
+            "candidates_token_count": 200,
+            "thoughts_token_count": 600,
+            "prompt_tokens_details": [
+                {"modality": "IMAGE", "token_count": 750},
+                {"modality": "TEXT", "token_count": 250},
+            ],
+        }
+    )
+    assert c.input_tokens == 1500
+    assert c.tool_use_prompt_tokens == 500
+    assert c.cached_tokens == 400
+    assert c.media_tokens == 750
+    assert c.output_tokens == 800
+    assert c.thoughts_tokens == 600
+    # 400 cached tokens get 75% discount (billed at 0.25x input_per_m), remaining 1100 at 1.0x
+    expected_input_usd = (1100 + 400 * 0.25) / 1e6 * 1.50
+    expected_output_usd = 800 / 1e6 * 9.00
+    assert c.usd == pytest.approx(expected_input_usd + expected_output_usd)
+    s = c.summary(ceiling=0.15)
+    for token in (
+        "Gemini calls=1",
+        "failures=0",
+        "cached=400",
+        "tool_intermediate=500",
+        "thinking_share=",
+        "ceiling=$0.15",
+        "code_exec_runs=0",
+        "ok=0",
+        "fallbacks=0",
+    ):
+        assert token in s, f"missing {token!r} in {s!r}"
+
+
+def test_backoff_halves_concurrency_after_429s():
+    assert gc.DEFAULT_CONCURRENCY == 8
+
+    class RateLimitedBackend(FakeBackend):
+        async def generate(self, parts, schema, code_execution=False, **kw):
+            self.seen.append((parts, schema, code_execution))
+            if len(self.seen) <= 2:
+                raise RuntimeError("429 RESOURCE_EXHAUSTED: quota exceeded")
+            return gc.RawReply('{"present": true, "confidence": 0.9}', None)
+
+    be = RateLimitedBackend([])
+    runner = gc.GeminiRunner(be, max_calls=10, concurrency=8, log=None)
+    assert runner.effective_concurrency == 8
+    asyncio.run(runner.ask_many([(["q"], schemas.PresenceCheck)] * 2, raise_if_all_failed=False))
+    assert runner.effective_concurrency == 4
+
+
+def test_preview_tokens_and_estimate_cost_with_preview():
+    seen_calls = []
+
+    class _Resp:
+        total_tokens = 1234
+
+    class _Models:
+        def count_tokens(self, *, model, contents, config=None):
+            seen_calls.append((model, contents, config))
+            return _Resp()
+
+    class _Client:
+        models = _Models()
+
+    tok = gc.preview_tokens(_Client(), ["prompt text", _img(100, 100)], media_resolution="low")
+    assert tok == 1234
+    assert len(seen_calls) == 1
+    assert seen_calls[0][0] == gc.DEFAULT_MODEL
+
+    est = gc.estimate_cost(10, preview=tok, output_tokens_per_call=200)
+    expected = 10 * (1234 / 1e6 * 1.50 + 200 / 1e6 * 9.00)
+    assert est == pytest.approx(expected)
