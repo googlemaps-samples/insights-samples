@@ -527,3 +527,17 @@ def test_uc2_repeat_pass_diff_and_asset_audit():
     assert audit_out["matched_count"] == 1
     assert audit_out["gemini_confirmed"] is True
     assert len(audit_out["audit_df"]) == 1
+
+
+def test_agentic_helpers_signature_defaults():
+    import inspect
+
+    for fn in (
+        uc.uc4_measure_roof_angles,
+        uc.uc1_count_storeys,
+        uc.uc2_measure_post_lean,
+        uc.uc3_locate_material_boundary,
+    ):
+        sig = inspect.signature(fn)
+        assert sig.parameters["thinking_level"].default == "MEDIUM", fn.__name__
+        assert sig.parameters["media_resolution"].default == "HIGH", fn.__name__

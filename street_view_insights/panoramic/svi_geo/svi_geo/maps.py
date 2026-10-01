@@ -471,12 +471,6 @@ def render_overlay_grid(
     attribution.save_figure(fig, out)
     plt.close(fig)
 
-    if qa_dir is not None:
-        qdir = Path(qa_dir)
-        qdir.mkdir(parents=True, exist_ok=True)
-        qcopy = qdir / f"{notebook_name}_overlay_grid.png"
-        qcopy.write_bytes(out.read_bytes())
-
     meta = {
         "notebook": notebook_name,
         "out_path": str(out),
@@ -485,6 +479,13 @@ def render_overlay_grid(
         "n_rejected": total_rej,
         "rejection_reasons": sorted(set(all_reasons)),
     }
+    meta_text = json.dumps(meta, indent=2)
     meta_path = out.with_suffix(".json")
-    meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    meta_path.write_text(meta_text, encoding="utf-8")
+    if qa_dir is not None:
+        qdir = Path(qa_dir)
+        qdir.mkdir(parents=True, exist_ok=True)
+        qcopy = qdir / f"{notebook_name}_overlay_grid.png"
+        qcopy.write_bytes(out.read_bytes())
+        qcopy.with_suffix(".json").write_text(meta_text, encoding="utf-8")
     return meta
