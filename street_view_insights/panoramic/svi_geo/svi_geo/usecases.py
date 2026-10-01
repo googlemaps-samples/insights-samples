@@ -429,6 +429,10 @@ async def uc2_run(
         det_kw["hfov_scale"] = variant.hfov_scale
     if variant.gemini_seed is not None:
         det_kw["seed"] = variant.gemini_seed
+    if variant.thinking_level is not None:
+        det_kw["thinking_level"] = variant.thinking_level
+    if variant.media_resolution is not None:
+        det_kw["media_resolution"] = variant.media_resolution
     run = await pipeline.detect_panos(sel_frames, fetch, runner, intr, ref, **det_kw)
     filtered_obs = _filter_observations_uc2(run, variant)
     cluster_kw: dict[str, Any] = {"merge_single_view": True}
@@ -931,21 +935,27 @@ async def uc4_measure_roof_angles(
     roof_box: Sequence[float] | None = None,
     tol_deg: float = 4.0,
     seed: int | None = 0,
+    code_execution: bool = True,
+    thinking_level: str = "LOW",
+    media_resolution: str = "MEDIUM",
+    validator: Any = None,
+    expect_stdout: str = MEASURE_STDOUT_PATTERN,
 ) -> dict[str, Any]:
     """Run one validated code-execution call on a roof crop and cross-check eave angle locally."""
     h, w = image.shape[:2]
+    val_fn = validator if validator is not None else (lambda r: None)
     reply, trace = await runner.ask(
         [UC4_AGENTIC_PROMPT, image],
         schemas.RoofAngleMeasurement,
-        code_execution=True,
-        thinking_level="MEDIUM",
-        media_resolution="HIGH",
-        expect_stdout=MEASURE_STDOUT_PATTERN,
-        validator=lambda r: None,
+        code_execution=code_execution,
+        thinking_level=thinking_level,
+        media_resolution=media_resolution,
+        expect_stdout=expect_stdout,
+        validator=val_fn,
         seed=seed,
         return_trace=True,
     )
-    gc.check_code_exec_trace(trace, expect_stdout=MEASURE_STDOUT_PATTERN, sent_image_shape=(h, w))
+    gc.check_code_exec_trace(trace, expect_stdout=expect_stdout, sent_image_shape=(h, w))
     local_deg, overlay = _local_eave_angle_and_overlay(image, roof_box=roof_box)
     delta = (
         abs(float(reply.eave_angle_deg) - float(local_deg)) if reply is not None else float("inf")
@@ -971,6 +981,11 @@ async def uc1_count_storeys(
     fused_stories: int | None = None,
     tol_rows: int = 1,
     seed: int | None = 0,
+    code_execution: bool = True,
+    thinking_level: str = "LOW",
+    media_resolution: str = "MEDIUM",
+    validator: Any = None,
+    expect_stdout: str = MEASURE_STDOUT_PATTERN,
 ) -> dict[str, Any]:
     """Run one validated code-execution call on the best house crop and cross-check storey count."""
     import cv2
@@ -984,18 +999,19 @@ async def uc1_count_storeys(
         if x1 - x0 >= 16 and y1 - y0 >= 16:
             crop = image[y0:y1, x0:x1]
     ch, cw = crop.shape[:2]
+    val_fn = validator if validator is not None else (lambda r: None)
     reply, trace = await runner.ask(
         [UC1_AGENTIC_PROMPT, crop],
         schemas.StoreyRowMeasurement,
-        code_execution=True,
-        thinking_level="MEDIUM",
-        media_resolution="HIGH",
-        expect_stdout=MEASURE_STDOUT_PATTERN,
-        validator=lambda r: None,
+        code_execution=code_execution,
+        thinking_level=thinking_level,
+        media_resolution=media_resolution,
+        expect_stdout=expect_stdout,
+        validator=val_fn,
         seed=seed,
         return_trace=True,
     )
-    gc.check_code_exec_trace(trace, expect_stdout=MEASURE_STDOUT_PATTERN, sent_image_shape=(ch, cw))
+    gc.check_code_exec_trace(trace, expect_stdout=expect_stdout, sent_image_shape=(ch, cw))
 
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
     gy = np.abs(cv2.Sobel(gray.astype(np.float32), cv2.CV_32F, 0, 1, ksize=3))
@@ -1041,6 +1057,11 @@ async def uc2_measure_post_lean(
     box_px: Sequence[float] | None = None,
     tol_deg: float = 3.0,
     seed: int | None = 0,
+    code_execution: bool = True,
+    thinking_level: str = "LOW",
+    media_resolution: str = "MEDIUM",
+    validator: Any = None,
+    expect_stdout: str = MEASURE_STDOUT_PATTERN,
 ) -> dict[str, Any]:
     """Run one validated code-execution call on a located pole/sign crop and cross-check lean angle."""
     import math
@@ -1057,19 +1078,20 @@ async def uc2_measure_post_lean(
     iy1 = min(h, int(round(max(y0, y1))) + 8)
     crop = image[iy0:iy1, ix0:ix1] if (ix1 - ix0 >= 8 and iy1 - iy0 >= 8) else image
     ch, cw = crop.shape[:2]
+    val_fn = validator if validator is not None else (lambda r: None)
 
     reply, trace = await runner.ask(
         [UC2_AGENTIC_PROMPT, crop],
         schemas.PostLeanMeasurement,
-        code_execution=True,
-        thinking_level="MEDIUM",
-        media_resolution="HIGH",
-        expect_stdout=MEASURE_STDOUT_PATTERN,
-        validator=lambda r: None,
+        code_execution=code_execution,
+        thinking_level=thinking_level,
+        media_resolution=media_resolution,
+        expect_stdout=expect_stdout,
+        validator=val_fn,
         seed=seed,
         return_trace=True,
     )
-    gc.check_code_exec_trace(trace, expect_stdout=MEASURE_STDOUT_PATTERN, sent_image_shape=(ch, cw))
+    gc.check_code_exec_trace(trace, expect_stdout=expect_stdout, sent_image_shape=(ch, cw))
 
     local_sup = cvc.vertical_post_support(image, box_px, max_tilt_deg=12.0)
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
@@ -1123,23 +1145,29 @@ async def uc3_locate_material_boundary(
     *,
     tol_rel: float = 0.10,
     seed: int | None = 0,
+    code_execution: bool = True,
+    thinking_level: str = "LOW",
+    media_resolution: str = "MEDIUM",
+    validator: Any = None,
+    expect_stdout: str = MEASURE_STDOUT_PATTERN,
 ) -> dict[str, Any]:
     """Run one validated code-execution call on a road/IPM patch and cross-check texture stats."""
     import cv2
 
     h, w = image.shape[:2]
+    val_fn = validator if validator is not None else (lambda r: None)
     reply, trace = await runner.ask(
         [UC3_AGENTIC_PROMPT, image],
         schemas.MaterialBoundaryMeasurement,
-        code_execution=True,
-        thinking_level="MEDIUM",
-        media_resolution="HIGH",
-        expect_stdout=MEASURE_STDOUT_PATTERN,
-        validator=lambda r: None,
+        code_execution=code_execution,
+        thinking_level=thinking_level,
+        media_resolution=media_resolution,
+        expect_stdout=expect_stdout,
+        validator=val_fn,
         seed=seed,
         return_trace=True,
     )
-    gc.check_code_exec_trace(trace, expect_stdout=MEASURE_STDOUT_PATTERN, sent_image_shape=(h, w))
+    gc.check_code_exec_trace(trace, expect_stdout=expect_stdout, sent_image_shape=(h, w))
 
     desc = cvc.road_descriptor(image)
     lab_luma = float(desc[0] * 255.0)

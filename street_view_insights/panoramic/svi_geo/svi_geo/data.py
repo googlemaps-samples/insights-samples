@@ -1219,7 +1219,6 @@ rosettes_from_frames = panos_from_frames
 
 def attach_target_framing(
     rosettes: pd.DataFrame,
-    *,
     tlat: float,
     tlng: float,
 ) -> pd.DataFrame:
@@ -1265,6 +1264,19 @@ def attach_target_framing(
     out["target_bearing_deg"] = bearings
     out["best_cam"] = best_cams
     return out
+
+
+def select_by_spacing(
+    seq_df: pd.DataFrame,
+    target_spacing_m: float = 12.0,
+    max_panos: int | None = None,
+) -> pd.DataFrame:
+    """Delegate to `sequence.select_by_spacing` so callers can invoke `data.select_by_spacing`."""
+    from svi_geo import sequence
+
+    return sequence.select_by_spacing(
+        seq_df, target_spacing_m=target_spacing_m, max_panos=max_panos
+    )
 
 
 def make_bigquery_client(project: str = PROJECT, credentials: Any = None) -> bigquery.Client:

@@ -122,3 +122,51 @@ def test_eval_uses_usecases_view_sizes():
     assert "width=800" not in src_uc4
     assert uc.DEFAULT_VARIANT.uc1_view_size == (1024, 768)
     assert uc.DEFAULT_VARIANT.uc4_view_size == (1200, 900)
+
+
+def test_eval_cli_accepts_thinking_and_media_flags(tmp_path):
+    import run_labelfree_eval as rle
+
+    ap = rle.build_arg_parser()
+    args = ap.parse_args(
+        [
+            "--aoi",
+            "tune",
+            "--variant",
+            "final",
+            "--thinking-level",
+            "LOW",
+            "--media-resolution",
+            "HIGH",
+        ]
+    )
+    assert args.thinking_level == "LOW"
+    assert args.media_resolution == "HIGH"
+
+    fr = _make_synthetic_aoi_frames()
+    out_dir = tmp_path / "eval_ablation"
+    res = rle.run_offline_smoke(
+        frames=fr,
+        aoi="tune",
+        out_dir=out_dir,
+        seed=7,
+        variant_name="final",
+        thinking_level="LOW",
+        media_resolution="HIGH",
+    )
+    assert res["thinking_level"] == "LOW"
+    assert res["media_resolution"] == "HIGH"
+
+
+def test_manifest_builder_keys_by_capture_id():
+    fr = _make_synthetic_aoi_frames()
+    # Make half of pano_id NULL to verify capture_id keying preserves them
+    fr.loc[fr.index % 2 == 0, "pano_id"] = None
+    m = mf.build_manifest(fr, aoi="tune", seed=7)
+    assert m["key_column"] == "capture_id"
+    assert len(m["uc1_targets"]) >= 1
+    assert all("anchor_capture_id" in t for t in m["uc1_targets"])
+    assert len(m["uc2_sequences"]) >= 1
+    assert all("capture_ids" in s for s in m["uc2_sequences"])
+    assert len(m["repeat_pairs"]) >= 1
+    assert all("capture_pairs" in rp for rp in m["repeat_pairs"])

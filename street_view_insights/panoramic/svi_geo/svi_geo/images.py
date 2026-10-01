@@ -119,10 +119,8 @@ class GcsImageFetcher:
             tmp.replace(path)
         return data
 
-    def fetch_many(
-        self, uris: list[str], max_workers: int = 8, retries: int = 3
-    ) -> dict[str, bytes | Exception]:
-        out: dict[str, bytes | Exception] = {}
+    def iter_fetch_many(self, uris: list[str], max_workers: int = 8, retries: int = 3):
+        """Yield `(uri, bytes | Exception)` as downloads complete, bounding peak RAM."""
 
         def one(u):
             err: Exception | None = None
@@ -137,9 +135,12 @@ class GcsImageFetcher:
             return u, err
 
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            for u, r in ex.map(one, uris):
-                out[u] = r
-        return out
+            yield from ex.map(one, uris)
+
+    def fetch_many(
+        self, uris: list[str], max_workers: int = 8, retries: int = 3
+    ) -> dict[str, bytes | Exception]:
+        return dict(self.iter_fetch_many(uris, max_workers=max_workers, retries=retries))
 
     def exists(self, uri: str) -> bool:
         bucket, name = split_gcs_uri(uri)
@@ -231,3 +232,14 @@ def dark_pixel_fraction(img: np.ndarray, max_value: int = 8) -> float:
     a = np.asarray(img)
     peak = a.max(axis=2) if a.ndim == 3 else a
     return float(np.mean(peak <= max_value))
+
+
+def peak_rss_mb() -> float:
+    """Return the process peak resident set size in megabytes (`ru_maxrss`)."""
+    import resource
+    import sys
+
+    rss = float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    if sys.platform == "darwin":
+        return rss / (1024.0 * 1024.0)
+    return rss / 1024.0

@@ -197,6 +197,8 @@ async def detect_panos(
     seed: int | None = None,
     decode_scale: float | None = None,
     antialias: bool = True,
+    thinking_level: str | None = None,
+    media_resolution: str | None = None,
 ) -> DetectionRun:
     """Render every ground view of every rosette in code, ask Gemini for boxes, convert to rays.
 
@@ -229,6 +231,10 @@ async def detect_panos(
     ask_kw: dict[str, Any] = {"raise_if_all_failed": raise_if_all_failed}
     if seed is not None:
         ask_kw["seed"] = seed
+    if thinking_level is not None:
+        ask_kw["thinking_level"] = thinking_level
+    if media_resolution is not None:
+        ask_kw["media_resolution"] = media_resolution
     replies = await runner.ask_many(
         [([prompt, im], schemas.FrameDetections) for im in rendered],
         **ask_kw,

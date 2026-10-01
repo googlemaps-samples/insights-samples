@@ -8,68 +8,74 @@ evaluation code.
 
 ## Notebooks
 
-- **[Analyze Sequential Images](notebooks/analyze_sequential_images.ipynb)**:
-  rebuilds the drive sequence along a street and runs Gemini on
-  lens-corrected views. It then triangulates houses, utility poles and signs
-  across panoramas and de-duplicates them into map entities. A detection seen
-  from one panorama is placed only when its ground contact is visible; otherwise
-  it is listed as unlocated. Last, it runs a cross-view consistency check (not
-  an accuracy measure): it projects each entity into a view that was not used
-  and asks Gemini whether the object is there.
-- **[Surface Material Detection](notebooks/surface_material_detection.ipynb)**:
-  classifies the road surface and the left/right sidewalks at each panorama
-  along a drive, from views centred on the travel direction. Labels are
-  smoothed along the sequence with an HMM (Viterbi) that keeps "no sidewalk" as
-  its own state and restarts at gaps. They are then merged into material
-  segments. Sidewalk lines are drawn at a schematic offset from the drive.
-- **[House Image Discovery with Cost](notebooks/house_image_discovery_with_cost.ipynb)**:
-  picks, in each panorama, the camera that can show a whole target house without
-  black border, renders an undistorted view framed on it, and asks Gemini to
-  describe it. The house is triangulated from the boxes of two or more panoramas
-  and its id is derived from that point. The cost of every call is logged.
-- **[Roof Edge Tracing](notebooks/roof_edge_tracing.ipynb)**:
-  lens-corrects the best view of a building with the calibrated rosette model.
-  Gemini then traces the visible roof edges as schema-validated polylines.
+- **[00 — Explore Coverage & 360° Rosette Strip](notebooks/00_explore_coverage.ipynb)**:
+  zero-Gemini warm-up notebook (`$0.00` Gemini cost, `<= 3 min`). Discovers live
+  `SV_PANO` snapshots (`snapshot_catalog_sql`), summarizes geohash-6 spatial coverage
+  (`coverage_sql`), reconstructs drive sequences in BigQuery (`rosette_sql`), and
+  renders a calibrated 360° equirectangular strip (`rosette.render_equirect_strip`) and
+  drive-track map (`maps.rosette_tracks_map`).
+- **[House Image Discovery with Cost](notebooks/house_image_discovery_with_cost.ipynb)** (UC1,
+  ceiling `<= $0.15`, `<= 6 min`): picks, in each rosette (`capture_id`), the camera
+  that frames a target house with `< 1%` black border, asks Gemini for structured
+  `HouseView` attributes, runs one validated agentic-vision (`code_execution=True`)
+  storey-count cross-check against local Sobel-y row peaks, and triangulates the house
+  facade from 2+ sighting rays.
+- **[Analyze Sequential Images](notebooks/analyze_sequential_images.ipynb)** (UC2,
+  ceiling `<= $0.60`, `<= 12 min`): walks a drive sequence keyed on `capture_id`,
+  detects `HOUSE`, `UTILITY_POLE`, and `ROAD_SIGN` across all 6 horizontal cameras,
+  gates pole/sign boxes with OpenCV LSD vertical-post support, clusters rays into 3D
+  entities (cross-checked with 0-byte BigQuery `ST_CLUSTERDBSCAN`), runs one validated
+  agentic-vision pole-lean measurement, evaluates held-out cross-view consistency (not
+  accuracy), and audits repeat-pass pairs (`O1`) and `cropped_assets_latest` (`O2`).
+- **[Surface Material Detection](notebooks/surface_material_detection.ipynb)** (UC3,
+  ceiling `<= $0.25`, `<= 8 min`): classifies road (`CENTER`) and left/right sidewalk
+  materials along a drive sequence from travel-aligned views, fuses bird's-eye IPM
+  kerb-line priors with Viterbi HMM smoothing (`ABSENT` state + gap breaks) into
+  schematic WKT segments, and runs one validated agentic-vision road-texture check.
+- **[Roof Edge Tracing](notebooks/roof_edge_tracing.ipynb)** (UC4, ceiling `<= $0.10`,
+  `<= 5 min`): ranks upward-pitched roof views, screens tree/sky occlusion
+  (`occlusion_screen`), traces roof polylines (`RoofEdges`), validates and snaps edges
+  to Sobel/LSD gradients while rejecting wall/sky/foliage decoys, and runs one
+  validated agentic-vision LSD eave-angle measurement.
 
-Every notebook has a `MAX_GEMINI_CALLS` parameter (default 500; set it to
-`None` for no limit) and a `CONCURRENCY` parameter (default 16). The estimated
-cost is printed before and after each Gemini run.
+Every UC notebook has explicit `MAX_GEMINI_CALLS`, `MAX_USD`, and `CONCURRENCY` (default `8`)
+parameters, prints token/cost estimates before and after each Gemini run, and enforces per-notebook
+cost ceilings via `scripts/ceilings.json`.
 
-## Data model notes (pano tables only)
+## Data model notes (`capture_id` key & dry-run byte manifest)
 
-The notebooks read only
-`imagery-insights-sandbox.imagery_insights___us.pano_observations_latest` and
-`pano_observations_all`.
+The notebooks query `imagery-insights-sandbox.imagery_insights___us` (`pano_observations_latest`,
+`pano_observations_all`, `snapshots`, and `cropped_assets_latest`).
 
-- **7-frame rosette.** Each panorama is 7 wide-angle portrait frames
-  (3648×5472). Cameras 0–5 point horizontally about 60° apart, and camera 6
-  points at the sky. Each frame has its own `camera_pose` (position and
-  heading/pitch/roll). **No intrinsics are provided.** `svi_geo` ships a
-  fitted Kannala–Brandt (KB4) fisheye model in
-  `svi_geo/svi_geo/intrinsics/rosette_kb4_v1.json`, and all views sent to
-  Gemini are rendered from it. See
-  [`intrinsic-calculation.md`](intrinsic-calculation.md) for the mathematical
-  formulation and step-by-step instructions to reproduce the self-calibration.
-- **`capture_id` identifies a single panorama, not a drive.** Drive sequences
-  are rebuilt within each `snapshot_id` by ordering panoramas by
-  `capture_time` and splitting at time/distance gaps (see
-  `svi_geo.sequence`). The measured spacing between consecutive panoramas is
-  about 10.2–10.7 m in the sampled AOIs. The code measures it and never
-  hard-codes it.
-- **Cheap image URIs.** Selecting the `gcs_uri` column scans about 1.9 GB, so it
-  is never selected. The notebooks select only small metadata columns and build
-  the URI as `gs://<bucket>/<snapshot_id>/v0/<observation_id>.jpg` (see
-  `svi_geo.data.gcs_uri_for`). The bucket is the required `GCS_BUCKET`
-  parameter; it is never discovered by a query.
-- **Query cost.** The metadata query dry-runs at about 1.6 GB per run whatever
-  the radius (the pano views are not clustered on location), which is inside
-  the 2 GB `maximum_bytes_billed` cap (~$0.01 on-demand at $6.25/TB, or $0
-  within the free 1 TB/month tier). Results are cached locally for 7 days
-  (`~/.cache/svi_geo/bq`), so re-runs bill 0 bytes.
-- Pano rows have no prior detections, so all objects come from Gemini.
-- BigQuery access is dry-run first, capped with `maximum_bytes_billed`, and
-  uses parameterized SQL only. Images are downloaded with your own credentials
-  and sent to Gemini inline as bytes.
+- **7-frame rosette keyed on `capture_id`.** Each panoramic capture is 7 wide-angle portrait frames
+  (`3648x5472`) sharing a `capture_id`. Cameras `0..5` point horizontally ~60° apart, and camera `6`
+  points at the sky. The publishable Street View key `pano_id` is nullable (~69% of captures in
+  standard AOIs have `pano_id IS NULL`) and is kept as attribution metadata alongside `map_url`. Set
+  `INCLUDE_UNPUBLISHED_PANOS = False` in the parameter cell to restrict to published `pano_id` rows.
+  **No intrinsics are provided in the table;** `svi_geo` ships a fitted Kannala–Brandt (`KB4`)
+  fisheye model in `svi_geo/svi_geo/intrinsics/rosette_kb4_v1.json` (see
+  [`intrinsic-calculation.md`](intrinsic-calculation.md)).
+- **Server-side BigQuery sequencing (`rosette_sql`).** `svi_geo.data.rosette_sql` aggregates each
+  rosette's 7 cameras via `ARRAY_AGG(STRUCT(k, observation_id, heading, pitch, roll, cam_lat,
+  cam_lng) ORDER BY k)` and computes drive sequences (`seq_id`, `seq_idx`, `step_m`, `travel_deg`),
+  `ST_ASTEXT(geog) AS wkt`, and `ST_GEOHASH(geog, 7) AS gh7` directly in BigQuery using `LAG`
+  gaps-and-islands window functions.
+- **Cheap image URIs (`0 B` `gcs_uri` scan).** Selecting `gcs_uri` scans ~1.9 GB of string data, so
+  it is never selected. `data.frames_from_rosettes` builds
+  `gs://<bucket>/<snapshot_id>/v0/<observation_id>.jpg` locally from `GCS_BUCKET`.
+- **Measured BigQuery dry-run byte estimates (`svi_geo/data/bytes_manifest.json`).** All queries
+  dry-run first and enforce `maximum_bytes_billed <= 2 GB` (`$6.25/TB` on-demand; cached locally as
+  snapshot-keyed Parquet files for up to 35 days in `~/.cache/svi_geo/bq` so warm re-runs bill `0 B`):
+
+| SQL Template (`svi_geo.data`) | Dry-Run Bytes | Cold Scan (GB) | Est. On-Demand Cost (`$6.25/TB`) |
+|---|---:|---:|---:|
+| `snapshot_catalog_sql` | `2,318 B` | `0.000002 GB` | `< $0.0001` |
+| `cluster_points_sql` (`allow_table_free=True`) | `0 B` | `0.000 GB` | `$0.0000` |
+| `assets_in_aoi_sql` (`cropped_assets_latest`) | `53,341,246 B` | `0.053 GB` | `$0.0003` |
+| `coverage_sql` (geohash-6 cells) | `1,039,581,254 B` | `1.040 GB` | `$0.0065` |
+| `tracks_sql` (drive LineStrings) | `1,426,014,915 B` | `1.426 GB` | `$0.0089` |
+| `rosette_sql` / `multi_aoi_sql` | `1,831,615,879 B` | `1.832 GB` | `$0.0114` |
+| `repeat_pairs_sql` | `1,892,835,442 B` | `1.893 GB` | `$0.0118` |
 
 ## Running the notebooks
 

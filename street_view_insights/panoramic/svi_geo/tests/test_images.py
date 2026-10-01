@@ -211,3 +211,12 @@ def test_frame_cache_invalidates_on_content_hash(tmp_path):
     store.objects["s/v0/o1:P_0:5001ee.jpg"] = b"version_2_bytes"
     assert f.fetch(URI0, expected_sha256="deadbeef00000000") == b"version_2_bytes"
     assert store.downloads == 2
+
+
+def test_iter_fetch_many_and_peak_rss_mb():
+    store = _store()
+    f = images.GcsImageFetcher(store, cache_dir=None)
+    streamed = list(f.iter_fetch_many([URI0, URI1]))
+    assert dict(streamed) == {URI0: b"abc", URI1: b"de"}
+    rss = images.peak_rss_mb()
+    assert isinstance(rss, float) and 1.0 < rss < 8000.0

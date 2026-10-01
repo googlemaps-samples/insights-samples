@@ -194,9 +194,11 @@ class LoggingBackend:
 
     async def generate(self, parts, schema, code_execution=False, **kw):
         schema_name = getattr(schema, "__name__", str(schema))
+        t_lvl = kw.get("thinking_level", getattr(self.inner, "thinking_level", None))
+        m_res = kw.get("media_resolution", getattr(self.inner, "media_resolution", None))
         cache_key = (
             f"{self.model}:{schema_name}:{int(bool(code_execution))}:{kw.get('seed')}:"
-            f"{_parts_sha256(parts)}"
+            f"{t_lvl}:{m_res}:{_parts_sha256(parts)}"
         )
         cached = self._cache.get(cache_key)
         if cached is not None:
@@ -216,6 +218,7 @@ class LoggingBackend:
                 "tool_use_prompt_token_count": int(get_raw("tool_use_prompt_token_count") or 0),
                 "candidates_token_count": int(get_raw("candidates_token_count") or 0),
                 "thoughts_token_count": int(get_raw("thoughts_token_count") or 0),
+                "cached_content_token_count": int(get_raw("cached_content_token_count") or 0),
             }
             cache_entry = {
                 "key": cache_key,
@@ -240,6 +243,8 @@ class LoggingBackend:
             "model": self.model,
             "schema": schema_name,
             "prompt_version": self.prompt_version,
+            "thinking_level": str(t_lvl),
+            "media_resolution": str(m_res),
             "input_tokens": inp,
             "output_tokens": out,
             "thoughts_tokens": thoughts,
@@ -321,7 +326,7 @@ async def evaluate_uc1(
     variant: uc.Variant,
     seed: int = 7,
 ) -> tuple[dict[str, lf.Measurement], dict[str, list[tuple[float, float]]]]:
-    """Compute M1.1..M1.6 on `manifest['uc1_targets']`."""
+    """Compute M1.1..M1.7 on `manifest['uc1_targets']` and `manifest['repeat_pairs']`."""
     targets = manifest["uc1_targets"][:4]
     perts = manifest["perturbations"][:2]
     blocks_map = manifest.get("blocks", {})
@@ -338,6 +343,9 @@ async def evaluate_uc1(
     pert_locs: list[views.HouseLocation] = []
     loc_blocks: list[str] = []
     repeat_by_block: dict[str, tuple[float, float]] = {}
+    rep_pairs_a: list[str] = []
+    rep_pairs_b: list[str] = []
+    rep_pair_blocks: list[str] = []
 
     for idx_t, t in enumerate(targets):
         _, ranked = uc.uc1_select_views(
@@ -375,6 +383,9 @@ async def evaluate_uc1(
             if v0 is not None and v1 is not None:
                 total += 1
                 matches += int(v0 == v1)
+                rep_pairs_a.append(f"{k}:{v0}")
+                rep_pairs_b.append(f"{k}:{v1}")
+                rep_pair_blocks.append(str(t["block_id"]))
         if total > 0:
             agree_num_den.append((float(matches), float(total)))
             block_ids.append(t["block_id"])
@@ -403,8 +414,11 @@ async def evaluate_uc1(
             ]
             by_obj_reproj[t["target_id"]] = rays
             rep_t = lf.heldout_reprojection({t["target_id"]: rays}, tol_deg=3.5)
+            anchor_id = str(t.get("anchor_capture_id") or t.get("anchor_pano_id") or "")
             for s_obj, err_deg in zip(sights, rep_t["errors_deg"], strict=False):
-                s_pid = str(getattr(s_obj, "pano_id", "") or t["anchor_pano_id"])
+                s_pid = str(
+                    getattr(s_obj, "capture_id", "") or getattr(s_obj, "pano_id", "") or anchor_id
+                )
                 s_blk = blocks_map.get(s_pid, f"{t['block_id']}:{s_pid}")
                 _add_cluster(reproj_by_block, s_blk, 1.0 if err_deg <= 3.5 else 0.0, 1.0)
             if len(rays) >= 4:
@@ -414,7 +428,7 @@ async def evaluate_uc1(
         res_df = base_out["res"]
         vis_df = res_df[res_df["visible"].fillna(False)]
         for row_idx, r_row in vis_df.iterrows():
-            r_pid = str(r_row.get("pano_id", f"r_{row_idx}"))
+            r_pid = str(r_row.get("capture_id") or r_row.get("pano_id") or f"r_{row_idx}")
             r_blk = blocks_map.get(r_pid, f"{t['block_id']}:{r_pid}")
             _add_cluster(non_trunc_by_block, r_blk, 0.0 if bool(r_row["truncated"]) else 1.0, 1.0)
         for sc_val in vis_df["sky_contact"].dropna().tolist():
@@ -496,6 +510,8 @@ async def evaluate_uc1(
         missing_reason="no multi-pass house attribute pairs",
     )
 
+    m1_7 = lf.repeat_pass_agreement_vs_placebo(rep_pairs_a, rep_pairs_b, rep_pair_blocks, seed=seed)
+
     return {
         "M1.1": m1_1,
         "M1.2": m1_2,
@@ -503,6 +519,7 @@ async def evaluate_uc1(
         "M1.4": m1_4,
         "M1.5": m1_5,
         "M1.6": m1_6,
+        "M1.7": m1_7,
     }, {"M1.1": list(per_cluster.values())}
 
 
@@ -531,17 +548,17 @@ async def evaluate_uc2(
 
     panos_all = sequence.build_sequences(data.panos_from_frames(frames))
     panos_all["travel_deg"] = sequence.travel_bearing(panos_all)
+    id_col = "capture_id" if "capture_id" in panos_all.columns else "pano_id"
     pert_spec = manifest["perturbations"][0]
 
     for seq_spec in manifest["uc2_sequences"][:2]:
-        pids = set(seq_spec["pano_ids"][:4])
-        sel = (
-            panos_all[panos_all["pano_id"].isin(pids)].sort_values("seq_idx").reset_index(drop=True)
-        )
+        seq_ids_list = seq_spec.get("capture_ids") or seq_spec.get("pano_ids") or []
+        pids = set(seq_ids_list[:4])
+        sel = panos_all[panos_all[id_col].isin(pids)].sort_values("seq_idx").reset_index(drop=True)
         if len(sel) < 2:
             continue
-        sel_frames = frames[frames["pano_id"].isin(sel["pano_id"])].merge(
-            sel[["pano_id", "seq_idx", "travel_deg"]], on="pano_id"
+        sel_frames = frames[frames[id_col].isin(sel[id_col])].merge(
+            sel[[id_col, "seq_idx", "travel_deg"]], on=id_col
         )
         cam_alts = [float(p["altitude"]) for p in sel_frames["camera_pose"]]
         ref = (float(sel["lat"].mean()), float(sel["lng"].mean()), float(np.median(cam_alts)) - 2.5)
@@ -589,7 +606,7 @@ async def evaluate_uc2(
             cv_res = out0["self_consistency"]["cross_view"]
             for idx_t, t_row in enumerate(cv_res.get("per_task", [])):
                 if t_row.get("answered"):
-                    t_pid = str(t_row.get("pano_id", ""))
+                    t_pid = str(t_row.get("capture_id") or t_row.get("pano_id") or "")
                     t_blk = blocks_map.get(t_pid, f"{seq_spec['seq_id']}:sc{idx_t % 5:03d}")
                     _add_cluster(reproj_by_block, t_blk, 1.0 if t_row.get("present") else 0.0, 1.0)
 
@@ -603,7 +620,7 @@ async def evaluate_uc2(
 
         # M2.4 OpenCV vertical-structure support vs placebo
         img_by_view = {
-            (r["spec"].pano_id, int(r["spec"].cam_k)): r["image"]
+            (str(r["spec"].capture_id or r["spec"].pano_id), int(r["spec"].cam_k)): r["image"]
             for r in out0["run"].records
             if r.get("image") is not None
         }
@@ -612,12 +629,13 @@ async def evaluate_uc2(
                 meta = o.ray.meta or {}
                 box = meta.get("box")
                 ck = meta.get("cam_k")
-                im = img_by_view.get((o.pano_id, int(ck))) if ck is not None else None
+                o_key = str(getattr(o, "capture_id", "") or o.pano_id)
+                im = img_by_view.get((o_key, int(ck))) if ck is not None else None
                 if im is not None and box is not None:
                     sup = cvc.vertical_post_support(im, box)
                     if o.cls == "ROAD_SIGN":
                         sup = max(sup, cvc.sign_post_support(im, box))
-                    o_blk = blocks_map.get(str(o.pano_id), f"{seq_spec['seq_id']}:{o.pano_id}")
+                    o_blk = blocks_map.get(o_key, f"{seq_spec['seq_id']}:{o_key}")
                     _add_cluster(cv_support_by_block, o_blk, 1.0 if sup >= 0.35 else 0.0, 1.0)
                     p_boxes = cvc.placebo_boxes(1, im.shape[1], im.shape[0], seed=seed)
                     cv_support_placebo.append(cvc.vertical_post_support(im, p_boxes[0]))
@@ -625,7 +643,8 @@ async def evaluate_uc2(
         # M2.5 located share & house unlocated share
         loc_ids = {e.entity_id for e in out0["located"]}
         for e in out0["entities"]:
-            e_pid = str(e.pano_ids[0]) if e.pano_ids else str(seq_spec["seq_id"])
+            e_ids = getattr(e, "capture_ids", None) or e.pano_ids
+            e_pid = str(e_ids[0]) if e_ids else str(seq_spec["seq_id"])
             e_blk = blocks_map.get(e_pid, f"{seq_spec['seq_id']}:{e_pid}")
             _add_cluster(loc_share_by_block, e_blk, 1.0 if e.entity_id in loc_ids else 0.0, 1.0)
         house_unloc += out0["houses_unlocated"]
@@ -656,7 +675,7 @@ async def evaluate_uc2(
 
     # M2.3 true cross-day repeat-pass entity recall across manifest['repeat_pairs']
     for rp_idx, rp in enumerate(manifest.get("repeat_pairs", [])[:2]):
-        pairs_ab = rp.get("pano_pairs", [])
+        pairs_ab = rp.get("capture_pairs") or rp.get("pano_pairs") or []
         pids_a: list[str] = []
         pids_b: list[str] = []
         for pa, pb in pairs_ab:
@@ -665,22 +684,18 @@ async def evaluate_uc2(
             if pb not in pids_b and len(pids_b) < 4:
                 pids_b.append(str(pb))
         sel_a = (
-            panos_all[panos_all["pano_id"].isin(pids_a)]
-            .sort_values("seq_idx")
-            .reset_index(drop=True)
+            panos_all[panos_all[id_col].isin(pids_a)].sort_values("seq_idx").reset_index(drop=True)
         )
         sel_b = (
-            panos_all[panos_all["pano_id"].isin(pids_b)]
-            .sort_values("seq_idx")
-            .reset_index(drop=True)
+            panos_all[panos_all[id_col].isin(pids_b)].sort_values("seq_idx").reset_index(drop=True)
         )
         if len(sel_a) < 2 or len(sel_b) < 2:
             continue
-        frames_a = frames[frames["pano_id"].isin(sel_a["pano_id"])].merge(
-            sel_a[["pano_id", "seq_idx", "travel_deg"]], on="pano_id"
+        frames_a = frames[frames[id_col].isin(sel_a[id_col])].merge(
+            sel_a[[id_col, "seq_idx", "travel_deg"]], on=id_col
         )
-        frames_b = frames[frames["pano_id"].isin(sel_b["pano_id"])].merge(
-            sel_b[["pano_id", "seq_idx", "travel_deg"]], on="pano_id"
+        frames_b = frames[frames[id_col].isin(sel_b[id_col])].merge(
+            sel_b[[id_col, "seq_idx", "travel_deg"]], on=id_col
         )
         both_panos = pd.concat([sel_a, sel_b], ignore_index=True)
         cam_alts_ab = [
@@ -791,10 +806,11 @@ async def evaluate_uc3(
     variant: uc.Variant,
     seed: int = 7,
 ) -> dict[str, lf.Measurement]:
-    """Compute M3.1..M3.6 on `manifest['uc3_sequences']` and `manifest['repeat_pairs']`."""
+    """Compute M3.1..M3.7 on `manifest['uc3_sequences']` and `manifest['repeat_pairs']`."""
     blocks_map = manifest.get("blocks", {})
     panos_all = sequence.build_sequences(data.panos_from_frames(frames))
     panos_all["travel_deg"] = sequence.travel_bearing(panos_all)
+    id_col = "capture_id" if "capture_id" in panos_all.columns else "pano_id"
     pert_spec = manifest["perturbations"][0]
 
     labels_base: list[str] = []
@@ -802,6 +818,9 @@ async def evaluate_uc3(
     adj_by_block: dict[str, tuple[float, float]] = {}
     shuf_vals: list[float] = []
     repeat_bin_by_block: dict[str, tuple[float, float]] = {}
+    rep_slot_a: list[str] = []
+    rep_slot_b: list[str] = []
+    rep_slot_blks: list[str] = []
     within_tex: list[float] = []
     kerb_preds: list[str] = []
     sidewalk_preds: list[str] = []
@@ -809,17 +828,16 @@ async def evaluate_uc3(
     cached_uc3_runs: dict[tuple[str, ...], dict[str, Any]] = {}
 
     for seq_spec in manifest["uc3_sequences"][:2]:
-        pids = set(seq_spec["pano_ids"][:6])
-        sel = (
-            panos_all[panos_all["pano_id"].isin(pids)].sort_values("seq_idx").reset_index(drop=True)
-        )
+        seq_ids_list = seq_spec.get("capture_ids") or seq_spec.get("pano_ids") or []
+        pids = set(seq_ids_list[:6])
+        sel = panos_all[panos_all[id_col].isin(pids)].sort_values("seq_idx").reset_index(drop=True)
         if len(sel) < 3:
             continue
-        sel_frames = frames[frames["pano_id"].isin(sel["pano_id"])].merge(
-            sel[["pano_id", "seq_idx", "travel_deg"]], on="pano_id"
+        sel_frames = frames[frames[id_col].isin(sel[id_col])].merge(
+            sel[[id_col, "seq_idx", "travel_deg"]], on=id_col
         )
         out0 = await uc.uc3_run(sel, sel_frames, fetch, student_runner, intr, variant=variant)
-        cached_uc3_runs[tuple(sel["pano_id"].tolist())] = out0
+        cached_uc3_runs[tuple(sel[id_col].astype(str).tolist())] = out0
         pert_var = dataclasses.replace(
             variant,
             yaw_delta_deg=pert_spec["yaw_delta_deg"],
@@ -827,7 +845,7 @@ async def evaluate_uc3(
         )
         out1 = await uc.uc3_run(sel, sel_frames, fetch, student_runner, intr, variant=pert_var)
 
-        sel_pids = sel["pano_id"].tolist()
+        sel_pids = sel[id_col].astype(str).tolist()
         for side in ("CENTER", "LEFT", "RIGHT"):
             raw0 = out0["smooth_by_slot"][side]
             raw1 = out1["smooth_by_slot"][side]
@@ -895,9 +913,9 @@ async def evaluate_uc3(
                         1.0,
                     )
 
-    # M3.3 true cross-day 20 m bin agreement across manifest['repeat_pairs']
+    # M3.3 & M3.7 true cross-day 20 m bin agreement across manifest['repeat_pairs']
     for rp_idx, rp in enumerate(manifest.get("repeat_pairs", [])[:2]):
-        pairs_ab = rp.get("pano_pairs", [])
+        pairs_ab = rp.get("capture_pairs") or rp.get("pano_pairs") or []
         pids_a: list[str] = []
         pids_b: list[str] = []
         for pa, pb in pairs_ab:
@@ -906,34 +924,30 @@ async def evaluate_uc3(
             if pb not in pids_b and len(pids_b) < 6:
                 pids_b.append(str(pb))
         sel_a = (
-            panos_all[panos_all["pano_id"].isin(pids_a)]
-            .sort_values("seq_idx")
-            .reset_index(drop=True)
+            panos_all[panos_all[id_col].isin(pids_a)].sort_values("seq_idx").reset_index(drop=True)
         )
         sel_b = (
-            panos_all[panos_all["pano_id"].isin(pids_b)]
-            .sort_values("seq_idx")
-            .reset_index(drop=True)
+            panos_all[panos_all[id_col].isin(pids_b)].sort_values("seq_idx").reset_index(drop=True)
         )
         if len(sel_a) < 2 or len(sel_b) < 2:
             continue
 
-        key_a = tuple(sel_a["pano_id"].tolist())
+        key_a = tuple(sel_a[id_col].astype(str).tolist())
         if key_a in cached_uc3_runs:
             out_a = cached_uc3_runs[key_a]
         else:
-            frames_a = frames[frames["pano_id"].isin(sel_a["pano_id"])].merge(
-                sel_a[["pano_id", "seq_idx", "travel_deg"]], on="pano_id"
+            frames_a = frames[frames[id_col].isin(sel_a[id_col])].merge(
+                sel_a[[id_col, "seq_idx", "travel_deg"]], on=id_col
             )
             out_a = await uc.uc3_run(sel_a, frames_a, fetch, student_runner, intr, variant=variant)
             cached_uc3_runs[key_a] = out_a
 
-        key_b = tuple(sel_b["pano_id"].tolist())
+        key_b = tuple(sel_b[id_col].astype(str).tolist())
         if key_b in cached_uc3_runs:
             out_b = cached_uc3_runs[key_b]
         else:
-            frames_b = frames[frames["pano_id"].isin(sel_b["pano_id"])].merge(
-                sel_b[["pano_id", "seq_idx", "travel_deg"]], on="pano_id"
+            frames_b = frames[frames[id_col].isin(sel_b[id_col])].merge(
+                sel_b[[id_col, "seq_idx", "travel_deg"]], on=id_col
             )
             out_b = await uc.uc3_run(sel_b, frames_b, fetch, student_runner, intr, variant=variant)
             cached_uc3_runs[key_b] = out_b
@@ -990,12 +1004,16 @@ async def evaluate_uc3(
                 if labs_a and labs_b:
                     mode_a = max(set(labs_a), key=labs_a.count)
                     mode_b = max(set(labs_b), key=labs_b.count)
+                    blk_key = f"{rp.get('seq_a', 'a')}:{rp_idx}:bin{b_idx:03d}"
                     _add_cluster(
                         repeat_bin_by_block,
-                        f"{rp.get('seq_a', 'a')}:{rp_idx}:bin{b_idx:03d}",
+                        blk_key,
                         1.0 if mode_a == mode_b else 0.0,
                         1.0,
                     )
+                    rep_slot_a.append(f"{side}:{mode_a}")
+                    rep_slot_b.append(f"{side}:{mode_b}")
+                    rep_slot_blks.append(blk_key)
 
     m3_1 = lf.kappa(labels_base, labels_pert)
     if m3_1.status == "missing" and labels_base:
@@ -1050,6 +1068,8 @@ async def evaluate_uc3(
         missing_reason="no teacher slot verdicts",
     )
 
+    m3_7 = lf.repeat_pass_agreement_vs_placebo(rep_slot_a, rep_slot_b, rep_slot_blks, seed=seed)
+
     return {
         "M3.1": m3_1,
         "M3.2": m3_2,
@@ -1057,6 +1077,7 @@ async def evaluate_uc3(
         "M3.4": m3_4,
         "M3.5": m3_5,
         "M3.6": m3_6,
+        "M3.7": m3_7,
     }
 
 
@@ -1346,6 +1367,8 @@ def run_offline_smoke(
     out_dir: str | Path = "data/labelfree/smoke",
     seed: int = 7,
     variant_name: str = "baseline",
+    thinking_level: str | None = None,
+    media_resolution: str | None = None,
 ) -> dict[str, Any]:
     """Run the full harness pipeline offline against scripted replies (for unit tests)."""
     out_path = Path(out_dir)
@@ -1359,6 +1382,10 @@ def run_offline_smoke(
         "uc4_targets": manifest["uc4_targets"][:2],
     }
     variant = VARIANTS[variant_name]
+    if thinking_level is not None:
+        variant = dataclasses.replace(variant, thinking_level=thinking_level)
+    if media_resolution is not None:
+        variant = dataclasses.replace(variant, media_resolution=media_resolution)
     s_backend = LoggingBackend(
         _OfflineSmokeBackend(gc.DEFAULT_MODEL), calls_path, prompt_version=variant.name
     )
@@ -1424,7 +1451,18 @@ def run_offline_smoke(
         "input_tokens": s_runner.cost.input_tokens + t_runner.cost.input_tokens,
         "output_tokens": s_runner.cost.output_tokens + t_runner.cost.output_tokens,
     }
-    return _write_outputs(out_path, aoi, variant_name, manifest, metrics, spend)
+    return _write_outputs(
+        out_path,
+        aoi,
+        variant_name,
+        manifest,
+        metrics,
+        spend,
+        extra={
+            "thinking_level": variant.thinking_level,
+            "media_resolution": variant.media_resolution,
+        },
+    )
 
 
 def load_aoi_frames(
@@ -1462,11 +1500,23 @@ def load_aoi_frames(
     return sub.reset_index(drop=True)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--uc", choices=("1", "2", "3", "4", "all"), default="all")
     ap.add_argument("--aoi", choices=("tune", "heldout", "stress"), default="tune")
     ap.add_argument("--variant", choices=tuple(VARIANTS.keys()), default="baseline")
+    ap.add_argument(
+        "--thinking-level",
+        choices=("MINIMAL", "LOW", "MEDIUM", "HIGH"),
+        default=None,
+        help="Override Variant.thinking_level (e.g., MINIMAL, LOW, MEDIUM, HIGH)",
+    )
+    ap.add_argument(
+        "--media-resolution",
+        choices=("LOW", "MEDIUM", "HIGH"),
+        default=None,
+        help="Override Variant.media_resolution (e.g., LOW, MEDIUM, HIGH)",
+    )
     ap.add_argument(
         "--max-usd", type=float, default=None, help="Optional USD cap (default: None / uncapped)"
     )
@@ -1480,6 +1530,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     ap.add_argument("--project", default=None)
     ap.add_argument("--gcs-bucket", default=None)
+    return ap
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    ap = build_arg_parser()
     args = ap.parse_args(argv)
 
     settings = config.resolve_settings(args.project, args.gcs_bucket, env=dict(os.environ))
@@ -1507,6 +1562,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     v_client = gc.make_vertex_client(settings.project, gc.DEFAULT_LOCATION, creds)
     variant = VARIANTS[args.variant]
+    if args.thinking_level is not None:
+        variant = dataclasses.replace(variant, thinking_level=args.thinking_level)
+    if args.media_resolution is not None:
+        variant = dataclasses.replace(variant, media_resolution=args.media_resolution)
     reply_cache = out_path.parent / f"reply_cache_{args.aoi}.jsonl"
     s_backend = LoggingBackend(
         gc.VertexGeminiBackend(v_client, model=gc.DEFAULT_MODEL),
@@ -1607,10 +1666,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         "calls": s_runner.cost.calls + t_runner.cost.calls,
         "input_tokens": s_runner.cost.input_tokens + t_runner.cost.input_tokens,
         "output_tokens": s_runner.cost.output_tokens + t_runner.cost.output_tokens,
+        "thoughts_tokens": s_runner.cost.thoughts_tokens + t_runner.cost.thoughts_tokens,
         "student_usd": round(s_runner.cost.usd, 4),
         "teacher_usd": round(t_runner.cost.usd, 4),
     }
-    _write_outputs(out_path, args.aoi, args.variant, manifest, metrics, spend)
+    _write_outputs(
+        out_path,
+        args.aoi,
+        args.variant,
+        manifest,
+        metrics,
+        spend,
+        extra={
+            "thinking_level": variant.thinking_level,
+            "media_resolution": variant.media_resolution,
+        },
+    )
     print(f"[labelfree] actual spend: ${spend['usd']:.4f} ({spend['calls']} calls)", flush=True)
     return 0
 

@@ -295,20 +295,108 @@ def _approx_pvalue_from_ci(meas: Measurement, direction: str) -> float:
     return float(2.0 * sp_stats.norm.sf(z))
 
 
+def repeat_pass_agreement_vs_placebo(
+    pairs_a: Sequence[Any],
+    pairs_b: Sequence[Any],
+    block_ids: Sequence[str] | None = None,
+    *,
+    n_shuffles: int = 500,
+    seed: int = 0,
+    min_clusters: int = 2,
+) -> Measurement:
+    """Compute cross-day repeat-pass agreement on paired observations vs a shuffled-pair placebo.
+
+    Disclosed as 'consistency across capture days != ground-truth accuracy'.
+    """
+    if len(pairs_a) != len(pairs_b):
+        raise ValueError(
+            f"pairs_a and pairs_b must have equal length ({len(pairs_a)} != {len(pairs_b)})"
+        )
+    if block_ids is not None and len(block_ids) != len(pairs_a):
+        raise ValueError("block_ids must have the same length as pairs_a")
+    valid_idx = [
+        i
+        for i, (a, b) in enumerate(zip(pairs_a, pairs_b, strict=True))
+        if a is not None and b is not None
+    ]
+    if len(valid_idx) < 2:
+        return Measurement.missing(
+            f"fewer than 2 valid repeat-pass pairs (n={len(valid_idx)})",
+            n_clusters=len(valid_idx),
+            disclosure="cross-day repeat-pass consistency != accuracy",
+        )
+    a_arr = np.asarray([str(pairs_a[i]) for i in valid_idx], dtype=object)
+    b_arr = np.asarray([str(pairs_b[i]) for i in valid_idx], dtype=object)
+    blks = (
+        [str(block_ids[i]) for i in valid_idx]
+        if block_ids is not None
+        else [f"p{i:03d}" for i in range(len(valid_idx))]
+    )
+    rng = np.random.default_rng(seed)
+    shuf_scores = []
+    for _ in range(int(n_shuffles)):
+        perm_b = rng.permutation(b_arr)
+        shuf_scores.append(float(np.mean(a_arr == perm_b)))
+    placebo_val = float(np.mean(shuf_scores))
+
+    per_cluster: dict[str, tuple[float, float]] = {}
+    for blk, a_val, b_val in zip(blks, a_arr, b_arr, strict=True):
+        prev_n, prev_d = per_cluster.get(blk, (0.0, 0.0))
+        per_cluster[blk] = (prev_n + (1.0 if a_val == b_val else 0.0), prev_d + 1.0)
+
+    eff_min = min(min_clusters, len(per_cluster)) if len(per_cluster) >= 2 else 2
+    return block_ratio_ci(
+        per_cluster,
+        seed=seed,
+        min_clusters=eff_min,
+        placebo=placebo_val,
+        disclosure="cross-day repeat-pass consistency != accuracy",
+    )
+
+
 def decide_keep(
     primaries: Sequence[tuple[str, Measurement, str]],
     guards: Sequence[tuple[str, Measurement, float, str]] = (),
     alpha: float = 0.05,
+    cost_diff_usd: Measurement | float | None = None,
+    max_cost_delta_usd: float = 0.0,
 ) -> dict[str, Any]:
-    """Pre-registered keep decision (§3):
+    """Pre-registered keep decision (§3 / §4.6):
     * At most 2 primary metrics `(metric_id, paired_diff_measurement, direction)`.
     * Primary paired-difference 95% CI must exclude 0 in the good direction and pass
       Holm-Bonferroni step-down correction at level `alpha` across `m = len(primaries)` primaries.
     * No guard metric `(metric_id, paired_diff_measurement, delta, direction)` has its CI lying
       entirely beyond `delta` in the bad direction.
+    * Optional cost guard: if `cost_diff_usd` is provided, paired cost difference must not
+      exceed `max_cost_delta_usd` (for a `Measurement`, `ci_lo > max_cost_delta_usd` or
+      `value > max_cost_delta_usd` when `ci_lo` is None; for a scalar float, `cost_diff_usd > max_cost_delta_usd`).
     """
     if not primaries or len(primaries) > 2:
         raise ValueError("decide_keep requires 1 or 2 primary metrics")
+
+    if cost_diff_usd is not None:
+        if isinstance(cost_diff_usd, Measurement):
+            if cost_diff_usd.status != "ok" or cost_diff_usd.value is None:
+                return {"keep": False, "reason": f"cost guard is missing ({cost_diff_usd})"}
+            c_lo = cost_diff_usd.ci_lo if cost_diff_usd.ci_lo is not None else cost_diff_usd.value
+            if c_lo > float(max_cost_delta_usd):
+                return {
+                    "keep": False,
+                    "reason": (
+                        f"cost guard breach: cost_diff_usd={cost_diff_usd} "
+                        f"exceeds +{float(max_cost_delta_usd):.4f}"
+                    ),
+                }
+        else:
+            c_val = float(cost_diff_usd)
+            if c_val > float(max_cost_delta_usd):
+                return {
+                    "keep": False,
+                    "reason": (
+                        f"cost guard breach: cost_diff_usd={c_val:+.4f} "
+                        f"exceeds +{float(max_cost_delta_usd):.4f}"
+                    ),
+                }
 
     for gid, gmeas, delta, gdir in guards:
         if gmeas.status != "ok" or gmeas.ci_lo is None or gmeas.ci_hi is None:
@@ -400,6 +488,14 @@ METRIC_DOCS: dict[str, dict[str, str]] = {
         "role": "secondary",
         "measures": "Cross-day reproducibility of fused house attributes under real lighting, season, and camera-pose changes.",
         "does_not_measure": "Legitimate physical renovations between capture dates or shared model bias.",
+    },
+    "M1.7": {
+        "uc": "UC1",
+        "name": "Cross-day repeat-pass house attribute agreement vs shuffled-pair placebo",
+        "signal": "b",
+        "role": "secondary",
+        "measures": "Agreement of fused house attributes on matched cross-day capture pairs above a shuffled-pair placebo baseline (consistency != accuracy).",
+        "does_not_measure": "Ground-truth architectural accuracy or physical renovations between capture dates.",
     },
     "M2.1": {
         "uc": "UC2",
@@ -496,6 +592,14 @@ METRIC_DOCS: dict[str, dict[str, str]] = {
         "role": "guard",
         "measures": "Agreement with Gemini 3.1 Pro Preview on zoom tiles per slot (same model family; not accuracy).",
         "does_not_measure": "Errors shared across the Gemini model family.",
+    },
+    "M3.7": {
+        "uc": "UC3",
+        "name": "Cross-day repeat-pass surface agreement vs shuffled-pair placebo",
+        "signal": "b",
+        "role": "secondary",
+        "measures": "Cross-day surface slot agreement across matched 20 m bins compared against a shuffled-pair placebo baseline (consistency != accuracy).",
+        "does_not_measure": "Ground-truth pavement accuracy or repaving between capture dates.",
     },
     "M4.1": {
         "uc": "UC4",

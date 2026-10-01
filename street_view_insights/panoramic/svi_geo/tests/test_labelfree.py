@@ -16,6 +16,7 @@ EXPECTED_METRIC_IDS = {
     "M1.4",
     "M1.5",
     "M1.6",
+    "M1.7",
     "M2.1",
     "M2.2",
     "M2.3",
@@ -28,6 +29,7 @@ EXPECTED_METRIC_IDS = {
     "M3.4",
     "M3.5",
     "M3.6",
+    "M3.7",
     "M4.1",
     "M4.2",
     "M4.3",
@@ -187,6 +189,32 @@ def test_decide_keep_table():
         guards=[("M4.3", lf.Measurement.ok(-0.02, -0.06, 0.02, n_clusters=8), 0.10, "higher")],
     )
     assert res_holm_pass["keep"] is True
+
+
+def test_decide_keep_includes_cost_guard():
+    prim = [("M2.1", lf.Measurement.ok(0.18, 0.05, 0.30, n_clusters=8), "higher")]
+    res_ok = lf.decide_keep(primaries=prim, cost_diff_usd=-0.02, max_cost_delta_usd=0.0)
+    assert res_ok["keep"] is True
+    res_cost_fail = lf.decide_keep(primaries=prim, cost_diff_usd=0.03, max_cost_delta_usd=0.0)
+    assert res_cost_fail["keep"] is False
+    assert "cost guard" in res_cost_fail["reason"].lower()
+    m_cost = lf.Measurement.ok(0.04, 0.01, 0.07, n_clusters=6)
+    res_m_fail = lf.decide_keep(primaries=prim, cost_diff_usd=m_cost, max_cost_delta_usd=0.0)
+    assert res_m_fail["keep"] is False
+    assert "cost guard" in res_m_fail["reason"].lower()
+
+
+def test_change_detection_signal_vs_shuffle_placebo():
+    pairs_a = ["ASPHALT"] * 6 + ["CONCRETE"] * 6 + ["GRAVEL"] * 6
+    pairs_b = ["ASPHALT"] * 6 + ["CONCRETE"] * 5 + ["ASPHALT"] + ["GRAVEL"] * 6
+    blocks = [f"b{i // 3}" for i in range(len(pairs_a))]
+    m = lf.repeat_pass_agreement_vs_placebo(pairs_a, pairs_b, blocks, seed=7)
+    assert m.status == "ok"
+    assert m.value is not None and m.placebo is not None
+    assert m.value > 0.90
+    assert m.placebo < 0.45
+    assert m.value - m.placebo >= 0.45
+    assert "consistency != accuracy" in m.disclosure
 
 
 def test_metric_docs_cover_every_metric_and_render_summary():

@@ -368,7 +368,8 @@ def preview_tokens(
     kw: dict[str, Any] = {"model": model, "contents": contents}
     if cfg is not None:
         kw["config"] = cfg
-    resp = client.models.count_tokens(**kw)
+    raw_client = getattr(client, "client", getattr(client, "_client", client))
+    resp = raw_client.models.count_tokens(**kw)
     return int(getattr(resp, "total_tokens", 0) or 0)
 
 
@@ -845,11 +846,11 @@ class GeminiRunner:
                 self.in_flight -= 1
         latency_s = time.monotonic() - t0
         self.cost.add(reply.usage)
+        if code_execution:
+            self.cost.code_exec_runs += 1
         fb = getattr(self.backend, "fallbacks", 0)
         if fb:
             self.cost.fallbacks = int(fb)
-        if code_execution:
-            self.cost.code_exec_runs += 1
         self._append_call_log(parts, schema, code_execution, latency_s, reply.usage)
         return reply
 
@@ -999,15 +1000,16 @@ class GeminiRunner:
             )
         return out
 
-    def check(self, max_failure_rate: float = 0.0) -> None:
+    def check(self, max_failure_rate: float = 0.0, *, context: str = "") -> None:
         """Raise `GeminiFailures` if the failed share of requests exceeds `max_failure_rate`."""
         c = self.cost
         if c.failures == 0:
             return
         rate = c.failures / max(1, c.requests)
         if rate > max_failure_rate:
+            prefix = f"[{context}] " if context else ""
             raise GeminiFailures(
-                f"{c.failures} of {c.requests} Gemini requests failed "
+                f"{prefix}{c.failures} of {c.requests} Gemini requests failed "
                 f"(rate {rate:.1%} > allowed {max_failure_rate:.1%}); first messages: "
                 + " | ".join(c.failure_messages)
             )
