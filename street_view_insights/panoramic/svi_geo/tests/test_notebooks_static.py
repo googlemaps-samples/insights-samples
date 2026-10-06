@@ -485,3 +485,56 @@ def test_division_of_labour_lists_only_steps_the_notebook_runs():
     for step in ("triangulation", "deduplication", "box -> bearing"):
         assert step not in uc3, step
     assert "smoothing" in uc3 and "segments" in uc3
+
+
+INTERNAL_JARGON_RE = re.compile(
+    r"\bO[1-5]\b|\bU[0-9]{1,2}\b|\bM[1-4]\.[1-7]\b|\bP1b\b"
+    r"|\(Reference Implementation\)|\(Zero Gemini\)"
+)
+
+
+def test_every_code_cell_is_preceded_by_markdown_and_has_title_and_badges(nb):
+    assert nb.cells[0].cell_type == "markdown"
+    banner = nb.cells[0].source
+    assert "Open in Google Colab" in banner or "Open in Colab" in banner
+    assert "Open in Colab Enterprise" in banner
+    assert "View on GitHub" in banner
+    assert nb.cells[-1].cell_type == "markdown"
+    assert "Summary" in nb.cells[-1].source and "Next Steps" in nb.cells[-1].source
+
+    first_code_seen = False
+    for idx, c in enumerate(nb.cells):
+        for line in c.source.splitlines():
+            assert len(line) <= 100, f"line > 100 chars ({len(line)}): {line}"
+        if c.cell_type == "code":
+            assert idx > 0 and nb.cells[idx - 1].cell_type == "markdown", (
+                f"code cell {idx} is not preceded by a narrative markdown cell"
+            )
+            first_line = c.source.splitlines()[0] if c.source.splitlines() else ""
+            assert not first_line.startswith("# concept:"), (
+                f"code cell {idx} starts with raw '# concept:' instead of '# @title'"
+            )
+            assert "# @title Step " in c.source, f"code cell {idx} missing '# @title Step' header"
+            if not first_code_seen:
+                first_code_seen = True
+                assert "Copyright 2026 Google LLC" in c.source
+                assert "Apache License, Version 2.0" in c.source
+
+
+def test_no_internal_task_or_benchmark_jargon_in_notebooks_or_readme():
+    for p in NOTEBOOKS:
+        book = nbformat.read(p, as_version=4)
+        for idx, c in enumerate(book.cells):
+            m = INTERNAL_JARGON_RE.search(c.source)
+            assert not m, f"{p.name} cell {idx} contains internal jargon {m.group(0)!r}"
+    readme_path = NOTEBOOK_DIR.parent / "README.md"
+    readme_text = readme_path.read_text(encoding="utf-8")
+    m = INTERNAL_JARGON_RE.search(readme_text)
+    assert not m, f"panoramic/README.md contains internal jargon {m.group(0)!r}"
+
+
+def test_notebooks_display_saved_figures_inline(nb):
+    code = _code(nb)
+    assert "display(Image(" in code, (
+        "notebooks must display saved figures inline via display(Image(...))"
+    )
