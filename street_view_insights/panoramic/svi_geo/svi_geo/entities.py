@@ -132,6 +132,7 @@ class Entity:
     confidence: float
     attrs: dict[str, tuple[Any, float]]
     range_m: float = math.nan  # single-view range from the camera (NaN otherwise)
+    max_parallax_deg: float = 0.0
 
     @property
     def located(self) -> bool:
@@ -291,7 +292,7 @@ def _contact_z(xy: np.ndarray, obs: Sequence[Observation], cam_height_m: float) 
 
 def _refine(obs, idx, max_range_m, max_rms_m, cam_height_m):
     res = tri.intersect_rays(
-        [obs[i].ray for i in idx], max_range_m=max_range_m, max_rms_m=max_rms_m, min_angle_deg=3.0
+        [obs[i].ray for i in idx], max_range_m=max_range_m, max_rms_m=max_rms_m, min_angle_deg=5.0
     )
     if res.ok and obs[idx[0]].cls in GROUND_CONTACT:
         p = res.point.copy()
@@ -614,19 +615,45 @@ def cluster(
                 votes[m.cls] += m.confidence
             final_cls = max(votes, key=votes.get) if votes else cls
 
-            attr_keys = sorted({k for m in members for k in m.attrs if m.cls == final_cls})
+            attr_members = (
+                [m for m in members if m.cls in POST_GROUP]
+                if cls == "POST_GROUP"
+                else [m for m in members if m.cls == final_cls]
+            )
+            attr_keys = sorted({k for m in attr_members for k in m.attrs})
             attrs = {
                 k: fuse_attribute(
-                    (m.attrs.get(k), m.confidence)
-                    for m in members
-                    if m.cls == final_cls and m.attrs.get(k) is not None
+                    (
+                        (
+                            m.attrs.get(k),
+                            m.confidence * (1.0 if m.cls == final_cls else 0.9),
+                        )
+                        for m in attr_members
+                        if m.attrs.get(k) is not None
+                    ),
+                    ignore={"UNKNOWN"},
                 )
                 for k in attr_keys
             }
             conf = float(
                 1.0
-                - np.prod([1.0 - min(0.999, m.confidence) for m in members if m.cls == final_cls])
+                - np.prod([1.0 - min(0.999, m.confidence) for m in attr_members])
             )
+            max_par = 0.0
+            for a_idx in range(len(members)):
+                for b_idx in range(a_idx + 1, len(members)):
+                    if members[a_idx].pano_id == members[b_idx].pano_id:
+                        continue
+                    dot = float(
+                        np.clip(
+                            np.dot(members[a_idx].ray.dir2d, members[b_idx].ray.dir2d),
+                            -1.0,
+                            1.0,
+                        )
+                    )
+                    ang = math.degrees(math.acos(dot))
+                    if ang > max_par:
+                        max_par = ang
             eid = (
                 _unlocated_id(final_cls, [m.obs_id for m in members])
                 if method == "unlocated"
@@ -646,9 +673,50 @@ def cluster(
                     confidence=conf,
                     attrs=attrs,
                     range_m=float(range_m),
+                    max_parallax_deg=float(max_par),
                 )
             )
     return _disambiguate_ids(out)
+
+
+def entities_to_dataframe(entities: Sequence[Entity]) -> Any:
+    """Convert a sequence of `Entity` instances into a summary DataFrame preserving fused attributes."""
+    import pandas as pd
+
+    base_cols = [
+        "entity_id",
+        "class",
+        "lat",
+        "lng",
+        "method",
+        "range_m",
+        "n_panos",
+        "n_obs",
+        "rms_m",
+        "confidence",
+        "max_parallax_deg",
+    ]
+    if not entities:
+        return pd.DataFrame(columns=base_cols)
+    attr_cols = sorted({k for e in entities for k in e.attrs})
+    rows = [
+        {
+            "entity_id": e.entity_id,
+            "class": e.cls,
+            "lat": e.lat,
+            "lng": e.lng,
+            "method": e.method,
+            "range_m": e.range_m,
+            "n_panos": e.n_panos,
+            "n_obs": len(e.obs_ids),
+            "rms_m": e.rms_m,
+            "confidence": e.confidence,
+            "max_parallax_deg": e.max_parallax_deg,
+            **{k: e.attrs[k][0] if k in e.attrs else None for k in attr_cols},
+        }
+        for e in entities
+    ]
+    return pd.DataFrame(rows, columns=base_cols + attr_cols)
 
 
 def _unlocated_id(cls: str, obs_ids: Sequence[str]) -> str:
@@ -678,3 +746,4 @@ def _disambiguate_ids(entities: list[Entity]) -> list[Entity]:
 
 def labels_by_observation(entities: Iterable[Entity]) -> dict[str, str]:
     return {o: e.entity_id for e in entities for o in e.obs_ids}
+

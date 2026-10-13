@@ -400,3 +400,57 @@ def test_street_tree_clustered_separately_from_poles_and_requires_min_panos():
     assert sorted(e.cls for e in located) == ["STREET_TREE", "UTILITY_POLE"]
     unloc = [e for e in out if not e.located]
     assert len(unloc) == 1 and unloc[0].cls == "STREET_TREE"
+
+
+def test_post_group_pools_attributes_across_mixed_classes_and_records_max_parallax():
+    panos = dict(_panos(3))
+    target = np.array([4.0, 18.0, 0.0])
+    obs = []
+    specs = [
+        ("P0", "UTILITY_POLE", 0.90, {"material": "UNKNOWN", "condition": None}),
+        ("P1", "UTILITY_POLE", 0.88, {"material": None, "condition": "UNKNOWN"}),
+        ("P2", "STREET_LIGHT", 0.82, {"material": "WOOD", "condition": "GOOD"}),
+    ]
+    for i, (pid, cls, conf, attrs) in enumerate(specs):
+        c = panos[pid]
+        d = target - c
+        az = math.degrees(math.atan2(d[0], d[1])) % 360.0
+        el_b = -math.degrees(math.atan2(CAM_H, math.hypot(d[0], d[1])))
+        obs.append(
+            ent.Observation(
+                obs_id=f"o_{i}",
+                pano_id=pid,
+                cls=cls,
+                ray=tri.Ray(c, az, el_b),
+                confidence=conf,
+                el_bottom_deg=el_b,
+                attrs=attrs,
+            )
+        )
+    entities = ent.cluster(obs, REF, cam_height_m=CAM_H, min_post_panos=2)
+    loc = ent.located_entities(entities)
+    assert len(loc) == 1
+    e = loc[0]
+    assert e.cls == "UTILITY_POLE"
+    assert e.attrs["material"][0] == "WOOD"
+    assert e.attrs["condition"][0] == "GOOD"
+    assert e.max_parallax_deg > 15.0
+    df = ent.entities_to_dataframe(entities)
+    assert "max_parallax_deg" in df.columns
+    assert df.iloc[0]["material"] == "WOOD"
+    assert df.iloc[0]["condition"] == "GOOD"
+    assert df.iloc[0]["max_parallax_deg"] == pytest.approx(e.max_parallax_deg)
+
+
+def test_refine_rejects_grazing_rays_below_5_deg_parallax():
+    c0 = np.array([0.0, 0.0, CAM_H])
+    c1 = np.array([0.0, 10.0, CAM_H])
+    r0 = tri.Ray(c0, 12.2, 0.0)
+    r1 = tri.Ray(c1, 16.4, 0.0)  # 4.2 deg parallax < 5.0 deg
+    obs_grazing = [
+        ent.Observation("g0", "P0", "UTILITY_POLE", r0, 0.9, el_bottom_deg=None),
+        ent.Observation("g1", "P1", "UTILITY_POLE", r1, 0.9, el_bottom_deg=None),
+    ]
+    assert not ent._refine(obs_grazing, [0, 1], 50.0, 2.0, CAM_H).ok
+
+

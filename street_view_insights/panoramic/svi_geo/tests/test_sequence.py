@@ -427,3 +427,40 @@ def test_stride_selects_target_spacing():
     assert list(selected["seq_idx"]) == sorted(selected["seq_idx"])
     steps = np.diff(selected["cum_m"].to_numpy(dtype=float))
     assert float(np.median(steps)) >= 8.5
+
+
+def test_audit_corridor_spans_partitions_left_right_and_flags_gaps():
+    track_df = sequence.build_sequences(_track(10, 10.0, 1.0, bearing_deg=0.0))  # Northward along +N (x=0, y=0..90)
+
+    ref_lat = float(track_df["lat"].iloc[0])
+    ref_lng = float(track_df["lng"].iloc[0])
+    # Right of Northward travel is +East (e > 0); Left of Northward travel is -East (e < 0)
+    pts_enu = [
+        ("pole_r1", 8.0, 5.0),
+        ("pole_r2", 8.0, 35.0),
+        ("pole_r3", 8.0, 65.0),
+        ("pole_l1", -8.0, 10.0),
+        ("pole_l2", -8.0, 75.0),  # 65m span -> gap > 50m
+    ]
+    ent_rows = []
+    for eid, e_m, n_m in pts_enu:
+        lat, lng, _ = geo.enu_to_lla(e_m, n_m, 0.0, ref_lat, ref_lng, 0.0)
+        ent_rows.append(
+            {
+                "entity_id": eid,
+                "class": "UTILITY_POLE",
+                "lat": float(lat),
+                "lng": float(lng),
+                "method": "triangulated",
+            }
+        )
+    res = sequence.audit_corridor_spans(
+        track_df, pd.DataFrame(ent_rows), classes=("UTILITY_POLE",), max_lateral_m=25.0, max_span_m=50.0
+    )
+    assert len(res["right"]) == 3
+    assert len(res["left"]) == 2
+    assert len(res["span_gaps"]) == 1
+    gap = res["span_gaps"][0]
+    assert gap["side"] == "LEFT"
+    assert gap["span_m"] == pytest.approx(65.0, abs=1.0)
+

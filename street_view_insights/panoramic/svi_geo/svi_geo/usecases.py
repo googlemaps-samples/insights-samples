@@ -641,39 +641,44 @@ async def uc2_run(
         cluster_kw["min_post_panos"] = variant.uc2_min_post_panos
     if variant.uc2_house_facade_edges:
         cluster_kw["use_house_facade_edges"] = True
+    from svi_geo import data, geo
+
     entities = ent.cluster(filtered_obs, ref, **cluster_kw)
+    infill_recovered = 0
+    if max_presence_checks > 0:
+        entities, filtered_obs, infill_recovered = await infill_unlocated_poles(
+            entities,
+            filtered_obs,
+            sel_frames,
+            intr,
+            fetch,
+            runner,
+            ref,
+            min_post_panos=variant.uc2_min_post_panos,
+            max_infill_calls=min(4, max_presence_checks),
+        )
     located = ent.located_entities(entities)
     unlocated = [e for e in entities if e.method == "unlocated"]
-    ent_df = pd.DataFrame(
-        [
-            {
-                "entity_id": e.entity_id,
-                "class": e.cls,
-                "lat": e.lat,
-                "lng": e.lng,
-                "method": e.method,
-                "range_m": e.range_m,
-                "n_panos": e.n_panos,
-                "n_obs": len(e.obs_ids),
-                "rms_m": e.rms_m,
-                "confidence": e.confidence,
-                **{k: v[0] for k, v in e.attrs.items()},
-            }
-            for e in entities
-        ],
-        columns=[
-            "entity_id",
-            "class",
-            "lat",
-            "lng",
-            "method",
-            "range_m",
-            "n_panos",
-            "n_obs",
-            "rms_m",
-            "confidence",
-        ],
+    ent_df = ent.entities_to_dataframe(entities)
+    sv_rows: list[dict[str, Any]] = []
+    for o in filtered_obs:
+        p_sv = ent._single_view_point(o, 2.5)
+        if p_sv is not None:
+            olat, olng, _ = geo.enu_to_lla(float(p_sv[0]), float(p_sv[1]), float(p_sv[2]), *ref)
+            sv_rows.append(
+                {
+                    "obs_id": o.obs_id,
+                    "pano_id": o.pano_id,
+                    "class": o.cls,
+                    "lat": float(olat),
+                    "lng": float(olng),
+                    "confidence": float(o.confidence),
+                }
+            )
+    single_view_df = pd.DataFrame(
+        sv_rows, columns=["obs_id", "pano_id", "class", "lat", "lng", "confidence"]
     )
+    corridor_spans = sequence.audit_corridor_spans(data.panos_from_frames(sel_frames), located)
     trees = ent_df[ent_df["class"] == "STREET_TREE"]
     trees_located = int((trees.method != "unlocated").sum())
     trees_unlocated = int((trees.method == "unlocated").sum())
@@ -707,6 +712,9 @@ async def uc2_run(
         "located": located,
         "unlocated": unlocated,
         "ent_df": ent_df,
+        "single_view_df": single_view_df,
+        "corridor_spans": corridor_spans,
+        "infill_recovered": infill_recovered,
         "trees_located": trees_located,
         "trees_unlocated": trees_unlocated,
         "posts_located": posts_located,
@@ -720,6 +728,176 @@ async def uc2_run(
         "dark_pixel_max": det_dark,
         "redaction_overlap_max": det_redaction,
     }
+
+
+async def infill_unlocated_poles(
+    entities: Sequence[ent.Entity],
+    observations: Sequence[ent.Observation],
+    frames: pd.DataFrame,
+    intr: rosette.Intrinsics,
+    fetch: Callable[[str], bytes],
+    runner: gc.GeminiRunner,
+    ref_lla: tuple[float, float, float],
+    *,
+    min_post_panos: int = 2,
+    max_infill_calls: int = 4,
+    cam_height_m: float = 2.5,
+    seed: int = 0,
+) -> tuple[list[ent.Entity], list[ent.Observation], int]:
+    """Targeted 40-deg zoom infill (`PresenceCheck`) from the nearest adjacent rosette (`K-1` / `K+1`)
+    for single-view `UTILITY_POLE` candidates held in `unlocated` due to `min_post_panos >= 2`."""
+    import math
+
+    from svi_geo import data
+    from svi_geo import triangulate as tri
+
+    if max_infill_calls <= 0:
+        return list(entities), list(observations), 0
+
+    frames_norm = data.ensure_capture_id(frames)
+    obs_by_id = {o.obs_id: o for o in observations}
+    unloc_poles = [
+        e for e in entities if e.method == "unlocated" and e.cls == "UTILITY_POLE" and e.obs_ids
+    ]
+    if not unloc_poles:
+        return list(entities), list(observations), 0
+
+    # Order rosettes along sequence
+    pano_order = (
+        frames_norm[["capture_id", "seq_idx"]]
+        .drop_duplicates("capture_id")
+        .sort_values("seq_idx")
+        .reset_index(drop=True)
+        if "seq_idx" in frames_norm.columns
+        else frames_norm[["capture_id"]].drop_duplicates("capture_id").reset_index(drop=True)
+    )
+    cid_list = [str(c) for c in pano_order["capture_id"].tolist()]
+    cid_to_pos = {cid: idx for idx, cid in enumerate(cid_list)}
+
+    new_obs: list[ent.Observation] = []
+    calls_made = 0
+    for e in unloc_poles:
+        if calls_made >= max_infill_calls:
+            break
+        o0 = obs_by_id.get(e.obs_ids[0])
+        if o0 is None:
+            continue
+        p_sv = ent._single_view_point(o0, cam_height_m)
+        if p_sv is None:
+            continue
+        pos = cid_to_pos.get(str(o0.pano_id))
+        if pos is None:
+            continue
+        adj_cids = [cid_list[p] for p in (pos - 1, pos + 1) if 0 <= p < len(cid_list)]
+        if not adj_cids:
+            continue
+
+        # Pick the adjacent rosette with the best ground camera covering the predicted 3D point
+        best_choice = None
+        best_cid = None
+        best_origin = None
+        best_az = 0.0
+        best_el_b = 0.0
+        for acid in adj_cids:
+            sub = frames_norm[frames_norm["capture_id"].astype(str) == acid]
+            ground_rows = [
+                r for r in sub.to_dict("records") if rosette.is_ground_camera(int(r["cam_k"]))
+            ]
+            if not ground_rows:
+                continue
+            origin_adj = rosette.camera_center_enu(ground_rows[0]["camera_pose"], ref_lla)
+            v = p_sv - origin_adj
+            horiz_d = float(math.hypot(v[0], v[1]))
+            if horiz_d < 2.0 or horiz_d > 50.0:
+                continue
+            az_pred = float(math.degrees(math.atan2(v[0], v[1])) % 360.0)
+            el_pred = float(-math.degrees(math.atan2(cam_height_m, horiz_d)))
+            choice = rosette.best_camera_for_view(
+                ground_rows, intr, az_pred, 0.0, 1.0, min_hfov=35.0, hfov_cap=40.0
+            )
+            if choice is not None:
+                best_choice = choice
+                best_cid = acid
+                best_origin = origin_adj
+                best_az = az_pred
+                best_el_b = el_pred
+                break
+
+        if best_choice is None or best_cid is None or best_origin is None:
+            continue
+
+        w, h = 512, 512
+        view = rosette.PerspectiveView(best_az, 0.0, 40.0, w, h)
+        scale = images.decode_scale_for_view(w, 40.0)
+        try:
+            raw_im = images.decode(fetch(best_choice.row["gcs_uri"]), scale=scale)
+            crop = rosette.render_perspective(
+                raw_im,
+                intr,
+                best_choice.row["camera_pose"],
+                view,
+                int(best_choice.cam_k),
+                antialias=True,
+                mask_hood=True,
+            )
+        except Exception:
+            continue
+
+        calls_made += 1
+        chk = await runner.ask(
+            [
+                "Is a vertical utility pole (wooden, concrete, or metal pole supporting overhead "
+                "wires, crossarms, or street-light mast arm) visible near the horizontal centre "
+                "of this targeted 40-deg zoom view? If present, return present=true and box_2d "
+                "tightly around the vertical pole shaft.",
+                crop,
+            ],
+            schemas.PresenceCheck,
+            seed=seed,
+        )
+        if chk is None or not chk.present or chk.confidence < 0.65:
+            continue
+
+        if chk.box_2d is not None and len(chk.box_2d) == 4:
+            x0, y0, x1, y1 = schemas.box_2d_to_pixels(chk.box_2d, w, h)
+            u_c = 0.5 * (x0 + x1)
+            az_obs, _ = view.pixel_to_bearing(u_c, 0.5 * (y0 + y1))
+            az_final = float(az_obs)
+            box_px = (x0, y0, x1, y1)
+        else:
+            az_final = best_az
+            box_px = (0.45 * w, 0.20 * h, 0.55 * w, 0.85 * h)
+
+        new_obs.append(
+            ent.Observation(
+                obs_id=f"infill_{best_cid}_{len(new_obs)}",
+                pano_id=str(best_cid),
+                cls="UTILITY_POLE",
+                ray=tri.Ray(
+                    best_origin,
+                    az_final,
+                    best_el_b,
+                    meta={"cam_k": int(best_choice.cam_k), "box": box_px, "infill": True},
+                ),
+                confidence=float(chk.confidence),
+                el_bottom_deg=None,
+                attrs=dict(o0.attrs),
+            )
+        )
+
+
+    if not new_obs:
+        return list(entities), list(observations), 0
+
+    all_obs = [*observations, *new_obs]
+    reclustered = ent.cluster(
+        all_obs,
+        ref_lla,
+        merge_single_view=True,
+        min_post_panos=min_post_panos,
+    )
+    return reclustered, all_obs, len(new_obs)
+
 
 
 # --------------------------------------------------------------------------- UC3
@@ -1621,12 +1799,18 @@ async def uc2_asset_audit(
                     "lat",
                     "lng",
                     "nearest_entity_m",
+                    "nearest_entity_id",
+                    "nearest_entity_cls",
                     "matched",
+                    "exact_class_match",
+                    "post_group_match",
                     "proj_u",
                     "proj_v",
                 ]
             ),
             "matched_count": 0,
+            "exact_class_matched_count": 0,
+            "post_group_matched_count": 0,
             "gemini_confirmed": False,
         }
 
@@ -1635,10 +1819,8 @@ async def uc2_asset_audit(
         r for r in frames_norm.to_dict("records") if rosette.is_ground_camera(int(r["cam_k"]))
     ]
     records_out: list[dict[str, Any]] = []
-    first_crop: np.ndarray | None = None
-    first_type: str = "ROAD_SIGN"
 
-    for row in assets_df.head(max(1, int(max_assets) * 3)).to_dict("records"):
+    for row in assets_df.to_dict("records"):
         wkt = row.get("wkt")
         if wkt:
             try:
@@ -1649,6 +1831,8 @@ async def uc2_asset_audit(
             alat, alng = float(row["lat"]), float(row["lng"])
 
         best_ent_m = float("inf")
+        best_ent_id: str | None = None
+        best_ent_cls: str | None = None
         for e in located_entities or ():
             elat = getattr(e, "lat", None) if not isinstance(e, Mapping) else e.get("lat")
             elng = getattr(e, "lng", None) if not isinstance(e, Mapping) else e.get("lng")
@@ -1656,9 +1840,29 @@ async def uc2_asset_audit(
                 d_e = float(geo.haversine_m(alat, alng, float(elat), float(elng)))
                 if d_e < best_ent_m:
                     best_ent_m = d_e
+                    best_ent_id = str(
+                        getattr(e, "entity_id", "")
+                        if not isinstance(e, Mapping)
+                        else (e.get("entity_id") or "")
+                    )
+                    best_ent_cls = str(
+                        getattr(e, "cls", "")
+                        if not isinstance(e, Mapping)
+                        else (e.get("cls") or e.get("class") or "")
+                    )
         matched = bool(best_ent_m <= float(match_radius_m))
+        raw_atype = str(row.get("asset_type") or "")
+        expected_cls = raw_atype.removeprefix("ASSET_CLASS_")
+        exact_class_match = bool(
+            matched and best_ent_cls and expected_cls and best_ent_cls == expected_cls
+        )
+        post_group_match = bool(
+            matched and (not best_ent_cls or best_ent_cls in ent.POST_GROUP)
+        )
 
         proj_u, proj_v = float("nan"), float("nan")
+        r_near = None
+        v_obj = None
         if ground_rows:
             dists = [
                 float(
@@ -1676,35 +1880,59 @@ async def uc2_asset_audit(
             u_px, v_px, ok_px = v_obj.bearing_to_pixel(brg, 0.0)
             if bool(ok_px):
                 proj_u, proj_v = float(u_px), float(v_px)
-            if first_crop is None and len(records_out) < max_assets:
-                try:
-                    scale = images.decode_scale_for_view(640, 60.0)
-                    raw_im = images.decode(fetch(r_near["gcs_uri"]), scale=scale)
-                    first_crop = rosette.render_perspective(
-                        raw_im,
-                        intr,
-                        pose,
-                        v_obj,
-                        int(r_near["cam_k"]),
-                        antialias=True,
-                        mask_hood=True,
-                    )
-                    first_type = str(row.get("asset_type") or "ASSET")
-                except Exception:
-                    first_crop = None
 
         records_out.append(
             {
                 "asset_id": str(row.get("asset_id") or ""),
-                "asset_type": str(row.get("asset_type") or ""),
+                "asset_type": raw_atype,
                 "lat": alat,
                 "lng": alng,
                 "nearest_entity_m": best_ent_m if math.isfinite(best_ent_m) else None,
+                "nearest_entity_id": best_ent_id if matched else None,
+                "nearest_entity_cls": best_ent_cls if matched else None,
                 "matched": matched,
+                "exact_class_match": exact_class_match,
+                "post_group_match": post_group_match,
                 "proj_u": proj_u,
                 "proj_v": proj_v,
+                "_r_near": r_near,
+                "_v_obj": v_obj,
             }
         )
+
+    records_out.sort(
+        key=lambda r: (
+            0 if r["matched"] else 1,
+            float(r["nearest_entity_m"]) if r["nearest_entity_m"] is not None else float("inf"),
+        )
+    )
+
+    first_crop: np.ndarray | None = None
+    first_type: str = "ROAD_SIGN"
+    for r in records_out[: max(1, int(max_assets))]:
+        r_near = r.get("_r_near")
+        v_obj = r.get("_v_obj")
+        if r_near is not None and v_obj is not None:
+            try:
+                scale = images.decode_scale_for_view(640, 60.0)
+                raw_im = images.decode(fetch(r_near["gcs_uri"]), scale=scale)
+                first_crop = rosette.render_perspective(
+                    raw_im,
+                    intr,
+                    r_near["camera_pose"],
+                    v_obj,
+                    int(r_near["cam_k"]),
+                    antialias=True,
+                    mask_hood=True,
+                )
+                first_type = str(r.get("asset_type") or "ASSET")
+                break
+            except Exception:
+                first_crop = None
+
+    for r in records_out:
+        r.pop("_r_near", None)
+        r.pop("_v_obj", None)
 
     audit_df = pd.DataFrame(records_out)
     gemini_confirmed = False
@@ -1722,5 +1950,12 @@ async def uc2_asset_audit(
     return {
         "audit_df": audit_df,
         "matched_count": int(audit_df["matched"].sum()) if not audit_df.empty else 0,
+        "exact_class_matched_count": (
+            int(audit_df["exact_class_match"].sum()) if not audit_df.empty else 0
+        ),
+        "post_group_matched_count": (
+            int(audit_df["post_group_match"].sum()) if not audit_df.empty else 0
+        ),
         "gemini_confirmed": gemini_confirmed,
     }
+

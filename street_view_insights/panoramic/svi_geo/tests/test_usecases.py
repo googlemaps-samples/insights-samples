@@ -610,3 +610,104 @@ def test_build_uc2_fewshot_parts_and_select_best_post_for_lean():
     assert best_label == "UTILITY_POLE"
     assert best_sup >= 0.6
     assert len(best_box) == 4
+
+
+def test_uc2_asset_audit_evaluates_beyond_top_k_and_tracks_class_matches():
+    import pandas as pd
+
+    fr = _attach_uris(sim.synthetic_frames(3, 10.0, 28.0502, -81.9601, travel_deg=0.0))
+    far_rows = [
+        {
+            "asset_id": f"far_{i:02d}",
+            "asset_type": "ASSET_CLASS_ROAD_SIGN",
+            "lat": 28.0520 + i * 0.0001,
+            "lng": -81.9620,
+            "wkt": f"POINT(-81.9620 {28.0520 + i * 0.0001:.6f})",
+            "dist_m": float(i),
+        }
+        for i in range(49)
+    ]
+    near_row = {
+        "asset_id": "pole_50",
+        "asset_type": "ASSET_CLASS_UTILITY_POLE",
+        "lat": 28.05022,
+        "lng": -81.96010,
+        "wkt": "POINT(-81.96010 28.05022)",
+        "dist_m": 150.0,
+    }
+    assets_df = pd.DataFrame([*far_rows, near_row])
+    loc_ents = [
+        {"entity_id": "utility_pole_01", "cls": "UTILITY_POLE", "lat": 28.05023, "lng": -81.96010}
+    ]
+
+    def reply_fn(_idx, _parts, _schema):
+        return '{"present": true, "confidence": 0.94, "box_2d": [200, 450, 850, 550]}'
+
+    runner = gemini_client.GeminiRunner(_ScriptedBackend(reply_fn), max_calls=5)
+    audit_out = asyncio.run(
+        uc.uc2_asset_audit(
+            assets_df, loc_ents, fr, rosette.DEFAULT_INTRINSICS, _dummy_fetch, runner
+        )
+    )
+    assert audit_out["matched_count"] == 1
+    assert audit_out["gemini_confirmed"] is True
+    assert runner.cost.calls == 1
+    top_row = audit_out["audit_df"].iloc[0]
+    assert top_row["asset_id"] == "pole_50"
+    assert bool(top_row["matched"]) is True
+    assert bool(top_row["exact_class_match"]) is True
+    assert bool(top_row["post_group_match"]) is True
+
+
+def test_infill_unlocated_poles_recovers_single_view_pole_via_40deg_zoom():
+    import math
+
+    from svi_geo import entities as ent
+    from svi_geo import triangulate as tri
+
+    fr = _attach_uris(sim.synthetic_frames(3, 12.0, 28.0502, -81.9601, travel_deg=0.0))
+
+    ref = (28.0502, -81.9601, 0.0)
+    p0_row = fr[(fr["seq_idx"] == 0) & (fr["cam_k"] == 0)].iloc[0]
+    origin0 = rosette.camera_center_enu(p0_row["camera_pose"], ref)
+    pole_enu = origin0 + np.array([4.0, 14.0, -origin0[2]])
+    de, dn = float(pole_enu[0] - origin0[0]), float(pole_enu[1] - origin0[1])
+    horiz_d = math.hypot(de, dn)
+    az0 = math.degrees(math.atan2(de, dn)) % 360.0
+    el_b0 = -math.degrees(math.atan2(2.5, horiz_d))
+
+    obs0 = ent.Observation(
+        obs_id="obs_p0_0",
+        pano_id=str(p0_row["capture_id"]),
+        cls="UTILITY_POLE",
+        ray=tri.Ray(origin0, az0, el_b0, meta={"cam_k": 0, "box": (480, 200, 520, 850)}),
+        confidence=0.88,
+        el_bottom_deg=el_b0,
+        attrs={"material": "WOOD", "condition": "GOOD"},
+    )
+    entities_init = ent.cluster([obs0], ref, min_post_panos=2)
+    assert len(ent.located_entities(entities_init)) == 0
+
+    def reply_fn(_idx, _parts, _schema):
+        return '{"present": true, "confidence": 0.91, "box_2d": [200, 480, 850, 520]}'
+
+    runner = gemini_client.GeminiRunner(_ScriptedBackend(reply_fn), max_calls=5)
+    entities_after, obs_after, n_recovered = asyncio.run(
+        uc.infill_unlocated_poles(
+            entities_init,
+            [obs0],
+            fr,
+            rosette.DEFAULT_INTRINSICS,
+            _dummy_fetch,
+            runner,
+            ref,
+            min_post_panos=2,
+        )
+    )
+    assert n_recovered == 1
+    assert len(obs_after) == 2
+    loc_after = ent.located_entities(entities_after)
+    assert len(loc_after) == 1
+    assert loc_after[0].cls == "UTILITY_POLE"
+    assert loc_after[0].n_panos == 2
+

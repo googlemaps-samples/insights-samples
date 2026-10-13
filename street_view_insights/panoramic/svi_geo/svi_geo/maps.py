@@ -419,7 +419,66 @@ def _draw_overlay_panel(panel: Mapping[str, Any]) -> tuple[Any, int, int, list[s
             n_rej += 1
             reasons.append(reason)
 
+    h_c, w_c = canvas.shape[:2]
+    for pl in panel.get("plumb_lines") or ():
+        u_px = int(round(float(pl.get("u", 0.0))))
+        v_base = int(round(float(pl.get("v_base", h_c - 10))))
+        rms_px = max(2, int(round(float(pl.get("rms_px", 4.0)))))
+        if 0 <= u_px < w_c:
+            y_top = max(20, int(0.18 * h_c))
+            y_bot = min(h_c - 4, max(y_top + 10, v_base))
+            for y_seg in range(y_top, y_bot, 10):
+                cv2.line(
+                    canvas,
+                    (u_px, y_seg),
+                    (u_px, min(y_bot, y_seg + 6)),
+                    (208, 87, 11),
+                    2,
+                )
+            cv2.ellipse(
+                canvas,
+                (u_px, y_bot),
+                (rms_px, max(2, rms_px // 2)),
+                0.0,
+                0.0,
+                360.0,
+                (208, 87, 11),
+                1,
+            )
+
+    view_obj = panel.get("view")
+    yaw_c = panel.get("compass_yaw_deg")
+    hfov_c = panel.get("compass_hfov_deg")
+    if view_obj is not None and yaw_c is None:
+        yaw_c = getattr(view_obj, "yaw_deg", None)
+        hfov_c = getattr(view_obj, "hfov_deg", None)
+    if yaw_c is not None and hfov_c is not None and float(hfov_c) > 0:
+        yaw_f = float(yaw_c)
+        hfov_f = float(hfov_c)
+        cardinals = {0: "N", 90: "E", 180: "S", 270: "W"}
+        start_deg = int(math.floor((yaw_f - 0.5 * hfov_f) / 15.0) * 15)
+        end_deg = int(math.ceil((yaw_f + 0.5 * hfov_f) / 15.0) * 15)
+        for tick_deg in range(start_deg, end_deg + 1, 15):
+            rel = ((tick_deg - yaw_f + 180.0) % 360.0) - 180.0
+            if abs(rel) > 0.5 * hfov_f:
+                continue
+            tx = int(round((0.5 + rel / hfov_f) * (w_c - 1)))
+            if 0 <= tx < w_c:
+                cv2.line(canvas, (tx, 0), (tx, 8), (240, 240, 240), 1)
+                lbl = cardinals.get(tick_deg % 360, f"{tick_deg % 360}")
+                cv2.putText(
+                    canvas,
+                    lbl,
+                    (max(2, min(w_c - 24, tx - 8)), 18),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.35,
+                    (240, 240, 240),
+                    1,
+                    cv2.LINE_AA,
+                )
+
     return canvas, n_acc, n_rej, reasons
+
 
 
 def render_overlay_grid(

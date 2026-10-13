@@ -100,7 +100,17 @@ def detection_prompt(classes: Sequence[str] = DETECT_CLASSES) -> str:
         "tight box_2d [ymin, xmin, ymax, xmax] on a 0-1000 scale covering the WHOLE visible "
         "vertical extent down to ground contact:\n"
         "- For UTILITY_POLE, ROAD_SIGN, STREET_LIGHT, and FIRE_HYDRANT, the box bottom (ymax) "
-        "MUST be where the post or base meets the ground/sidewalk.\n"
+        "MUST be where the post or base meets the ground/sidewalk. For UTILITY_POLE and "
+        "STREET_LIGHT, xmin and xmax MUST tightly bound only the vertical structural pole "
+        "shaft/trunk down to ground contact (exclude wide horizontal luminaire arms or overhead "
+        "wires from the box width so the horizontal box centre marks the pole shaft).\n"
+        "- Joint-use disambiguation (UTILITY_POLE vs STREET_LIGHT): Any vertical wood, concrete, "
+        "or metal pole that carries or suspends horizontal overhead utility wires/cables "
+        "(electric distribution lines, cross-arms, insulators, pole-mounted transformers, risers, "
+        "or telecom cables) MUST be labeled UTILITY_POLE, even if a street-light luminaire arm or "
+        "road sign is also attached to the same pole. Use STREET_LIGHT ONLY for standalone "
+        "dedicated lighting columns (typically fed from underground conduit) that carry NO "
+        "horizontal overhead utility lines. Do not box diagonal guy-wire stubs.\n"
         "- For STREET_TREE, box the roadside/curb-strip tree from its canopy top down to where "
         "the trunk base meets the ground or planting strip (ymax at trunk base); distinguish "
         "living trees with foliage/bark from utility poles.\n"
@@ -187,7 +197,10 @@ def detections_to_observations(
                 confidence=conf,
                 el_bottom_deg=el_bottom,
                 el_top_deg=b["el_top"],
-                attrs={"material": d.material.value if d.material else None},
+                attrs={
+                    "material": d.material.value if d.material else None,
+                    "condition": d.condition.value if d.condition else None,
+                },
             )
         )
     return out

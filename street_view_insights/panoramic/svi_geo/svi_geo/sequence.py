@@ -402,3 +402,174 @@ def blocks(seqs: pd.DataFrame, block_size: int = 5) -> dict[str, str]:
         for pos, cid in enumerate(g["capture_id"].tolist()):
             out[str(cid)] = f"{sid}:b{pos // block_size:03d}"
     return out
+
+
+def audit_corridor_spans(
+    rosettes: pd.DataFrame,
+    entities: pd.DataFrame | Sequence[Any],
+    *,
+    classes: Sequence[str] = ("UTILITY_POLE", "STREET_LIGHT"),
+    max_lateral_m: float = 25.0,
+    max_span_m: float = 50.0,
+) -> dict[str, Any]:
+    """Project located corridor entities onto the sequence polyline, partition LEFT vs RIGHT,
+    compute consecutive same-side pole-to-pole span distances, and flag span gaps > `max_span_m`."""
+    empty_cols = [
+        "entity_id",
+        "class",
+        "lat",
+        "lng",
+        "station_m",
+        "signed_lateral_m",
+        "side",
+        "span_from_prev_m",
+    ]
+    if rosettes is None or rosettes.empty:
+        empty = pd.DataFrame(columns=empty_cols)
+        return {"left": empty, "right": empty.copy(), "span_gaps": []}
+
+    ros = _ensure_capture_id(rosettes).copy()
+    if "seq_idx" in ros.columns:
+        ros = ros.sort_values("seq_idx").reset_index(drop=True)
+    else:
+        ros = ros.reset_index(drop=True)
+
+    ref_lat = float(ros["lat"].iloc[0])
+    ref_lng = float(ros["lng"].iloc[0])
+    rx, ry, _ = geo.lla_to_enu(
+        ros["lat"].to_numpy(dtype=float),
+        ros["lng"].to_numpy(dtype=float),
+        0.0,
+        ref_lat,
+        ref_lng,
+        0.0,
+    )
+    track_xy = np.column_stack([rx, ry])
+    n_pts = len(track_xy)
+    seg_lens = np.hypot(np.diff(rx), np.diff(ry)) if n_pts >= 2 else np.array([], dtype=float)
+    cum_s = np.concatenate([[0.0], np.cumsum(seg_lens)]) if n_pts >= 2 else np.array([0.0])
+
+    if isinstance(entities, pd.DataFrame):
+        ent_records = entities.to_dict("records")
+    else:
+        ent_records = [
+            {
+                "entity_id": getattr(e, "entity_id", None)
+                if not isinstance(e, Mapping)
+                else e.get("entity_id"),
+                "class": (
+                    getattr(e, "cls", None)
+                    if not isinstance(e, Mapping)
+                    else (e.get("class") or e.get("cls"))
+                ),
+                "lat": getattr(e, "lat", None) if not isinstance(e, Mapping) else e.get("lat"),
+                "lng": getattr(e, "lng", None) if not isinstance(e, Mapping) else e.get("lng"),
+                "method": (
+                    getattr(e, "method", "triangulated")
+                    if not isinstance(e, Mapping)
+                    else e.get("method", "triangulated")
+                ),
+            }
+            for e in (entities or ())
+        ]
+
+    cls_set = set(classes)
+    proj_rows: list[dict[str, Any]] = []
+    for r in ent_records:
+        c_name = str(r.get("class") or r.get("cls") or "")
+        if cls_set and c_name not in cls_set:
+            continue
+        if str(r.get("method", "triangulated")) == "unlocated":
+            continue
+        lat = r.get("lat")
+        lng = r.get("lng")
+        if lat is None or lng is None or not (math.isfinite(float(lat)) and math.isfinite(float(lng))):
+            continue
+        ex_arr, ey_arr, _ = geo.lla_to_enu(float(lat), float(lng), 0.0, ref_lat, ref_lng, 0.0)
+        p = np.array([float(np.asarray(ex_arr).item()), float(np.asarray(ey_arr).item())])
+
+        if n_pts >= 2:
+            best_d = float("inf")
+            best_s = 0.0
+            best_signed_lat = 0.0
+            for i in range(n_pts - 1):
+                a = track_xy[i]
+                b = track_xy[i + 1]
+                ab = b - a
+                L2 = float(np.dot(ab, ab))
+                if L2 < 1e-12:
+                    continue
+                L = math.sqrt(L2)
+                t_raw = float(np.dot(p - a, ab) / L2)
+                t_clamped = max(0.0, min(1.0, t_raw))
+                proj = a + t_clamped * ab
+                d = float(np.linalg.norm(p - proj))
+                if d < best_d:
+                    best_d = d
+                    # Use unclamped station at endpoints so poles slightly before/after first/last pano preserve order
+                    t_s = t_raw if (i == 0 and t_raw < 0.0) or (i == n_pts - 2 and t_raw > 1.0) else t_clamped
+                    best_s = float(cum_s[i] + t_s * L)
+                    u_tan = ab / L
+                    # Right-of-way normal in ENU: if tangent is (tx, ty), right normal is (ty, -tx)
+                    n_right = np.array([u_tan[1], -u_tan[0]])
+                    best_signed_lat = float(np.dot(p - a, n_right))
+        else:
+            best_d = float(np.linalg.norm(p - track_xy[0]))
+            best_s = 0.0
+            best_signed_lat = float(p[0] - track_xy[0, 0])
+
+        if abs(best_signed_lat) > float(max_lateral_m) and best_d > float(max_lateral_m):
+            continue
+        side = "RIGHT" if best_signed_lat >= 0.0 else "LEFT"
+        proj_rows.append(
+            {
+                "entity_id": str(r.get("entity_id") or ""),
+                "class": c_name,
+                "lat": float(lat),
+                "lng": float(lng),
+                "station_m": best_s,
+                "signed_lateral_m": best_signed_lat,
+                "side": side,
+            }
+        )
+
+    if not proj_rows:
+        empty = pd.DataFrame(columns=empty_cols)
+        return {"left": empty, "right": empty.copy(), "span_gaps": []}
+
+    df_all = pd.DataFrame(proj_rows)
+    span_gaps: list[dict[str, Any]] = []
+    out_sides: dict[str, pd.DataFrame] = {}
+    for side_key, side_label in (("left", "LEFT"), ("right", "RIGHT")):
+        sub = df_all[df_all["side"] == side_label].sort_values("station_m").reset_index(drop=True)
+        if sub.empty:
+            sub["span_from_prev_m"] = pd.Series(dtype=float)
+            out_sides[side_key] = sub[empty_cols]
+            continue
+        spans = [float("nan")]
+        for idx in range(1, len(sub)):
+            s0 = float(sub.loc[idx - 1, "station_m"])
+            s1 = float(sub.loc[idx, "station_m"])
+            ds = s1 - s0
+            spans.append(ds)
+            if ds > float(max_span_m):
+                span_gaps.append(
+                    {
+                        "side": side_label,
+                        "from_entity_id": str(sub.loc[idx - 1, "entity_id"]),
+                        "to_entity_id": str(sub.loc[idx, "entity_id"]),
+                        "from_station_m": s0,
+                        "to_station_m": s1,
+                        "span_m": ds,
+                        "mid_station_m": 0.5 * (s0 + s1),
+                    }
+                )
+        sub["span_from_prev_m"] = spans
+        out_sides[side_key] = sub[empty_cols]
+
+    return {
+        "left": out_sides["left"],
+        "right": out_sides["right"],
+        "span_gaps": span_gaps,
+    }
+

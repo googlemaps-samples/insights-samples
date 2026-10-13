@@ -107,3 +107,29 @@ def test_save_figure_stamps_attribution_and_writes_png(tmp_path):
     plt.close(fig)
     assert out_png.is_file()
     assert out_png.stat().st_size > 500
+
+
+def test_draw_overlay_panel_renders_plumb_lines_and_compass_without_mutating_input():
+    import numpy as np
+
+    raw = np.full((240, 320, 3), 128, dtype=np.uint8)
+    raw_copy = raw.copy()
+    panel = {
+        "title": "p0_cam0",
+        "image": raw,
+        "accepted_boxes": [(140, 40, 180, 200, "UTILITY_POLE")],
+        "rejected_boxes": [],
+        "plumb_lines": [
+            {"u": 160.0, "v_base": 200.0, "rms_px": 8.0, "label": "utility_pole_01"}
+        ],
+        "compass_yaw_deg": 90.0,
+        "compass_hfov_deg": 70.0,
+    }
+    canvas, *_ = maps._draw_overlay_panel(panel)
+    assert np.array_equal(raw, raw_copy), "Input image must never be mutated in-place"
+    assert canvas.shape == raw.shape
+    # Plumb line at x=160 should modify pixels along column 160 inside the image interior
+    assert not np.all(canvas[60:190, 160] == 128)
+    # Top compass ticks should modify pixels near the top edge (rows 0..20)
+    assert not np.all(canvas[:20, :] == 128)
+

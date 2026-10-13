@@ -98,11 +98,21 @@ def _check_box(v: list[int] | None) -> list[int] | None:
     return [int(c) for c in v]
 
 
+class AssetCondition(str, Enum):
+    """Vote-able structural condition of a discrete right-of-way asset or street tree."""
+
+    GOOD = "GOOD"
+    FAIR = "FAIR"
+    POOR = "POOR"
+    UNKNOWN = "UNKNOWN"
+
+
 class Detection(BaseModel):
     label: AssetClass
     box_2d: list[int] = Field(description="[ymin, xmin, ymax, xmax] in 0..1000")
     confidence: float = Field(ge=0.0, le=1.0)
     material: AssetMaterial | None = None
+    condition: AssetCondition | None = None
     notes: str | None = None
 
     @field_validator("box_2d")

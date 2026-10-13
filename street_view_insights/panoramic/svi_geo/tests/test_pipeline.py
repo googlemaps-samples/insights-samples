@@ -239,3 +239,43 @@ def test_build_fewshot_prompt_parts_interleaves_examples():
     assert "STREET_TREE" in parts[6]
     assert "Target Perspective View" in parts[7]
     assert parts[8] is query_img
+
+
+def test_detection_prompt_includes_joint_use_and_shaft_tight_rules_and_condition_attr():
+    prompt = pipeline.detection_prompt()
+    assert "overhead" in prompt.lower()
+    assert "standalone" in prompt.lower()
+    assert "shaft" in prompt.lower()
+
+    spec = pipeline.ViewSpec(
+        pano_id="p0",
+        observation_id="o1:p0_0:1",
+        cam_k=0,
+        gcs_uri="gs://b/s/v0/o1:p0_0:1.jpg",
+        pose={
+            "heading": 0.0,
+            "pitch": 0.0,
+            "roll": 0.0,
+            "latitude": 28.05,
+            "longitude": -81.96,
+            "altitude": 30.0,
+        },
+        view=rosette.PerspectiveView(0.0, 0.0, 70.0, 1024, 1280),
+    )
+    fd = schemas.FrameDetections(
+        detections=[
+            schemas.Detection(
+                label="UTILITY_POLE",
+                box_2d=[100, 480, 900, 520],
+                confidence=0.91,
+                material="WOOD",
+                condition="GOOD",
+            )
+        ]
+    )
+    obs = pipeline.detections_to_observations(fd, spec, (28.05, -81.96, 0.0))
+    assert len(obs) == 1
+    assert obs[0].attrs["material"] == "WOOD"
+    assert obs[0].attrs["condition"] == "GOOD"
+
+
