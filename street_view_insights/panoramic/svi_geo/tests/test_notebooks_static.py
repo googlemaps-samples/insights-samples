@@ -369,6 +369,7 @@ def test_uc2_notebook_is_pure_public_row_and_uses_visual_fewshot():
     assert "STREET_TREE" in text
     assert "usecases.build_uc2_fewshot_parts(" in code
     assert "usecases.select_best_post_for_lean(" in code
+    assert "usecases.subclassify_poles(" in code
     assert "cvchecks.street_tree_support(" in code
 
 
