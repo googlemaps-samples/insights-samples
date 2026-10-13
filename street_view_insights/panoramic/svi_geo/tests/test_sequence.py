@@ -464,3 +464,34 @@ def test_audit_corridor_spans_partitions_left_right_and_flags_gaps():
     assert gap["side"] == "LEFT"
     assert gap["span_m"] == pytest.approx(65.0, abs=1.0)
 
+
+def test_audit_corridor_spans_clamps_station_overhang_and_uses_or_lateral_filter():
+    track_df = sequence.build_sequences(_track(10, 10.0, 1.0, bearing_deg=0.0))  # y = 0..90 m
+    ref_lat = float(track_df["lat"].iloc[0])
+    ref_lng = float(track_df["lng"].iloc[0])
+    # 1) Far past endpoint (y=135m, e=-8m): signed_lateral_m is -8m (<=35m), but Euclidean dist to segment endpoint is ~45.7m (>35m) -> must be excluded by OR filter!
+    # 2) Slightly past endpoint (y=98m, e=-28m): signed_lateral_m is -28m (<=35m), dist is ~29.1m (<=35m) -> included with default max_lateral_m=35.0, and station_m clamped to <= 95.0m (90 + 5m overhang)
+    pts_enu = [
+        ("pole_l_in", -28.0, 20.0),
+        ("pole_l_end", -28.0, 98.0),
+        ("pole_l_far_past", -8.0, 135.0),
+    ]
+    ent_rows = []
+    for eid, e_m, n_m in pts_enu:
+        lat, lng, _ = geo.enu_to_lla(e_m, n_m, 0.0, ref_lat, ref_lng, 0.0)
+        ent_rows.append(
+            {
+                "entity_id": eid,
+                "class": "UTILITY_POLE",
+                "lat": float(lat),
+                "lng": float(lng),
+                "method": "triangulated",
+            }
+        )
+    res = sequence.audit_corridor_spans(track_df, pd.DataFrame(ent_rows))
+    left_ids = list(res["left"]["entity_id"])
+    assert "pole_l_far_past" not in left_ids
+    assert left_ids == ["pole_l_in", "pole_l_end"]
+    assert float(res["left"].iloc[-1]["station_m"]) <= 95.0
+
+

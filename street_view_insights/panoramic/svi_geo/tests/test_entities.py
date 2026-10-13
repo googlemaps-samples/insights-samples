@@ -446,11 +446,101 @@ def test_refine_rejects_grazing_rays_below_5_deg_parallax():
     c0 = np.array([0.0, 0.0, CAM_H])
     c1 = np.array([0.0, 10.0, CAM_H])
     r0 = tri.Ray(c0, 12.2, 0.0)
-    r1 = tri.Ray(c1, 16.4, 0.0)  # 4.2 deg parallax < 5.0 deg
-    obs_grazing = [
+    r1 = tri.Ray(c1, 16.4, 0.0)  # 4.2 deg parallax < 5.0 deg for POST_GROUP, but >= 3.0 deg for STREET_TREE
+    obs_grazing_pole = [
         ent.Observation("g0", "P0", "UTILITY_POLE", r0, 0.9, el_bottom_deg=None),
         ent.Observation("g1", "P1", "UTILITY_POLE", r1, 0.9, el_bottom_deg=None),
     ]
-    assert not ent._refine(obs_grazing, [0, 1], 50.0, 2.0, CAM_H).ok
+    assert not ent._refine(obs_grazing_pole, [0, 1], 40.0, 3.0, CAM_H).ok
+
+    obs_tree = [
+        ent.Observation("t0", "P0", "STREET_TREE", r0, 0.9, el_bottom_deg=None),
+        ent.Observation("t1", "P1", "STREET_TREE", r1, 0.9, el_bottom_deg=None),
+    ]
+    assert ent._refine(obs_tree, [0, 1], 60.0, 4.0, CAM_H).ok
+
+
+def test_post_single_view_range_clamp_and_wood_pole_disambiguation():
+    c0 = np.array([0.0, 0.0, CAM_H])
+    # Shallow elevation (-1.0 deg) on a post is clamped to -3.0 deg (range <= 45 m) instead of None
+    o_shallow = ent.Observation(
+        "s0", "P0", "UTILITY_POLE", tri.Ray(c0, 90.0, -1.0), 0.85, el_bottom_deg=-1.0
+    )
+    r_clamped = ent._single_view_range(o_shallow, CAM_H)
+    assert r_clamped is not None and 3.0 <= r_clamped <= 45.0
+
+    # In a mixed POST_GROUP cluster, a WOOD UTILITY_POLE vote outweighs STREET_LIGHT votes
+    panos = dict(_panos(3))
+    target = np.array([6.0, 15.0, 0.0])
+    obs_mixed = []
+    for idx, (pid, cls, conf, mat) in enumerate(
+        [
+            ("P0", "STREET_LIGHT", 0.82, "UNKNOWN"),
+            ("P1", "STREET_LIGHT", 0.80, "UNKNOWN"),
+            ("P2", "UTILITY_POLE", 0.85, "WOOD"),
+        ]
+    ):
+        c = panos[pid]
+        d = target - c
+        az = math.degrees(math.atan2(d[0], d[1])) % 360.0
+        el_b = -math.degrees(math.atan2(CAM_H, math.hypot(d[0], d[1])))
+        obs_mixed.append(
+            ent.Observation(
+                f"m_{idx}",
+                pid,
+                cls,
+                tri.Ray(c, az, el_b),
+                conf,
+                el_bottom_deg=el_b,
+                attrs={"material": mat, "condition": "GOOD"},
+            )
+        )
+    ents = ent.cluster(obs_mixed, REF, cam_height_m=CAM_H, min_post_panos=2)
+    loc = ent.located_entities(ents)
+    assert len(loc) == 1
+    assert loc[0].cls == "UTILITY_POLE"
+    assert loc[0].attrs["material"][0] == "WOOD"
+
+    # Distinct disjoint-pano WOOD UTILITY_POLE and METAL STREET_LIGHT 2.2 m apart must NOT be merged by _merge_split
+    panos4 = dict(_panos(4))
+    t_pole = np.array([6.0, 15.0, 0.0])
+    t_light = np.array([6.0, 17.2, 0.0])
+    obs_pair = []
+    for pid in ("P0", "P1"):
+        c = panos4[pid]
+        d = t_pole - c
+        az = math.degrees(math.atan2(d[0], d[1])) % 360.0
+        el_b = -math.degrees(math.atan2(CAM_H, math.hypot(d[0], d[1])))
+        obs_pair.append(
+            ent.Observation(
+                f"up_{pid}",
+                pid,
+                "UTILITY_POLE",
+                tri.Ray(c, az, el_b),
+                0.88,
+                el_bottom_deg=el_b,
+                attrs={"material": "WOOD"},
+            )
+        )
+    for pid in ("P2", "P3"):
+        c = panos4[pid]
+        d = t_light - c
+        az = math.degrees(math.atan2(d[0], d[1])) % 360.0
+        el_b = -math.degrees(math.atan2(CAM_H, math.hypot(d[0], d[1])))
+        obs_pair.append(
+            ent.Observation(
+                f"sl_{pid}",
+                pid,
+                "STREET_LIGHT",
+                tri.Ray(c, az, el_b),
+                0.88,
+                el_bottom_deg=el_b,
+                attrs={"material": "METAL"},
+            )
+        )
+    ents_pair = ent.cluster(obs_pair, REF, cam_height_m=CAM_H, min_post_panos=2)
+    loc_pair = ent.located_entities(ents_pair)
+    assert sorted(e.cls for e in loc_pair) == ["STREET_LIGHT", "UTILITY_POLE"]
+
 
 

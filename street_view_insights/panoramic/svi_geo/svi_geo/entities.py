@@ -192,8 +192,15 @@ def _single_view_range(o: Observation, cam_height_m: float) -> float | None:
     """Range from the elevation of an untruncated box bottom, or None (no guess)."""
     if o.cls not in SINGLE_VIEW_RANGE or o.el_bottom_deg is None:
         return None
-    r = tri.single_view_range(o.el_bottom_deg, cam_height_m)
-    if r is None or r > MAX_SINGLE_VIEW_RANGE_BY_CLASS.get(o.cls, MAX_SINGLE_VIEW_RANGE_M):
+    el = float(o.el_bottom_deg)
+    if o.cls in POST_GROUP and el < 0.0:
+        el = min(el, -3.0)
+    r = tri.single_view_range(el, cam_height_m)
+    if r is None:
+        return None
+    if o.cls in POST_GROUP:
+        return float(np.clip(r, 3.0, 45.0))
+    if r > MAX_SINGLE_VIEW_RANGE_BY_CLASS.get(o.cls, MAX_SINGLE_VIEW_RANGE_M):
         return None
     return r
 
@@ -215,11 +222,28 @@ def _check_eps_keys(eps_by_class: Mapping[str, float]) -> None:
             )
 
 
+def _known_material(o: Observation) -> str | None:
+    mat = str((o.attrs or {}).get("material") or "").upper()
+    return mat if mat and mat != "UNKNOWN" else None
+
+
+def _incompatible_post_pair(a: Observation, b: Observation) -> bool:
+    """True when one ray is a known-material UTILITY_POLE (e.g. WOOD) and the other is a
+    STREET_LIGHT with a conflicting known material (e.g. METAL)."""
+    if {a.cls, b.cls} != {"UTILITY_POLE", "STREET_LIGHT"}:
+        return False
+    ma = _known_material(a)
+    mb = _known_material(b)
+    return ma is not None and mb is not None and ma != mb
+
+
 def _votes(obs: Sequence[Observation], cam_height_m: float, max_range_m: float):
     pts, members = [], []
     for i in range(len(obs)):
         for j in range(i + 1, len(obs)):
             if obs[i].pano_id == obs[j].pano_id:
+                continue
+            if _incompatible_post_pair(obs[i], obs[j]):
                 continue
             if np.linalg.norm(obs[i].ray.origin[:2] - obs[j].ray.origin[:2]) > 2 * max_range_m:
                 continue
@@ -230,7 +254,7 @@ def _votes(obs: Sequence[Observation], cam_height_m: float, max_range_m: float):
                 pts.append(res.point)
                 members.append((i, j))
     for i, o in enumerate(obs):
-        if o.cls in GROUND_CONTACT:
+        if o.cls in GROUND_CONTACT and not (o.ray.meta or {}).get("infill"):
             p = _single_view_point(o, cam_height_m)
             if p is not None:
                 pts.append(p)
@@ -262,7 +286,11 @@ def ray_cost(
     size = SIZE_M.get(o.cls, DEFAULT_SIZE_M)
     sig = math.hypot(sigma_deg, math.degrees(math.atan2(size / 2, t)))
     daz = ((math.degrees(math.atan2(v[0], v[1])) - o.ray.az_deg + 180.0) % 360.0) - 180.0
-    if o.cls in GROUND_CONTACT and o.el_bottom_deg is not None:
+    if (
+        o.cls in GROUND_CONTACT
+        and o.el_bottom_deg is not None
+        and not (o.ray.meta or {}).get("infill")
+    ):
         dz = v[2] if math.isfinite(v[2]) else -cam_height_m
         del_ = math.degrees(math.atan2(dz, t)) - o.el_bottom_deg
         sig_el = math.hypot(sigma_deg, math.degrees(math.atan2(ground_sigma_m, t)))
@@ -270,11 +298,13 @@ def ray_cost(
     return abs(daz / sig)
 
 
-def _gate_pick(obs, free, centre, gate, sigma_deg, max_range_m, cam_height_m):
+def _gate_pick(obs, free, centre, gate, sigma_deg, max_range_m, cam_height_m, ref_obs=None):
     """Per pano, the lowest-cost free ray with cost <= `gate` -> sorted indices."""
     best: dict[str, tuple[float, int]] = {}
     for i in sorted(free):
         c = ray_cost(obs[i], centre, sigma_deg, max_range_m, cam_height_m)
+        if ref_obs and c > 1.0 and any(_incompatible_post_pair(obs[i], r) for r in ref_obs):
+            continue
         if c <= gate and (obs[i].pano_id not in best or c < best[obs[i].pano_id][0]):
             best[obs[i].pano_id] = (c, i)
     return sorted(i for _, i in best.values())
@@ -291,8 +321,12 @@ def _contact_z(xy: np.ndarray, obs: Sequence[Observation], cam_height_m: float) 
 
 
 def _refine(obs, idx, max_range_m, max_rms_m, cam_height_m):
+    min_ang = 5.0 if (obs and idx and obs[idx[0]].cls in POST_GROUP) else 3.0
     res = tri.intersect_rays(
-        [obs[i].ray for i in idx], max_range_m=max_range_m, max_rms_m=max_rms_m, min_angle_deg=5.0
+        [obs[i].ray for i in idx],
+        max_range_m=max_range_m,
+        max_rms_m=max_rms_m,
+        min_angle_deg=min_ang,
     )
     if res.ok and obs[idx[0]].cls in GROUND_CONTACT:
         p = res.point.copy()
@@ -309,6 +343,28 @@ def _ground(centre: np.ndarray, obs: Sequence[Observation], cam_height_m: float)
         c[2] = _contact_z(c, obs, cam_height_m)
         return c
     return centre
+
+
+def _dominant_post_cls(members: Sequence[Observation], fallback: str = "UTILITY_POLE") -> str:
+    """Resolve dominant class across a cluster of observations, prioritizing `UTILITY_POLE`
+    when any supporting post/light view is `WOOD` or has a confident (`>= 0.65`) `UTILITY_POLE` vote."""
+    if not members:
+        return fallback
+    has_wood = any(
+        str((m.attrs or {}).get("material") or "").upper() == "WOOD" for m in members
+    )
+    has_pole_obs = any(m.cls == "UTILITY_POLE" for m in members)
+    has_strong_pole = any(
+        m.cls == "UTILITY_POLE" and float(m.confidence) >= 0.65 for m in members
+    )
+    if (
+        has_wood and any(m.cls in ("UTILITY_POLE", "STREET_LIGHT") for m in members)
+    ) or (has_pole_obs and has_strong_pole):
+        return "UTILITY_POLE"
+    votes: dict[str, float] = defaultdict(float)
+    for m in members:
+        votes[m.cls] += float(m.confidence)
+    return max(votes, key=votes.get)
 
 
 def _cluster_class(obs, eps, cam_height_m, max_range_m, sigma_deg, gate=3.0, rounds=3,
@@ -332,15 +388,27 @@ def _cluster_class(obs, eps, cam_height_m, max_range_m, sigma_deg, gate=3.0, rou
         cands.sort(key=lambda c: (-c[0], -c[1], tuple(np.round(c[2], 3))))
         new = 0
         for _, _, centre, voters in cands:
-            centre = _ground(centre, [obs[i] for i in voters], cam_height_m)
-            idx = _gate_pick(obs, free, centre, 2 * gate, sigma_deg, max_range_m, cam_height_m)
+            voter_obs = [obs[i] for i in voters]
+            centre = _ground(centre, voter_obs, cam_height_m)
+            idx = _gate_pick(
+                obs, free, centre, 2 * gate, sigma_deg, max_range_m, cam_height_m, ref_obs=voter_obs
+            )
             if len({obs[i].pano_id for i in idx}) < 2:
                 continue
             res = _refine(obs, idx, max_range_m, max_rms, cam_height_m)
             if not res.ok:
                 continue
             # re-gate tightly around the refined point and refine once more
-            idx2 = _gate_pick(obs, free, res.point, gate, sigma_deg, max_range_m, cam_height_m)
+            idx2 = _gate_pick(
+                obs,
+                free,
+                res.point,
+                gate,
+                sigma_deg,
+                max_range_m,
+                cam_height_m,
+                ref_obs=[obs[i] for i in idx],
+            )
             if len({obs[i].pano_id for i in idx2}) < 2:
                 continue
             res2 = _refine(obs, idx2, max_range_m, max_rms, cam_height_m)
@@ -362,7 +430,15 @@ def _cluster_class(obs, eps, cam_height_m, max_range_m, sigma_deg, gate=3.0, rou
     for _pid, idxs in sorted(by_pano.items()):
         cost = np.array(
             [
-                [ray_cost(obs[i], c, sigma_deg, max_range_m, cam_height_m) for c in centres]
+                [
+                    1e6
+                    if (
+                        ray_cost(obs[i], c, sigma_deg, max_range_m, cam_height_m) > 1.0
+                        and any(_incompatible_post_pair(obs[i], obs[k]) for k in accepted[ci][1])
+                    )
+                    else ray_cost(obs[i], c, sigma_deg, max_range_m, cam_height_m)
+                    for ci, c in enumerate(centres)
+                ]
                 for i in idxs
             ]
         )
@@ -452,11 +528,35 @@ def _merge_split(obs, groups, eps, cam_height_m, max_range_m, sigma_deg, gate, m
         best = None
         for a in range(len(groups)):
             pa = {obs[i].pano_id for i in groups[a][1]}
+            members_a = [obs[i] for i in groups[a][1]]
+            cls_a = _dominant_post_cls(members_a)
+            mat_a = fuse_attribute(
+                (
+                    (m.attrs.get("material"), m.confidence)
+                    for m in members_a
+                    if m.attrs and m.attrs.get("material") is not None
+                ),
+                ignore={"UNKNOWN"},
+            )[0]
             for b in range(a + 1, len(groups)):
                 d = float(np.linalg.norm(groups[a][0][:2] - groups[b][0][:2]))
                 if d > 2 * eps or (best is not None and d >= best[0]):
                     continue
                 if pa & {obs[i].pano_id for i in groups[b][1]}:
+                    continue
+                members_b = [obs[i] for i in groups[b][1]]
+                cls_b = _dominant_post_cls(members_b)
+                mat_b = fuse_attribute(
+                    (
+                        (m.attrs.get("material"), m.confidence)
+                        for m in members_b
+                        if m.attrs and m.attrs.get("material") is not None
+                    ),
+                    ignore={"UNKNOWN"},
+                )[0]
+                if {cls_a, cls_b} == {"UTILITY_POLE", "STREET_LIGHT"} or (
+                    mat_a is not None and mat_b is not None and mat_a != mat_b
+                ):
                     continue
                 idx = sorted(groups[a][1] + groups[b][1])
                 res = _refine(obs, idx, max_range_m, max_rms, cam_height_m)
@@ -540,8 +640,9 @@ def cluster(
         max_rms = rms_map.get(cls, eps)
         if use_house_facade_edges and cls == "HOUSE":
             max_rms = max(max_rms, 0.5 * SIZE_M.get("HOUSE", 10.0) + 2.0)
+        cls_max_range_m = min(float(max_range_m), 40.0) if cls == "POST_GROUP" else float(max_range_m)
         accepted, leftovers = _cluster_class(
-            obs, eps, cam_height_m, max_range_m, bearing_sigma_deg, max_rms=max_rms
+            obs, eps, cam_height_m, cls_max_range_m, bearing_sigma_deg, max_rms=max_rms
         )
         groups = [(pt, list(idx), rms, "triangulated", math.nan) for pt, idx, rms in accepted]
         n_tri = len(groups)
@@ -553,7 +654,7 @@ def cluster(
                     math.inf
                     if obs[i].pano_id in {obs[k].pano_id for k in groups[j][1]}
                     else ray_cost(
-                        obs[i], groups[j][0], bearing_sigma_deg, max_range_m, cam_height_m
+                        obs[i], groups[j][0], bearing_sigma_deg, cls_max_range_m, cam_height_m
                     )
                     for j in range(n_tri)
                 ]
@@ -592,7 +693,7 @@ def cluster(
                 pt = np.full(3, np.nan)
                 rms = math.nan
             elif use_house_facade_edges and cls == "HOUSE" and method == "triangulated":
-                pt, rms = _refine_house_edges(members, pt, rms, max_range_m, max_rms)
+                pt, rms = _refine_house_edges(members, pt, rms, cls_max_range_m, max_rms)
             if method == "unlocated":
                 lat = lng = math.nan
             else:
@@ -610,10 +711,15 @@ def cluster(
                     continue
 
             # Class vote
-            votes = defaultdict(float)
-            for m in members:
-                votes[m.cls] += m.confidence
-            final_cls = max(votes, key=votes.get) if votes else cls
+            final_cls = (
+                _dominant_post_cls(members, fallback=cls)
+                if cls == "POST_GROUP"
+                else max(
+                    {m.cls: sum(x.confidence for x in members if x.cls == m.cls) for m in members},
+                    key=lambda k: sum(x.confidence for x in members if x.cls == k),
+                    default=cls,
+                )
+            )
 
             attr_members = (
                 [m for m in members if m.cls in POST_GROUP]

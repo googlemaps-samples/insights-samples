@@ -409,7 +409,7 @@ def audit_corridor_spans(
     entities: pd.DataFrame | Sequence[Any],
     *,
     classes: Sequence[str] = ("UTILITY_POLE", "STREET_LIGHT"),
-    max_lateral_m: float = 25.0,
+    max_lateral_m: float = 35.0,
     max_span_m: float = 50.0,
 ) -> dict[str, Any]:
     """Project located corridor entities onto the sequence polyline, partition LEFT vs RIGHT,
@@ -448,6 +448,7 @@ def audit_corridor_spans(
     n_pts = len(track_xy)
     seg_lens = np.hypot(np.diff(rx), np.diff(ry)) if n_pts >= 2 else np.array([], dtype=float)
     cum_s = np.concatenate([[0.0], np.cumsum(seg_lens)]) if n_pts >= 2 else np.array([0.0])
+    total_len = float(cum_s[-1]) if len(cum_s) else 0.0
 
     if isinstance(entities, pd.DataFrame):
         ent_records = entities.to_dict("records")
@@ -506,9 +507,9 @@ def audit_corridor_spans(
                 d = float(np.linalg.norm(p - proj))
                 if d < best_d:
                     best_d = d
-                    # Use unclamped station at endpoints so poles slightly before/after first/last pano preserve order
+                    # Allow at most +-5.0 m overhang at sequence endpoints so station_m stays physical
                     t_s = t_raw if (i == 0 and t_raw < 0.0) or (i == n_pts - 2 and t_raw > 1.0) else t_clamped
-                    best_s = float(cum_s[i] + t_s * L)
+                    best_s = float(np.clip(cum_s[i] + t_s * L, -5.0, total_len + 5.0))
                     u_tan = ab / L
                     # Right-of-way normal in ENU: if tangent is (tx, ty), right normal is (ty, -tx)
                     n_right = np.array([u_tan[1], -u_tan[0]])
@@ -518,7 +519,7 @@ def audit_corridor_spans(
             best_s = 0.0
             best_signed_lat = float(p[0] - track_xy[0, 0])
 
-        if abs(best_signed_lat) > float(max_lateral_m) and best_d > float(max_lateral_m):
+        if abs(best_signed_lat) > float(max_lateral_m) or best_d > float(max_lateral_m):
             continue
         side = "RIGHT" if best_signed_lat >= 0.0 else "LEFT"
         proj_rows.append(

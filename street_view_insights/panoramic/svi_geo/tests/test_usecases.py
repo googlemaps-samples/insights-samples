@@ -649,12 +649,17 @@ def test_uc2_asset_audit_evaluates_beyond_top_k_and_tracks_class_matches():
             assets_df, loc_ents, fr, rosette.DEFAULT_INTRINSICS, _dummy_fetch, runner
         )
     )
+    assert len(audit_out["audit_df"]) == 1
     assert audit_out["matched_count"] == 1
+    assert audit_out["matched_6m_count"] == 1
+    assert audit_out["exact_class_matched_6m_count"] == 1
+    assert audit_out["post_group_matched_6m_count"] == 1
     assert audit_out["gemini_confirmed"] is True
     assert runner.cost.calls == 1
     top_row = audit_out["audit_df"].iloc[0]
     assert top_row["asset_id"] == "pole_50"
     assert bool(top_row["matched"]) is True
+    assert bool(top_row["matched_6m"]) is True
     assert bool(top_row["exact_class_match"]) is True
     assert bool(top_row["post_group_match"]) is True
 
@@ -668,19 +673,20 @@ def test_infill_unlocated_poles_recovers_single_view_pole_via_40deg_zoom():
     fr = _attach_uris(sim.synthetic_frames(3, 12.0, 28.0502, -81.9601, travel_deg=0.0))
 
     ref = (28.0502, -81.9601, 0.0)
-    p0_row = fr[(fr["seq_idx"] == 0) & (fr["cam_k"] == 0)].iloc[0]
-    origin0 = rosette.camera_center_enu(p0_row["camera_pose"], ref)
-    pole_enu = origin0 + np.array([4.0, 14.0, -origin0[2]])
-    de, dn = float(pole_enu[0] - origin0[0]), float(pole_enu[1] - origin0[1])
+    # Place obs0 on the middle pano (seq_idx == 1) so both K-1 and K+1 are candidates
+    p1_row = fr[(fr["seq_idx"] == 1) & (fr["cam_k"] == 0)].iloc[0]
+    origin1 = rosette.camera_center_enu(p1_row["camera_pose"], ref)
+    pole_enu = origin1 + np.array([6.0, 14.0, -origin1[2]])
+    de, dn = float(pole_enu[0] - origin1[0]), float(pole_enu[1] - origin1[1])
     horiz_d = math.hypot(de, dn)
     az0 = math.degrees(math.atan2(de, dn)) % 360.0
     el_b0 = -math.degrees(math.atan2(2.5, horiz_d))
 
     obs0 = ent.Observation(
-        obs_id="obs_p0_0",
-        pano_id=str(p0_row["capture_id"]),
+        obs_id="obs_p1_0",
+        pano_id=str(p1_row["capture_id"]),
         cls="UTILITY_POLE",
-        ray=tri.Ray(origin0, az0, el_b0, meta={"cam_k": 0, "box": (480, 200, 520, 850)}),
+        ray=tri.Ray(origin1, az0, el_b0, meta={"cam_k": 0, "box": (480, 200, 520, 850)}),
         confidence=0.88,
         el_bottom_deg=el_b0,
         attrs={"material": "WOOD", "condition": "GOOD"},
@@ -688,10 +694,33 @@ def test_infill_unlocated_poles_recovers_single_view_pole_via_40deg_zoom():
     entities_init = ent.cluster([obs0], ref, min_post_panos=2)
     assert len(ent.located_entities(entities_init)) == 0
 
-    def reply_fn(_idx, _parts, _schema):
+    # 1) Tautology check: present=true without box_2d MUST be rejected
+    def reply_no_box(_idx, _parts, _schema):
+        return '{"present": true, "confidence": 0.95, "box_2d": null}'
+
+    runner_no_box = gemini_client.GeminiRunner(_ScriptedBackend(reply_no_box), max_calls=5)
+    _, _, n_rec_no_box = asyncio.run(
+        uc.infill_unlocated_poles(
+            entities_init,
+            [obs0],
+            fr,
+            rosette.DEFAULT_INTRINSICS,
+            _dummy_fetch,
+            runner_no_box,
+            ref,
+            min_post_panos=2,
+            variant=uc.BASELINE_VARIANT,
+        )
+    )
+    assert n_rec_no_box == 0
+
+    # 2) First adjacent pano returns present=false, second adjacent pano returns present=true with box_2d
+    def reply_second_adj(idx, _parts, _schema):
+        if idx == 0:
+            return '{"present": false, "confidence": 0.20, "box_2d": null}'
         return '{"present": true, "confidence": 0.91, "box_2d": [200, 480, 850, 520]}'
 
-    runner = gemini_client.GeminiRunner(_ScriptedBackend(reply_fn), max_calls=5)
+    runner = gemini_client.GeminiRunner(_ScriptedBackend(reply_second_adj), max_calls=5)
     entities_after, obs_after, n_recovered = asyncio.run(
         uc.infill_unlocated_poles(
             entities_init,
@@ -702,12 +731,16 @@ def test_infill_unlocated_poles_recovers_single_view_pole_via_40deg_zoom():
             runner,
             ref,
             min_post_panos=2,
+            variant=uc.BASELINE_VARIANT,
         )
     )
+    assert runner.cost.calls == 2
     assert n_recovered == 1
     assert len(obs_after) == 2
+    assert obs_after[-1].el_bottom_deg is not None
     loc_after = ent.located_entities(entities_after)
     assert len(loc_after) == 1
     assert loc_after[0].cls == "UTILITY_POLE"
     assert loc_after[0].n_panos == 2
+
 

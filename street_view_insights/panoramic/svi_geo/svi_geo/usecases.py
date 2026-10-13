@@ -656,6 +656,7 @@ async def uc2_run(
             ref,
             min_post_panos=variant.uc2_min_post_panos,
             max_infill_calls=min(4, max_presence_checks),
+            variant=variant,
         )
     located = ent.located_entities(entities)
     unlocated = [e for e in entities if e.method == "unlocated"]
@@ -743,8 +744,9 @@ async def infill_unlocated_poles(
     max_infill_calls: int = 4,
     cam_height_m: float = 2.5,
     seed: int = 0,
+    variant: Variant = BASELINE_VARIANT,
 ) -> tuple[list[ent.Entity], list[ent.Observation], int]:
-    """Targeted 40-deg zoom infill (`PresenceCheck`) from the nearest adjacent rosette (`K-1` / `K+1`)
+    """Targeted 40-deg zoom infill (`PresenceCheck`) from adjacent rosettes (`K-1` / `K+1`)
     for single-view `UTILITY_POLE` candidates held in `unlocated` due to `min_post_panos >= 2`."""
     import math
 
@@ -782,9 +784,10 @@ async def infill_unlocated_poles(
         o0 = obs_by_id.get(e.obs_ids[0])
         if o0 is None:
             continue
-        p_sv = ent._single_view_point(o0, cam_height_m)
-        if p_sv is None:
+        r_sv = ent._single_view_range(o0, cam_height_m)
+        if r_sv is None:
             continue
+        p_sv = tri.point_from_range(o0.ray, min(float(r_sv), 28.0))
         pos = cid_to_pos.get(str(o0.pano_id))
         if pos is None:
             continue
@@ -792,12 +795,8 @@ async def infill_unlocated_poles(
         if not adj_cids:
             continue
 
-        # Pick the adjacent rosette with the best ground camera covering the predicted 3D point
-        best_choice = None
-        best_cid = None
-        best_origin = None
-        best_az = 0.0
-        best_el_b = 0.0
+        # Rank candidate adjacent rosettes by predicted parallax angle to o0 (require >= 6 deg and range <= 50 m)
+        candidates: list[tuple[float, str, Any, np.ndarray, float]] = []
         for acid in adj_cids:
             sub = frames_norm[frames_norm["capture_id"].astype(str) == acid]
             ground_rows = [
@@ -811,80 +810,92 @@ async def infill_unlocated_poles(
             if horiz_d < 2.0 or horiz_d > 50.0:
                 continue
             az_pred = float(math.degrees(math.atan2(v[0], v[1])) % 360.0)
-            el_pred = float(-math.degrees(math.atan2(cam_height_m, horiz_d)))
+            dir_adj = np.array([math.sin(math.radians(az_pred)), math.cos(math.radians(az_pred))])
+            dot_par = float(np.clip(np.dot(o0.ray.dir2d, dir_adj), -1.0, 1.0))
+            pred_parallax_deg = float(math.degrees(math.acos(dot_par)))
+            if pred_parallax_deg < 6.0:
+                continue
             choice = rosette.best_camera_for_view(
-                ground_rows, intr, az_pred, 0.0, 1.0, min_hfov=35.0, hfov_cap=40.0
+                ground_rows, intr, az_pred, 0.0, 1.0, min_hfov=25.0, max_black=0.05, hfov_cap=40.0
             )
             if choice is not None:
-                best_choice = choice
-                best_cid = acid
-                best_origin = origin_adj
-                best_az = az_pred
-                best_el_b = el_pred
-                break
+                candidates.append((pred_parallax_deg, acid, choice, origin_adj, az_pred))
 
-        if best_choice is None or best_cid is None or best_origin is None:
+        candidates.sort(key=lambda item: -item[0])
+        if not candidates:
             continue
 
         w, h = 512, 512
-        view = rosette.PerspectiveView(best_az, 0.0, 40.0, w, h)
         scale = images.decode_scale_for_view(w, 40.0)
-        try:
-            raw_im = images.decode(fetch(best_choice.row["gcs_uri"]), scale=scale)
-            crop = rosette.render_perspective(
-                raw_im,
-                intr,
-                best_choice.row["camera_pose"],
-                view,
-                int(best_choice.cam_k),
-                antialias=True,
-                mask_hood=True,
+        for _pred_par, acid, choice, origin_adj, az_pred in candidates:
+            if calls_made >= max_infill_calls:
+                break
+            view = rosette.PerspectiveView(az_pred, 0.0, 40.0, w, h)
+            try:
+                raw_im = images.decode(fetch(choice.row["gcs_uri"]), scale=scale)
+                crop = rosette.render_perspective(
+                    raw_im,
+                    intr,
+                    choice.row["camera_pose"],
+                    view,
+                    int(choice.cam_k),
+                    antialias=True,
+                    mask_hood=True,
+                )
+            except Exception:
+                continue
+
+            calls_made += 1
+            chk = await runner.ask(
+                [
+                    "Is a vertical utility pole (wooden timber pole, or concrete/metal pole "
+                    "supporting overhead wires, crossarms, insulators, transformers, risers, or "
+                    "street-light mast arm) visible near the horizontal centre of this targeted "
+                    "40-deg zoom view? If present, return present=true and box_2d tightly around "
+                    "the vertical pole shaft down to ground contact.",
+                    crop,
+                ],
+                schemas.PresenceCheck,
+                seed=seed,
             )
-        except Exception:
-            continue
+            if (
+                chk is None
+                or not chk.present
+                or float(chk.confidence) < 0.55
+                or chk.box_2d is None
+                or len(chk.box_2d) != 4
+            ):
+                continue
 
-        calls_made += 1
-        chk = await runner.ask(
-            [
-                "Is a vertical utility pole (wooden, concrete, or metal pole supporting overhead "
-                "wires, crossarms, or street-light mast arm) visible near the horizontal centre "
-                "of this targeted 40-deg zoom view? If present, return present=true and box_2d "
-                "tightly around the vertical pole shaft.",
-                crop,
-            ],
-            schemas.PresenceCheck,
-            seed=seed,
-        )
-        if chk is None or not chk.present or chk.confidence < 0.65:
-            continue
-
-        if chk.box_2d is not None and len(chk.box_2d) == 4:
             x0, y0, x1, y1 = schemas.box_2d_to_pixels(chk.box_2d, w, h)
+            box_px = (float(x0), float(y0), float(x1), float(y1))
+            if (
+                variant.uc2_cv_post_gate
+                and cvc.vertical_post_support(crop, box_px) < variant.uc2_cv_post_min_support
+            ):
+                continue
+
             u_c = 0.5 * (x0 + x1)
-            az_obs, _ = view.pixel_to_bearing(u_c, 0.5 * (y0 + y1))
-            az_final = float(az_obs)
-            box_px = (x0, y0, x1, y1)
-        else:
-            az_final = best_az
-            box_px = (0.45 * w, 0.20 * h, 0.55 * w, 0.85 * h)
+            az_obs, el_center = view.pixel_to_bearing(u_c, 0.5 * (y0 + y1))
+            _, el_bot = view.pixel_to_bearing(u_c, min(float(h - 1), float(y1)))
 
-        new_obs.append(
-            ent.Observation(
-                obs_id=f"infill_{best_cid}_{len(new_obs)}",
-                pano_id=str(best_cid),
-                cls="UTILITY_POLE",
-                ray=tri.Ray(
-                    best_origin,
-                    az_final,
-                    best_el_b,
-                    meta={"cam_k": int(best_choice.cam_k), "box": box_px, "infill": True},
-                ),
-                confidence=float(chk.confidence),
-                el_bottom_deg=None,
-                attrs=dict(o0.attrs),
+            new_obs.append(
+                ent.Observation(
+                    obs_id=f"infill_{acid}_{len(new_obs)}",
+                    pano_id=str(acid),
+                    cls="UTILITY_POLE",
+                    ray=tri.Ray(
+                        origin_adj,
+                        float(az_obs),
+                        float(el_center),
+                        meta={"cam_k": int(choice.cam_k), "box": box_px, "infill": True},
+                    ),
+                    confidence=float(chk.confidence),
+                    el_bottom_deg=float(el_bot),
+                    attrs=dict(o0.attrs),
+                )
             )
-        )
-
+            break
 
     if not new_obs:
         return list(entities), list(observations), 0
@@ -895,6 +906,7 @@ async def infill_unlocated_poles(
         ref_lla,
         merge_single_view=True,
         min_post_panos=min_post_panos,
+        use_house_facade_edges=variant.uc2_house_facade_edges,
     )
     return reclustered, all_obs, len(new_obs)
 
@@ -1802,21 +1814,32 @@ async def uc2_asset_audit(
                     "nearest_entity_id",
                     "nearest_entity_cls",
                     "matched",
+                    "matched_6m",
                     "exact_class_match",
                     "post_group_match",
+                    "exact_class_match_6m",
+                    "post_group_match_6m",
                     "proj_u",
                     "proj_v",
                 ]
             ),
             "matched_count": 0,
+            "matched_6m_count": 0,
             "exact_class_matched_count": 0,
             "post_group_matched_count": 0,
+            "exact_class_matched_6m_count": 0,
+            "post_group_matched_6m_count": 0,
             "gemini_confirmed": False,
         }
 
     frames_norm = data.ensure_capture_id(frames)
     ground_rows = [
         r for r in frames_norm.to_dict("records") if rosette.is_ground_camera(int(r["cam_k"]))
+    ]
+    rosette_coords = [
+        (float(r["camera_pose"]["latitude"]), float(r["camera_pose"]["longitude"]))
+        for r in ground_rows
+        if r.get("camera_pose")
     ]
     records_out: list[dict[str, Any]] = []
 
@@ -1829,6 +1852,13 @@ async def uc2_asset_audit(
                 alat, alng = float(row["lat"]), float(row["lng"])
         else:
             alat, alng = float(row["lat"]), float(row["lng"])
+
+        if rosette_coords:
+            min_ros_m = min(
+                float(geo.haversine_m(alat, alng, rlat, rlng)) for rlat, rlng in rosette_coords
+            )
+            if min_ros_m > 50.0:
+                continue
 
         best_ent_m = float("inf")
         best_ent_id: str | None = None
@@ -1851,6 +1881,7 @@ async def uc2_asset_audit(
                         else (e.get("cls") or e.get("class") or "")
                     )
         matched = bool(best_ent_m <= float(match_radius_m))
+        matched_6m = bool(best_ent_m <= 6.0)
         raw_atype = str(row.get("asset_type") or "")
         expected_cls = raw_atype.removeprefix("ASSET_CLASS_")
         exact_class_match = bool(
@@ -1858,6 +1889,12 @@ async def uc2_asset_audit(
         )
         post_group_match = bool(
             matched and (not best_ent_cls or best_ent_cls in ent.POST_GROUP)
+        )
+        exact_class_match_6m = bool(
+            matched_6m and best_ent_cls and expected_cls and best_ent_cls == expected_cls
+        )
+        post_group_match_6m = bool(
+            matched_6m and (not best_ent_cls or best_ent_cls in ent.POST_GROUP)
         )
 
         proj_u, proj_v = float("nan"), float("nan")
@@ -1891,8 +1928,11 @@ async def uc2_asset_audit(
                 "nearest_entity_id": best_ent_id if matched else None,
                 "nearest_entity_cls": best_ent_cls if matched else None,
                 "matched": matched,
+                "matched_6m": matched_6m,
                 "exact_class_match": exact_class_match,
                 "post_group_match": post_group_match,
+                "exact_class_match_6m": exact_class_match_6m,
+                "post_group_match_6m": post_group_match_6m,
                 "proj_u": proj_u,
                 "proj_v": proj_v,
                 "_r_near": r_near,
@@ -1950,11 +1990,18 @@ async def uc2_asset_audit(
     return {
         "audit_df": audit_df,
         "matched_count": int(audit_df["matched"].sum()) if not audit_df.empty else 0,
+        "matched_6m_count": int(audit_df["matched_6m"].sum()) if not audit_df.empty else 0,
         "exact_class_matched_count": (
             int(audit_df["exact_class_match"].sum()) if not audit_df.empty else 0
         ),
         "post_group_matched_count": (
             int(audit_df["post_group_match"].sum()) if not audit_df.empty else 0
+        ),
+        "exact_class_matched_6m_count": (
+            int(audit_df["exact_class_match_6m"].sum()) if not audit_df.empty else 0
+        ),
+        "post_group_matched_6m_count": (
+            int(audit_df["post_group_match_6m"].sum()) if not audit_df.empty else 0
         ),
         "gemini_confirmed": gemini_confirmed,
     }

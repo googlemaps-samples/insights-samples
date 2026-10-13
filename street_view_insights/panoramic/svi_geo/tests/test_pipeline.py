@@ -243,6 +243,7 @@ def test_build_fewshot_prompt_parts_interleaves_examples():
 
 def test_detection_prompt_includes_joint_use_and_shaft_tight_rules_and_condition_attr():
     prompt = pipeline.detection_prompt()
+    assert "wooden timber pole" in prompt.lower()
     assert "overhead" in prompt.lower()
     assert "standalone" in prompt.lower()
     assert "shaft" in prompt.lower()
