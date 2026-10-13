@@ -8,6 +8,7 @@ on `Variant` with defaults that preserve baseline behaviour until promoted by `l
 from __future__ import annotations
 
 import dataclasses
+import math
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -18,7 +19,7 @@ from svi_geo import cvchecks as cvc
 from svi_geo import entities as ent
 from svi_geo import eval as ev
 from svi_geo import gemini_client as gc
-from svi_geo import images, pipeline, roof, rosette, schemas, sequence, smoothing, views
+from svi_geo import geo, images, pipeline, roof, rosette, schemas, sequence, smoothing, views
 
 UC1_PROMPT_V0 = (
     "The image is centred on the bearing of a target house. Is a house visible at the CENTRE? "
@@ -2005,4 +2006,589 @@ async def uc2_asset_audit(
         ),
         "gemini_confirmed": gemini_confirmed,
     }
+
+
+POLE_SUBCLASSIFICATION_PROMPT = """You are a senior electric and telecom utility GIS asset auditor inspecting calibrated Street View Insights (`SV_PANO`) 3-panel perspective composites of a triangulated roadside vertical structure.
+
+Each composite image contains 3 side-by-side panels rendered from the KB4 fisheye rosette:
+- Panel 1 (Left): Full Vertical Shaft View (`pitch=+5 deg`, `vfov=85 deg`) from ground line to crown.
+- Panel 2 (Center): High-Resolution Crown & Cross-Arm Zoom (top 45% of the vertical shaft).
+- Panel 3 (Right): High-Resolution Base & Ground-Contact Zoom (bottom 45% of the vertical shaft).
+
+Apply these strict sub-classification rules:
+1. TRUE UTILITY POLES (`is_true_utility_pole = true`):
+   - `DISTRIBUTION_UTILITY_POLE`: Carries overhead primary/secondary electric distribution conductors, insulators, pole-mount transformers, or fused cutouts, without a separate lower communications strand.
+   - `JOINT_USE_UTILITY_POLE`: Carries electric distribution at the upper crown AND lower-tier telecom/fiber cables, splice cases, or street-light luminaires attached to the same utility shaft.
+   - `TRANSMISSION_POLE`: Tall sub-transmission or transmission structure with multi-circuit cross-arms, large suspension/post insulators, and high-voltage conductors.
+   - `DOUBLE_POLE_TRANSFER_PAIR`: Two adjacent utility poles standing side-by-side (typically an aging or topped pole strapped or mid-transfer to a replacement pole). Set `is_double_pole = true`.
+2. NON-UTILITY LOOKALIKES (`is_true_utility_pole = false`):
+   - `STANDALONE_STREET_LIGHT`: Dedicated roadway/pedestrian lighting standard (metal, concrete, or fiberglass shaft with mast arm + luminaire, fed underground with NO overhead distribution conductors or cross-arms).
+   - `TRAFFIC_SIGNAL_MAST_ARM`: Heavy structural pole supporting traffic signal heads, pedestrian push-buttons, or intersection mast arms without overhead power distribution lines.
+   - `GUY_STUB_OR_PUSH_BRACE`: Unwired stub pole or angled push-brace pole used purely for mechanical guying/bracing.
+   - `TELECOM_OR_CELL_MONOPOLE`: Dedicated small-cell/5G antenna monopole or standalone communications drop pole with no electric distribution lines.
+   - `SIGN_POST_OR_OTHER`: Thin sign post, bollard, flagpole, or tree trunk mistaken for a pole.
+
+Return a JSON object matching `PoleSubClassification`."""
+
+
+def _iter_rows(rows: Any) -> list[Mapping[str, Any]]:
+    """Convert a DataFrame or sequence of mapping rows into a list of dicts."""
+    if isinstance(rows, pd.DataFrame):
+        return rows.to_dict("records")
+    return list(rows or [])
+
+
+def render_pole_inspection_composite(
+    pano_rows: Any,
+    pole_lat: float,
+    pole_lng: float,
+    fetch: Callable[[str], bytes],
+    intr: rosette.Intrinsics = rosette.DEFAULT_INTRINSICS,
+    *,
+    panel_width: int = 360,
+    panel_height: int = 480,
+    pitch_deg: float | None = None,
+    vfov_deg: float | None = None,
+) -> dict[str, Any] | None:
+    """Render a 3-panel calibrated inspection composite for a candidate pole from one rosette.
+
+    Panels:
+      1. Full Vertical Shaft View (distance-adaptive pitch & vfov, cropped above vehicle hood)
+      2. Crown & Cross-Arm Zoom (projected upper-crown elevation window at 2x optical resolution)
+      3. Base & Trunk Ground-Contact Zoom (projected ground-collar window at 2x optical resolution)
+    """
+    import cv2
+
+    ground_rows = [
+        r for r in _iter_rows(pano_rows) if rosette.is_ground_camera(int(r.get("cam_k", -1)))
+    ]
+    if not ground_rows:
+        return None
+
+    r0 = ground_rows[0]
+    clat = float(r0.get("lat") or r0.get("camera_pose", {}).get("latitude", 0.0))
+    clng = float(r0.get("lng") or r0.get("camera_pose", {}).get("longitude", 0.0))
+    pano_id = str(r0.get("capture_id") or r0.get("pano_id") or "")
+    dist_m = float(geo.haversine_m(clat, clng, float(pole_lat), float(pole_lng)))
+    bearing = float(geo.bearing_deg(clat, clng, float(pole_lat), float(pole_lng)))
+
+    # Distance-adaptive vertical framing (camera height ~2.5m, pole crown up to ~11.0m above ground)
+    eff_dist = max(dist_m, 4.0)
+    el_base = max(-38.0, math.degrees(math.atan2(-2.5, eff_dist)) - 4.0)
+    el_top = min(58.0, math.degrees(math.atan2(8.5, eff_dist)) + 4.0)
+    if pitch_deg is None:
+        pitch_val = float(np.clip(0.5 * (el_top + el_base), 2.0, 26.0))
+    else:
+        pitch_val = float(pitch_deg)
+    if vfov_deg is None:
+        half_span = max(abs(el_top - pitch_val), abs(pitch_val - el_base))
+        vfov_val = float(np.clip(2.0 * half_span * 1.08, 48.0, 86.0))
+    else:
+        vfov_val = float(vfov_deg)
+
+    pw, ph = int(panel_width), int(panel_height)
+    aspect = pw / float(ph)
+    hfov_deg = float(views.hfov_for_vfov(vfov_val, aspect))
+
+    # Ensure the multi-camera composite has <0.1% black border even at the top crown crop
+    max_hfov_m, max_vfov_m = 0.0, 0.0
+    for p_try in (pitch_val, max(2.0, pitch_val - 4.0), max(2.0, pitch_val - 8.0), 8.0, 4.0):
+        mh, mv = rosette.max_view_fov_multi(
+            intr,
+            ground_rows,
+            bearing,
+            float(p_try),
+            aspect,
+            max_black=0.001,
+            hfov_cap=max(hfov_deg, 75.0),
+        )
+        if mh >= 32.0:
+            pitch_val = float(p_try)
+            max_hfov_m, max_vfov_m = float(mh), float(mv)
+            break
+    if max_hfov_m >= 25.0 and hfov_deg > max_hfov_m:
+        hfov_deg = float(max_hfov_m)
+        vfov_val = float(max_vfov_m)
+
+    # Prefer a single camera if it can cover >=46 deg HFOV (or the requested hfov_deg) with <0.2% black border,
+    # avoiding any multi-camera seam step across the pole shaft; otherwise composite adjacent ground cameras.
+    single_min_hfov = min(hfov_deg, 46.0)
+    choice = rosette.best_camera_for_view(
+        ground_rows,
+        intr,
+        bearing,
+        pitch_deg=pitch_val,
+        aspect=aspect,
+        min_hfov=single_min_hfov,
+        max_black=0.002,
+        hfov_cap=max(hfov_deg, 75.0),
+    )
+    if choice is not None and choice.hfov_deg < hfov_deg:
+        hfov_deg = float(choice.hfov_deg)
+        vfov_val = float(choice.vfov_deg)
+
+    best_row = choice.row if choice is not None else None
+    if best_row is None:
+        best_row = min(
+            ground_rows,
+            key=lambda r: abs(
+                float(
+                    geo.angdiff(
+                        float(r.get("heading") or r.get("camera_pose", {}).get("heading", 0.0)),
+                        bearing,
+                    )
+                )
+            ),
+        )
+
+    cam_k = int(best_row["cam_k"])
+    pose = best_row["camera_pose"]
+    # Render at 2x resolution so the Crown and Base panels preserve native optical detail
+    hi_w, hi_h = pw * 2, ph * 2
+    hi_view = rosette.PerspectiveView(
+        yaw_deg=bearing,
+        pitch_deg=pitch_val,
+        hfov_deg=hfov_deg,
+        width=hi_w,
+        height=hi_h,
+    )
+    scale = images.decode_scale_for_view(hi_h, hfov_deg)
+    single_keep = rosette.hood_row(hi_view, pose, intr, rosette.HOOD_ELEV_DEG, cam_k)
+    single_black = rosette.view_black_fraction(intr, pose, hi_view, cam_k, max_row=single_keep)
+
+    if choice is not None and single_black < 0.005:
+        used_rows = (best_row,)
+        raw_im = images.decode(fetch(best_row["gcs_uri"]), scale=scale)
+        hi_img = rosette.render_perspective(
+            raw_im,
+            intr,
+            pose,
+            hi_view,
+            cam_k,
+            antialias=True,
+            mask_hood=False,
+        )
+    else:
+        used_rows = rosette.composite_rows(intr, ground_rows, hi_view)
+        if not used_rows:
+            used_rows = (best_row,)
+        imgs_by_k = {
+            int(r["cam_k"]): images.decode(fetch(r["gcs_uri"]), scale=scale)
+            for r in used_rows
+        }
+        hi_img = rosette.render_perspective_multi(
+            imgs_by_k,
+            intr,
+            used_rows,
+            hi_view,
+            antialias=True,
+        )
+
+    # Crop above the capture-vehicle hood (both camera-frame and world-frame rays < HOOD_ELEV_DEG)
+    vs = np.arange(hi_h, dtype=np.float64)
+    us_probe = np.array([0.0, hi_view.cx, float(hi_w - 1)], dtype=np.float64)
+    _, el_probe = hi_view.pixel_to_bearing(us_probe[:, None], vs[None, :])
+    below_world = np.nonzero(el_probe.min(axis=0) < (rosette.HOOD_ELEV_DEG + 1.0))[0]
+    world_keep = int(below_world[0]) if below_world.size else hi_h
+    cam_keep = min(
+        rosette.hood_row(
+            hi_view, r["camera_pose"], intr, rosette.HOOD_ELEV_DEG + 1.0, int(r["cam_k"])
+        )
+        for r in used_rows
+    )
+    # Also trim any top rows where uncovered sensor border appears in the middle 60% crown width
+    x_lo = int(round(0.20 * hi_w))
+    x_hi = int(round(0.80 * hi_w))
+    row_black_frac = (hi_img[: min(world_keep, int(cam_keep)), x_lo:x_hi].max(axis=2) == 0).mean(
+        axis=1
+    )
+    bad_top = np.nonzero(row_black_frac > 0.005)[0]
+    top_trim = int(bad_top[-1] + 1) if (bad_top.size and bad_top[0] == 0 and bad_top[-1] < 0.25 * hi_h) else 0
+
+    keep = max(int(round(0.50 * hi_h)), min(world_keep, int(cam_keep), hi_h))
+    hi_valid = hi_img[top_trim:keep]
+    valid_h = hi_valid.shape[0]
+
+    full_clean = cv2.resize(hi_valid, (pw, ph), interpolation=cv2.INTER_AREA)
+
+    # Measure deterministic OpenCV LSD verticality support & lean angle on the clean full-shaft view
+    center_box = (0.28 * pw, 0.08 * ph, 0.72 * pw, 0.92 * ph)
+    vert_sup = float(cvc.vertical_post_support(full_clean, center_box, max_tilt_deg=12.0))
+    lsd_lean = float(cvc.estimate_post_lean_deg(full_clean, center_box, max_tilt_deg=15.0))
+
+    # Project 3D elevation windows for the pole's upper crown (+3.5m..+9.0m) and ground collar (-2.6m..+2.2m)
+    crown_el_lo = math.degrees(math.atan2(3.5, eff_dist))
+    crown_el_hi = min(65.0, math.degrees(math.atan2(9.0, eff_dist)) + 2.0)
+    base_el_lo = max(rosette.HOOD_ELEV_DEG + 1.5, math.degrees(math.atan2(-2.6, eff_dist)) - 2.0)
+    base_el_hi = math.degrees(math.atan2(2.2, eff_dist))
+
+    _, v_crown_top, _ = hi_view.bearing_to_pixel(bearing, crown_el_hi)
+    _, v_crown_bot, _ = hi_view.bearing_to_pixel(bearing, crown_el_lo)
+    _, v_base_top, _ = hi_view.bearing_to_pixel(bearing, base_el_hi)
+    _, v_base_bot, _ = hi_view.bearing_to_pixel(bearing, base_el_lo)
+
+    win_h = max(64, int(round(0.45 * valid_h)))
+
+    crown_center = 0.5 * (float(v_crown_top) + float(v_crown_bot)) - top_trim
+    y_crown_lo = int(np.clip(round(crown_center - 0.5 * win_h), 0, max(0, valid_h - win_h)))
+    y_crown_hi = min(valid_h, y_crown_lo + win_h)
+
+    base_center = 0.5 * (float(v_base_top) + float(v_base_bot)) - top_trim
+    y_base_lo = int(np.clip(round(base_center - 0.5 * win_h), 0, max(0, valid_h - win_h)))
+    y_base_hi = min(valid_h, y_base_lo + win_h)
+    if y_base_lo <= y_crown_lo:
+        y_base_lo = max(0, valid_h - win_h)
+        y_base_hi = valid_h
+
+    crown_crop = hi_valid[y_crown_lo:y_crown_hi, x_lo:x_hi]
+    base_crop = hi_valid[y_base_lo:y_base_hi, x_lo:x_hi]
+    crown_clean = cv2.resize(crown_crop, (pw, ph), interpolation=cv2.INTER_CUBIC)
+    base_clean = cv2.resize(base_crop, (pw, ph), interpolation=cv2.INTER_CUBIC)
+    blk = max(
+        float((p.max(axis=2) == 0).mean()) for p in (full_clean, crown_clean, base_clean)
+    )
+
+    def _annotate_panel(panel: np.ndarray, title: str, draw_guide: bool = False) -> np.ndarray:
+        out = panel.copy()
+        if draw_guide:
+            cx = pw // 2
+            cv2.line(out, (cx, 28), (cx, ph - 8), (60, 210, 90), 1, cv2.LINE_AA)
+        cv2.rectangle(out, (0, 0), (pw, 24), (24, 28, 36), -1)
+        cv2.putText(
+            out,
+            title,
+            (8, 16),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.42,
+            (240, 244, 248),
+            1,
+            cv2.LINE_AA,
+        )
+        return out
+
+    p1 = _annotate_panel(full_clean, f"1: FULL SHAFT ({dist_m:.1f}m)", draw_guide=True)
+    p2 = _annotate_panel(crown_clean, "2: CROWN & CROSS-ARM (2X)")
+    p3 = _annotate_panel(base_clean, "3: BASE & GROUND (2X)")
+    # Add thin vertical dividers between panels and mandatory Google imagery credit
+    composite = np.hstack([p1, p2, p3])
+    cv2.line(composite, (pw, 0), (pw, ph), (220, 225, 230), 2)
+    cv2.line(composite, (2 * pw, 0), (2 * pw, ph), (220, 225, 230), 2)
+    credit_w, credit_h = 148, 20
+    cx0, cy0 = composite.shape[1] - credit_w - 6, composite.shape[0] - credit_h - 6
+    cv2.rectangle(
+        composite,
+        (cx0, cy0),
+        (composite.shape[1] - 6, composite.shape[0] - 6),
+        (24, 28, 36),
+        -1,
+    )
+    cv2.putText(
+        composite,
+        "Imagery (c) Google",
+        (cx0 + 6, cy0 + 14),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.38,
+        (235, 240, 245),
+        1,
+        cv2.LINE_AA,
+    )
+
+    return {
+        "composite_img": composite,
+        "panels": (full_clean, crown_clean, base_clean),
+        "pano_id": pano_id,
+        "observation_id": str(best_row.get("observation_id") or ""),
+        "cam_k": cam_k,
+        "used_cam_ks": [int(r["cam_k"]) for r in used_rows],
+        "bearing_deg": bearing,
+        "dist_m": dist_m,
+        "pitch_deg": round(pitch_val, 2),
+        "vfov_deg": round(vfov_val, 2),
+        "crown_el_range_deg": (round(crown_el_lo, 2), round(crown_el_hi, 2)),
+        "base_el_range_deg": (round(base_el_lo, 2), round(base_el_hi, 2)),
+        "black_fraction": blk,
+        "vertical_support": vert_sup,
+        "lsd_lean_deg": lsd_lean,
+    }
+
+
+def _select_parallax_panos_for_pole(
+    pole_lat: float,
+    pole_lng: float,
+    frames: Any,
+    observed_pano_ids: set[str],
+    max_views: int = 2,
+) -> tuple[list[str], float]:
+    """Select up to `max_views` rosettes with maximum azimuth parallax around `(pole_lat, pole_lng)`."""
+    pano_meta: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for r in _iter_rows(frames):
+        pid = str(r.get("capture_id") or r.get("pano_id") or "")
+        if not pid or pid in seen:
+            continue
+        seen.add(pid)
+        rlat = float(r.get("lat") or r.get("camera_pose", {}).get("latitude", 0.0))
+        rlng = float(r.get("lng") or r.get("camera_pose", {}).get("longitude", 0.0))
+        dist = float(geo.haversine_m(rlat, rlng, pole_lat, pole_lng))
+        if dist < 2.5 or dist > 45.0:
+            continue
+        az = float(geo.bearing_deg(rlat, rlng, pole_lat, pole_lng))
+        pano_meta.append(
+            {
+                "pano_id": pid,
+                "dist_m": dist,
+                "bearing_deg": az,
+                "observed": pid in observed_pano_ids,
+            }
+        )
+
+    if not pano_meta:
+        return [], 0.0
+
+    # Primary view: prefer observed rosettes at >=5.5m (closest to optimal 14m inspection distance)
+    pano_meta.sort(
+        key=lambda m: (
+            0 if m["observed"] else 1,
+            0 if m["dist_m"] >= 5.5 else 1,
+            abs(m["dist_m"] - 14.0),
+        )
+    )
+    primary = pano_meta[0]
+    selected_meta = [primary]
+
+    if max_views >= 2 and len(pano_meta) >= 2:
+        obs_good = [
+            m for m in pano_meta[1:] if m["observed"] and 5.5 <= m["dist_m"] <= 38.0
+        ]
+        obs_any = [m for m in pano_meta[1:] if m["observed"] and m["dist_m"] <= 38.0]
+        near_good = [m for m in pano_meta[1:] if 5.5 <= m["dist_m"] <= 28.0]
+        pool = (
+            obs_good
+            or obs_any
+            or near_good
+            or [m for m in pano_meta[1:] if m["dist_m"] <= 28.0]
+        )
+        if pool:
+            best_sec = max(
+                pool,
+                key=lambda m: (
+                    abs(float(geo.angdiff(primary["bearing_deg"], m["bearing_deg"])))
+                    - 0.4 * max(0.0, m["dist_m"] - 20.0)
+                ),
+            )
+            selected_meta.append(best_sec)
+
+    # Compute maximum azimuth parallax strictly across the selected/observed views for this pole
+    support_bearings = [
+        m["bearing_deg"] for m in pano_meta if m["observed"] or m in selected_meta
+    ]
+    max_parallax = 0.0
+    for i in range(len(support_bearings)):
+        for j in range(i + 1, len(support_bearings)):
+            par = abs(float(geo.angdiff(support_bearings[i], support_bearings[j])))
+            if par > max_parallax:
+                max_parallax = par
+
+    selected = [m["pano_id"] for m in selected_meta[:max_views]]
+    return selected, float(max_parallax)
+
+
+async def subclassify_poles(
+    entities: Sequence[Any],
+    frames: Any,
+    fetch: Callable[[str], bytes],
+    runner: gc.GeminiRunner,
+    intr: rosette.Intrinsics = rosette.DEFAULT_INTRINSICS,
+    *,
+    max_poles: int = 5,
+    max_views_per_pole: int = 2,
+    panel_width: int = 360,
+    panel_height: int = 480,
+    seed: int | None = 0,
+) -> dict[str, Any]:
+    """Sub-classify triangulated vertical pole candidates using 3-panel multi-view composites and LSD gates."""
+    pole_candidates: list[dict[str, Any]] = []
+    for e in entities:
+        if isinstance(e, Mapping):
+            cls_name = str(e.get("cls") or "UTILITY_POLE")
+            located = bool(e.get("located", True))
+            lat = e.get("lat")
+            lng = e.get("lng")
+            eid = str(e.get("entity_id") or "pole")
+            conf = float(e.get("confidence", 0.8))
+            n_panos = int(e.get("n_panos", 1))
+            pano_ids = list(e.get("pano_ids") or [])
+            obs_list = list(e.get("observations") or [])
+            ent_par = float(e.get("max_parallax_deg", 0.0) or 0.0)
+        else:
+            cls_name = str(getattr(e, "cls", "UTILITY_POLE"))
+            located = bool(getattr(e, "located", True))
+            lat = getattr(e, "lat", None)
+            lng = getattr(e, "lng", None)
+            eid = str(getattr(e, "entity_id", "pole"))
+            conf = float(getattr(e, "confidence", 0.8))
+            n_panos = int(getattr(e, "n_panos", 1))
+            pano_ids = list(getattr(e, "pano_ids", []) or [])
+            obs_list = list(getattr(e, "observations", []) or [])
+            ent_par = float(getattr(e, "max_parallax_deg", 0.0) or 0.0)
+
+        if not located or lat is None or lng is None or not math.isfinite(float(lat)):
+            continue
+        if cls_name not in {"UTILITY_POLE", "STREET_LIGHT"}:
+            continue
+
+        obs_panos: set[str] = {str(p) for p in pano_ids if p}
+        obs_bearings: list[float] = []
+        for o in obs_list:
+            opid = str(o.get("pano_id") if isinstance(o, Mapping) else getattr(o, "pano_id", ""))
+            if opid:
+                obs_panos.add(opid)
+            ray = o.get("ray") if isinstance(o, Mapping) else getattr(o, "ray", None)
+            if ray is not None and hasattr(ray, "azimuth_deg"):
+                obs_bearings.append(float(ray.azimuth_deg))
+
+        pole_candidates.append(
+            {
+                "entity_id": eid,
+                "initial_cls": cls_name,
+                "lat": float(lat),
+                "lng": float(lng),
+                "initial_confidence": conf,
+                "n_panos": n_panos,
+                "obs_panos": obs_panos,
+                "obs_bearings": obs_bearings,
+                "entity_max_parallax_deg": ent_par,
+            }
+        )
+
+    pole_candidates.sort(key=lambda c: (-c["n_panos"], -c["initial_confidence"], c["entity_id"]))
+    pole_candidates = pole_candidates[: max(1, int(max_poles))]
+
+    all_rows = _iter_rows(frames)
+    rows_by_pano: dict[str, list[Mapping[str, Any]]] = {}
+    for r in all_rows:
+        pid = str(r.get("capture_id") or r.get("pano_id") or "")
+        if pid:
+            rows_by_pano.setdefault(pid, []).append(r)
+
+    records: list[dict[str, Any]] = []
+    for cand in pole_candidates:
+        sel_panos, max_par = _select_parallax_panos_for_pole(
+            cand["lat"],
+            cand["lng"],
+            all_rows,
+            cand["obs_panos"],
+            max_views=max_views_per_pole,
+        )
+        max_par = max(max_par, cand["entity_max_parallax_deg"])
+        # Also include parallax from original observations if larger
+        ob = cand["obs_bearings"]
+        for i in range(len(ob)):
+            for j in range(i + 1, len(ob)):
+                max_par = max(max_par, abs(float(geo.angdiff(ob[i], ob[j]))))
+
+        composites: list[dict[str, Any]] = []
+        for pid in sel_panos:
+            p_rows = rows_by_pano.get(pid, [])
+            if not p_rows:
+                continue
+            comp = render_pole_inspection_composite(
+                p_rows,
+                cand["lat"],
+                cand["lng"],
+                fetch,
+                intr,
+                panel_width=panel_width,
+                panel_height=panel_height,
+            )
+            if comp is not None:
+                composites.append(comp)
+
+        if not composites:
+            continue
+
+        best_vert_sup = max(c["vertical_support"] for c in composites)
+        lsd_leans = [c["lsd_lean_deg"] for c in composites]
+        lsd_lean_med = float(np.median(lsd_leans)) if lsd_leans else 0.0
+
+        prompt_parts: list[Any] = [
+            POLE_SUBCLASSIFICATION_PROMPT
+            + f"\n\nCandidate metadata: entity_id={cand['entity_id']}, initial_detector_class={cand['initial_cls']}, "
+            f"triangulated_panos={cand['n_panos']}, max_azimuth_parallax_deg={max_par:.1f}, "
+            f"opencv_lsd_vertical_support={best_vert_sup:.2f}, opencv_lsd_lean_deg={lsd_lean_med:.2f}."
+        ]
+        for idx, c in enumerate(composites):
+            prompt_parts.append(
+                f"View {idx + 1} (rosette={c['pano_id']}, cam={c['cam_k']}, "
+                f"distance={c['dist_m']:.1f}m, bearing={c['bearing_deg']:.1f} deg):"
+            )
+            prompt_parts.append(c["composite_img"])
+
+        verdict = await runner.ask(
+            prompt_parts,
+            schemas.PoleSubClassification,
+            seed=seed,
+        )
+        if verdict is None:
+            continue
+
+        # Deterministic taxonomy & geometry fusion gates:
+        is_true_utility = verdict.pole_subtype in schemas.TRUE_UTILITY_POLE_SUBTYPES
+        is_double = bool(
+            verdict.is_double_pole
+            or verdict.pole_subtype == schemas.PoleSubType.DOUBLE_POLE_TRANSFER_PAIR
+        )
+        is_false_det = bool(
+            not is_true_utility
+            and verdict.pole_subtype == schemas.PoleSubType.SIGN_POST_OR_OTHER
+            and float(verdict.confidence) < 0.35
+            and best_vert_sup < 0.25
+        )
+        llm_lean = float(np.clip(verdict.lean_deg, -45.0, 45.0))
+        if best_vert_sup >= 0.35 and abs(llm_lean - lsd_lean_med) <= 5.0:
+            fused_lean = round(0.5 * (llm_lean + lsd_lean_med), 2)
+        elif best_vert_sup >= 0.50 and abs(llm_lean - lsd_lean_med) > 10.0:
+            fused_lean = round(lsd_lean_med, 2)
+        else:
+            fused_lean = round(llm_lean, 2)
+
+        records.append(
+            {
+                "entity_id": cand["entity_id"],
+                "initial_cls": cand["initial_cls"],
+                "lat": round(cand["lat"], 7),
+                "lng": round(cand["lng"], 7),
+                "n_panos": cand["n_panos"],
+                "supporting_rosettes": [c["pano_id"] for c in composites],
+                "supporting_observations": [c["observation_id"] for c in composites],
+                "max_parallax_deg": round(max_par, 2),
+                "opencv_vertical_support": round(best_vert_sup, 3),
+                "opencv_lsd_lean_deg": round(lsd_lean_med, 2),
+                "pole_subtype": verdict.pole_subtype.value,
+                "is_true_utility_pole": bool(is_true_utility),
+                "is_false_detection": is_false_det,
+                "material": verdict.material.value,
+                "condition": verdict.condition.value,
+                "crossarm_config": verdict.crossarm_config.value,
+                "attached_equipment": [eq.value for eq in verdict.attached_equipment],
+                "is_double_pole": is_double,
+                "lean_deg": fused_lean,
+                "confidence": round(float(verdict.confidence), 3),
+                "evidence_summary": verdict.evidence_summary,
+                "composites": composites,
+            }
+        )
+
+    true_count = sum(1 for r in records if r["is_true_utility_pole"])
+    false_count = sum(1 for r in records if r["is_false_detection"])
+    non_util_count = sum(
+        1 for r in records if not r["is_true_utility_pole"] and not r["is_false_detection"]
+    )
+    return {
+        "records": records,
+        "true_utility_pole_count": true_count,
+        "non_utility_vertical_count": non_util_count,
+        "false_detection_count": false_count,
+    }
+
 

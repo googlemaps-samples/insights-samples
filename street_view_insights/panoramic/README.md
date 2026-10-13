@@ -141,3 +141,11 @@ the name to `SVI_ALLOWED_DATASETS` (comma-separated), e.g.
   cross-day repeat-pass stability, OpenCV evidence gates, and zoom-tile silver-teacher evaluation
   across `lakeland_fl` (tune), `salt_lake_ut` (held-out), and `osaka_jp` (dense urban stress test),
   plus the human annotation kit protocol.
+
+## Agent Skills (`skills/`)
+
+Standalone, production-hardened agent skills and CLI scripts for common `SV_PANO` inspection workflows:
+
+- **[`surface_material_detection_using_panoramic_svi`](skills/surface_material_detection_using_panoramic_svi/SKILL.md)** (`scripts/detect_material.py`): Travel-aligned perspective rendering (`< 1%` black border) and structured road/sidewalk surface material and condition classification (`SurfaceMaterialResult`).
+- **[`utility_pole_subclassification_using_panoramic_svi`](skills/utility_pole_subclassification_using_panoramic_svi/SKILL.md)** (`scripts/subclassify_poles.py`): Multi-rosette 3D ENU pole triangulation, approach + recede azimuth parallax view selection, calibrated 3-panel inspection composites (`Full Vertical Shaft | Crown & Cross-Arm Zoom | Base & Ground Zoom`), and OpenCV LSD-gated sub-classification (`PoleSubClassification`) separating true electric/joint-use/transmission/double-pole structures from standalone street lights, traffic signal mast arms, guy stubs, cell monopoles, and sign posts.
+

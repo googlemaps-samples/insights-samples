@@ -438,3 +438,68 @@ class RepeatPassDiff(BaseModel):
     @classmethod
     def _valid_box(cls, v):
         return _check_box(v)
+
+
+class PoleSubType(str, Enum):
+    """Fine-grained roadside vertical pole taxonomy distinguishing true utility poles from lookalikes."""
+
+    DISTRIBUTION_UTILITY_POLE = "DISTRIBUTION_UTILITY_POLE"
+    JOINT_USE_UTILITY_POLE = "JOINT_USE_UTILITY_POLE"
+    TRANSMISSION_POLE = "TRANSMISSION_POLE"
+    STANDALONE_STREET_LIGHT = "STANDALONE_STREET_LIGHT"
+    TRAFFIC_SIGNAL_MAST_ARM = "TRAFFIC_SIGNAL_MAST_ARM"
+    GUY_STUB_OR_PUSH_BRACE = "GUY_STUB_OR_PUSH_BRACE"
+    TELECOM_OR_CELL_MONOPOLE = "TELECOM_OR_CELL_MONOPOLE"
+    DOUBLE_POLE_TRANSFER_PAIR = "DOUBLE_POLE_TRANSFER_PAIR"
+    SIGN_POST_OR_OTHER = "SIGN_POST_OR_OTHER"
+
+
+TRUE_UTILITY_POLE_SUBTYPES: frozenset[PoleSubType] = frozenset(
+    {
+        PoleSubType.DISTRIBUTION_UTILITY_POLE,
+        PoleSubType.JOINT_USE_UTILITY_POLE,
+        PoleSubType.TRANSMISSION_POLE,
+        PoleSubType.DOUBLE_POLE_TRANSFER_PAIR,
+    }
+)
+
+
+class CrossArmConfig(str, Enum):
+    """Crown framing configuration at the top of a utility pole."""
+
+    NONE = "NONE"
+    SINGLE_ARM = "SINGLE_ARM"
+    DOUBLE_ARM = "DOUBLE_ARM"
+    ALLEY_ARM = "ALLEY_ARM"
+    ARMLESS_FRAMING = "ARMLESS_FRAMING"
+    UNKNOWN = "UNKNOWN"
+
+
+class PoleEquipment(str, Enum):
+    """Attached overhead utility, telecom, lighting, or signage hardware on a pole."""
+
+    OVERHEAD_CONDUCTORS = "OVERHEAD_CONDUCTORS"
+    POLE_MOUNT_TRANSFORMER = "POLE_MOUNT_TRANSFORMER"
+    STREET_LIGHT_LUMINAIRE = "STREET_LIGHT_LUMINAIRE"
+    RISER_CONDUIT = "RISER_CONDUIT"
+    TELECOM_SPLICE_CASE = "TELECOM_SPLICE_CASE"
+    GUY_WIRE = "GUY_WIRE"
+    CAPACITOR_OR_REGULATOR = "CAPACITOR_OR_REGULATOR"
+    STREET_SIGN = "STREET_SIGN"
+    TRAFFIC_SIGNAL = "TRAFFIC_SIGNAL"
+
+
+class PoleSubClassification(BaseModel):
+    """Structured multi-view utility pole sub-classification and equipment audit."""
+
+    pole_subtype: PoleSubType
+    is_true_utility_pole: bool
+    material: AssetMaterial
+    condition: AssetCondition
+    crossarm_config: CrossArmConfig
+    attached_equipment: list[PoleEquipment] = Field(default_factory=list)
+    is_double_pole: bool
+    lean_deg: float = Field(ge=-45.0, le=45.0)
+    confidence: float = Field(ge=0.0, le=1.0)
+    evidence_summary: str
+

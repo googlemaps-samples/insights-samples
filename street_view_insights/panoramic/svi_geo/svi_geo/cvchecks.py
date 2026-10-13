@@ -127,6 +127,73 @@ def vertical_post_support(
     return float(np.clip(covered / box_h, 0.0, 1.0))
 
 
+def estimate_post_lean_deg(
+    img: np.ndarray,
+    box: Sequence[float] | None = None,
+    max_tilt_deg: float = 15.0,
+    valid_mask: np.ndarray | None = None,
+    pad_px: int = 12,
+) -> float:
+    """Deterministic LSD length-weighted median lean angle in degrees from vertical in [-45, 45] (positive = clockwise tilt)."""
+    h, w = img.shape[:2]
+    if box is None or len(box) != 4:
+        x0, y0, x1, y1 = 0.25 * w, 0.08 * h, 0.75 * w, 0.92 * h
+    else:
+        x0, y0, x1, y1 = (float(v) for v in box)
+    x0, x1 = max(0.0, min(x0, x1)), min(float(w), max(x0, x1))
+    y0, y1 = max(0.0, min(y0, y1)), min(float(h), max(y0, y1))
+    if y1 - y0 < 6.0 or x1 - x0 < 2.0:
+        return 0.0
+
+    usable = _usable_mask(img, valid_mask, erode_px=2)
+    ix0 = max(0, int(math.floor(x0)) - pad_px)
+    ix1 = min(w, int(math.ceil(x1)) + pad_px)
+    iy0 = max(0, int(math.floor(y0)))
+    iy1 = min(h, int(math.ceil(y1)))
+    if iy1 - iy0 < 6 or ix1 - ix0 < 4:
+        return 0.0
+
+    crop = img[iy0:iy1, ix0:ix1]
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    segs = _detect_lsd(gray)
+    if len(segs) == 0:
+        return 0.0
+
+    cap = min(45.0, max(1.0, float(max_tilt_deg)))
+    leans: list[float] = []
+    weights: list[float] = []
+    for ax, ay, bx, by in segs:
+        gx1, gy1 = ax + ix0, ay + iy0
+        gx2, gy2 = bx + ix0, by + iy0
+        mx, my = 0.5 * (gx1 + gx2), 0.5 * (gy1 + gy2)
+        if not (x0 - pad_px <= mx <= x1 + pad_px and y0 <= my <= y1):
+            continue
+        imy = int(np.clip(round(my), 0, h - 1))
+        imx = int(np.clip(round(mx), 0, w - 1))
+        if not usable[imy, imx]:
+            continue
+        # Order endpoints so top has smaller y and bottom has larger y;
+        # clockwise tilt from vertical (x_top > x_bot) yields positive lean_deg.
+        if by >= ay:
+            dx = ax - bx
+            dy = by - ay
+        else:
+            dx = bx - ax
+            dy = ay - by
+        if dy < 6.0:
+            continue
+        lean = math.degrees(math.atan2(dx, dy))
+        if abs(lean) <= cap:
+            leans.append(lean)
+            weights.append(math.hypot(dx, dy))
+    if not leans:
+        return 0.0
+    order = np.argsort(leans)
+    cum = np.cumsum(np.asarray(weights)[order])
+    median_lean = float(np.asarray(leans)[order][np.searchsorted(cum, 0.5 * cum[-1])])
+    return float(np.clip(median_lean, -45.0, 45.0))
+
+
 def sign_post_support(
     img: np.ndarray,
     box: Sequence[float],
