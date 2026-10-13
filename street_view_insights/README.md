@@ -20,7 +20,8 @@ street_view_insights/
 └── panoramic/                               # 360-degree panoramic scene analytics
     ├── notebooks/                           # Panoramic sequential & material analysis notebooks
     └── skills/                              # Production ADK skills for panoramic data
-        └── surface_material_detection_using_panoramic_svi/ # Dedicated ground/road surface material audit
+        ├── surface_material_detection_using_panoramic_svi/ # Dedicated ground/road surface material audit
+        └── utility_pole_subclassification_using_panoramic_svi/ # Multi-view utility pole sub-classification & equipment audit
 ```
 
 ---
@@ -93,6 +94,8 @@ Load skill at 'street_view_insights/full_frame/skills/analyze_utility_pole'
 Load skill at 'street_view_insights/full_frame/skills/vegetation_encroachment_detection_using_full_frame_svi'
 
 Load skill at 'street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi'
+
+Load skill at 'street_view_insights/panoramic/skills/utility_pole_subclassification_using_panoramic_svi'
 ```
 
 > Alternatively, you can reference these folders via standard Antigravity CLI agent skills folders as described [here](https://antigravity.google/docs/cli/plugins#agent-skills).
@@ -117,6 +120,10 @@ Run the skill of your choice:
 /surface-material-detection-using-panoramic-svi Audit GPS coordinates <lat,lng>
 
 /surface-material-detection-using-panoramic-svi Audit a direct image gs://...
+
+/utility-pole-subclassification-using-panoramic-svi Audit utility poles around GPS coordinates <lat,lng>
+
+/utility-pole-subclassification-using-panoramic-svi Audit utility poles around observation o1:...
 ```
 
 ### Cleanup

@@ -2248,11 +2248,35 @@ def render_pole_inspection_composite(
         float((p.max(axis=2) == 0).mean()) for p in (full_clean, crown_clean, base_clean)
     )
 
-    def _annotate_panel(panel: np.ndarray, title: str, draw_guide: bool = False) -> np.ndarray:
+    # Reproject 3D pole ground base (-2.5m below camera) onto Panel 1 for closed-loop 3D-to-2D verification
+    u_base_hi, v_base_hi, ok_base_hi = hi_view.bearing_to_pixel(
+        bearing, math.degrees(math.atan2(-2.5, eff_dist))
+    )
+    reproj_base_px = (
+        int(np.clip(round(float(u_base_hi) * (pw / float(hi_w))), 8, pw - 9)),
+        int(
+            np.clip(
+                round((float(v_base_hi) - top_trim) * (ph / float(max(1, valid_h)))),
+                28,
+                ph - 26,
+            )
+        ),
+    )
+
+    def _annotate_panel(
+        panel: np.ndarray,
+        title: str,
+        draw_guide: bool = False,
+        base_marker: tuple[int, int] | None = None,
+    ) -> np.ndarray:
         out = panel.copy()
         if draw_guide:
             cx = pw // 2
             cv2.line(out, (cx, 28), (cx, ph - 8), (60, 210, 90), 1, cv2.LINE_AA)
+        if base_marker is not None and bool(ok_base_hi):
+            bx, by = base_marker
+            cv2.circle(out, (bx, by), 7, (128, 0, 255), 2, cv2.LINE_AA)
+            cv2.circle(out, (bx, by), 2, (255, 255, 255), -1, cv2.LINE_AA)
         cv2.rectangle(out, (0, 0), (pw, 24), (24, 28, 36), -1)
         cv2.putText(
             out,
@@ -2266,7 +2290,12 @@ def render_pole_inspection_composite(
         )
         return out
 
-    p1 = _annotate_panel(full_clean, f"1: FULL SHAFT ({dist_m:.1f}m)", draw_guide=True)
+    p1 = _annotate_panel(
+        full_clean,
+        f"1: FULL SHAFT ({dist_m:.1f}m)",
+        draw_guide=True,
+        base_marker=reproj_base_px,
+    )
     p2 = _annotate_panel(crown_clean, "2: CROWN & CROSS-ARM (2X)")
     p3 = _annotate_panel(base_clean, "3: BASE & GROUND (2X)")
     # Add thin vertical dividers between panels and mandatory Google imagery credit
@@ -2306,9 +2335,705 @@ def render_pole_inspection_composite(
         "vfov_deg": round(vfov_val, 2),
         "crown_el_range_deg": (round(crown_el_lo, 2), round(crown_el_hi, 2)),
         "base_el_range_deg": (round(base_el_lo, 2), round(base_el_hi, 2)),
+        "reprojected_base_px": reproj_base_px,
         "black_fraction": blk,
         "vertical_support": vert_sup,
         "lsd_lean_deg": lsd_lean,
+    }
+
+
+def annotate_calibrated_sv_frame(
+    raw_img: np.ndarray,
+    intr: rosette.Intrinsics,
+    pose: Mapping[str, Any],
+    cam_k: int,
+    *,
+    scale: float = 0.35,
+    cap_idx: int = 0,
+    capture_id: str = "",
+    capture_date: str = "",
+    candidates: Sequence[Mapping[str, Any]] | None = None,
+    z_ground_rel_m: float = -2.5,
+) -> np.ndarray:
+    """Stamp a Street View camera frame with calibrated `(u, v)` original-pixel rulers,
+    top-edge cyan world compass azimuth (`{az:03.0f}deg`), and optional 3D-to-2D reprojected
+    magenta candidate pole markers.
+    """
+    import cv2
+
+    orig_h, orig_w = raw_img.shape[:2]
+    intr_orig = intr.for_image(raw_img)
+    sw = max(1, int(round(orig_w * float(scale))))
+    sh = max(1, int(round(orig_h * float(scale))))
+    out = cv2.resize(
+        raw_img,
+        (sw, sh),
+        interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR,
+    )
+
+    # 1. Vertical u-grid lines every 200 original pixels + top cyan world azimuth at 400px marks
+    for u_orig in range(200, orig_w, 200):
+        x = int(round(u_orig * scale))
+        if not (0 <= x < sw):
+            continue
+        is_major = (u_orig % 400) == 0
+        color = (90, 200, 90) if is_major else (70, 130, 70)
+        cv2.line(out, (x, 0), (x, sh - 1), color, 1)
+        if is_major:
+            lbl = f"u={u_orig}"
+            cv2.rectangle(out, (max(0, x - 26), 20), (min(sw - 1, x + 28), 36), (0, 0, 0), -1)
+            cv2.putText(
+                out,
+                lbl,
+                (max(2, x - 24), 32),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.34,
+                (90, 255, 90),
+                1,
+                cv2.LINE_AA,
+            )
+            cv2.rectangle(
+                out,
+                (max(0, x - 26), max(0, sh - 54)),
+                (min(sw - 1, x + 28), max(0, sh - 38)),
+                (0, 0, 0),
+                -1,
+            )
+            cv2.putText(
+                out,
+                lbl,
+                (max(2, x - 24), max(12, sh - 42)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.34,
+                (90, 255, 90),
+                1,
+                cv2.LINE_AA,
+            )
+            az_deg, _ = rosette.pixel_to_bearing(
+                intr_orig, pose, float(u_orig), float(orig_h * 0.5), int(cam_k)
+            )
+            az_lbl = f"{float(az_deg):03.0f}deg"
+            cv2.rectangle(out, (max(0, x - 24), 2), (min(sw - 1, x + 26), 18), (0, 0, 0), -1)
+            cv2.putText(
+                out,
+                az_lbl,
+                (max(2, x - 22), 14),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.34,
+                (255, 255, 0),
+                1,
+                cv2.LINE_AA,
+            )
+
+    # 100px yellow sub-ticks along top, center, and bottom
+    for u_orig in range(100, orig_w, 200):
+        x = int(round(u_orig * scale))
+        if 0 <= x < sw:
+            cv2.line(out, (x, 38), (x, 48), (80, 220, 220), 1)
+            cv2.line(out, (x, sh // 2 - 8), (x, sh // 2 + 8), (80, 220, 220), 1)
+            cv2.line(out, (x, max(0, sh - 60)), (x, max(0, sh - 50)), (80, 220, 220), 1)
+
+    # 2. Horizontal v-grid lines every 200 original pixels
+    for v_orig in range(200, orig_h, 200):
+        y = int(round(v_orig * scale))
+        if not (0 <= y < sh):
+            continue
+        is_major = (v_orig % 400) == 0
+        color = (90, 200, 90) if is_major else (70, 130, 70)
+        cv2.line(out, (0, y), (sw - 1, y), color, 1)
+        if is_major:
+            lbl = f"v={v_orig}"
+            cv2.rectangle(out, (2, max(0, y - 8)), (54, min(sh - 1, y + 8)), (0, 0, 0), -1)
+            cv2.putText(
+                out,
+                lbl,
+                (4, min(sh - 4, y + 4)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.34,
+                (90, 255, 90),
+                1,
+                cv2.LINE_AA,
+            )
+            cv2.rectangle(
+                out,
+                (max(0, sw - 54), max(0, y - 8)),
+                (sw - 2, min(sh - 1, y + 8)),
+                (0, 0, 0),
+                -1,
+            )
+            cv2.putText(
+                out,
+                lbl,
+                (max(2, sw - 52), min(sh - 4, y + 4)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.34,
+                (90, 255, 90),
+                1,
+                cv2.LINE_AA,
+            )
+
+    for v_orig in range(100, orig_h, 200):
+        y = int(round(v_orig * scale))
+        if 0 <= y < sh:
+            cv2.line(out, (0, y), (10, y), (80, 220, 220), 1)
+            cv2.line(out, (sw // 2 - 8, y), (sw // 2 + 8, y), (80, 220, 220), 1)
+            cv2.line(out, (max(0, sw - 10), y), (sw - 1, y), (80, 220, 220), 1)
+
+    # 3. Closed-loop 3D-to-2D candidate reprojection (magenta circle + white center + plumb line)
+    cam_lat = float(pose.get("latitude", 0.0))
+    cam_lng = float(pose.get("longitude", 0.0))
+    if candidates:
+        for cand in candidates:
+            cid = str(
+                cand.get("pole_id")
+                or cand.get("entity_id")
+                or cand.get("id")
+                or "P"
+            )
+            clat = cand.get("lat")
+            clng = cand.get("lng")
+            if clat is None or clng is None:
+                continue
+            lbl = str(
+                cand.get("pole_subtype")
+                or cand.get("label")
+                or cand.get("initial_cls")
+                or "POLE"
+            )
+            de_arr, dn_arr, _ = geo.lla_to_enu(
+                float(clat), float(clng), 0.0, cam_lat, cam_lng, 0.0
+            )
+            de = float(np.asarray(de_arr).item())
+            dn = float(np.asarray(dn_arr).item())
+            horiz = math.hypot(de, dn)
+            if horiz < 0.8 or horiz > 75.0:
+                continue
+            dz_b = float(cand.get("z_rel_m", z_ground_rel_m))
+            az_b, el_b = rosette.dir_to_bearing(np.array([de, dn, dz_b], dtype=float))
+            u_b, v_b, ok_b = rosette.bearing_to_pixel(
+                intr_orig, pose, float(az_b), float(el_b), int(cam_k)
+            )
+            if not bool(ok_b):
+                continue
+            px = int(round(float(u_b) * scale))
+            py = int(round(float(v_b) * scale))
+            if not (0 <= px < sw and 0 <= py < sh):
+                continue
+
+            az_t, el_t = rosette.dir_to_bearing(np.array([de, dn, dz_b + 8.5], dtype=float))
+            u_t, v_t, ok_t = rosette.bearing_to_pixel(
+                intr_orig, pose, float(az_t), float(el_t), int(cam_k)
+            )
+            if bool(ok_t):
+                px_t = int(np.clip(round(float(u_t) * scale), 0, sw - 1))
+                py_t = int(np.clip(round(float(v_t) * scale), 0, sh - 1))
+                cv2.line(out, (px_t, py_t), (px, py), (180, 0, 255), 1, cv2.LINE_AA)
+
+            r = max(6, int(round(14 * scale)))
+            cv2.circle(out, (px, py), r, (128, 0, 255), 2, cv2.LINE_AA)
+            cv2.circle(out, (px, py), 2, (255, 255, 255), -1, cv2.LINE_AA)
+            tag = f"{cid}:{lbl[:18]}"
+            tx = min(max(2, px + r + 3), max(2, sw - 135))
+            ty = min(max(18, py - 4), max(18, sh - 40))
+            cv2.rectangle(
+                out,
+                (tx - 2, ty - 11),
+                (min(sw - 1, tx + len(tag) * 6 + 4), ty + 3),
+                (0, 0, 0),
+                -1,
+            )
+            cv2.putText(
+                out,
+                tag,
+                (tx, ty),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.33,
+                (180, 80, 255),
+                1,
+                cv2.LINE_AA,
+            )
+
+    # 4. Bottom metadata + Google attribution bar
+    hdg = float(pose.get("heading", 0.0))
+    cam_yaw = (hdg + int(cam_k) * 60.0) % 360.0
+    cv2.rectangle(out, (0, max(0, sh - 34)), (sw, sh), (0, 0, 0), -1)
+    footer = (
+        f"Cap #{cap_idx:03d} ({capture_id[:14]}) | Cam {cam_k} (yaw~{cam_yaw:.0f}deg) | "
+        f"{capture_date[:10]} | orig={orig_w}x{orig_h} | Imagery (c) Google"
+    )
+    cv2.putText(
+        out,
+        footer,
+        (6, max(12, sh - 12)),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.35,
+        (255, 255, 255),
+        1,
+        cv2.LINE_AA,
+    )
+    return out
+
+
+def render_capture_contact_sheet(
+    pano_rows: Sequence[Mapping[str, Any]] | pd.DataFrame,
+    fetch: Callable[[str], bytes],
+    intr: rosette.Intrinsics = rosette.DEFAULT_INTRINSICS,
+    *,
+    cap_idx: int = 0,
+    camera_indices: Sequence[int] = (0, 1, 2, 3, 4, 5),
+    single_scale: float = 0.35,
+    sheet_scale: float = 0.22,
+    candidates: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    """Render calibrated `(u,v)` + compass-azimuth single camera frames and a 3-column contact sheet."""
+    import cv2
+
+    rows = [r for r in _iter_rows(pano_rows) if int(r.get("cam_k", -1)) in set(camera_indices)]
+    rows.sort(key=lambda r: int(r["cam_k"]))
+    if not rows:
+        return None
+
+    r0 = rows[0]
+    capture_id = str(r0.get("capture_id") or r0.get("pano_id") or "")
+    capture_date = str(r0.get("capture_time") or "")[:10]
+    lat = float(r0.get("lat") or r0.get("camera_pose", {}).get("latitude", 0.0))
+    lng = float(r0.get("lng") or r0.get("camera_pose", {}).get("longitude", 0.0))
+    heading = float(r0.get("heading") or r0.get("camera_pose", {}).get("heading", 0.0))
+
+    camera_frames: dict[int, np.ndarray] = {}
+    sheet_tiles: list[np.ndarray] = []
+    cameras_meta: dict[str, dict[str, Any]] = {}
+
+    for r in rows:
+        k = int(r["cam_k"])
+        pose = r["camera_pose"]
+        raw_img = images.decode(fetch(r["gcs_uri"]))
+        orig_h, orig_w = raw_img.shape[:2]
+        intr_orig = intr.for_image(raw_img)
+        center_az, center_el = rosette.pixel_to_bearing(
+            intr_orig, pose, orig_w * 0.5, orig_h * 0.5, k
+        )
+        single_im = annotate_calibrated_sv_frame(
+            raw_img,
+            intr,
+            pose,
+            k,
+            scale=single_scale,
+            cap_idx=cap_idx,
+            capture_id=capture_id,
+            capture_date=capture_date,
+            candidates=candidates,
+        )
+        tile_im = annotate_calibrated_sv_frame(
+            raw_img,
+            intr,
+            pose,
+            k,
+            scale=sheet_scale,
+            cap_idx=cap_idx,
+            capture_id=capture_id,
+            capture_date=capture_date,
+            candidates=candidates,
+        )
+        camera_frames[k] = single_im
+        sheet_tiles.append(tile_im)
+        cameras_meta[str(k)] = {
+            "cam_k": k,
+            "observation_id": str(r.get("observation_id") or ""),
+            "orig_width": int(orig_w),
+            "orig_height": int(orig_h),
+            "center_azimuth_deg": round(float(center_az), 2),
+            "center_elevation_deg": round(float(center_el), 2),
+            "pose": {
+                "latitude": float(pose.get("latitude", lat)),
+                "longitude": float(pose.get("longitude", lng)),
+                "heading": float(pose.get("heading", heading)),
+                "pitch": float(pose.get("pitch", 0.0)),
+                "roll": float(pose.get("roll", 0.0)),
+            },
+        }
+
+    cols = min(3, len(sheet_tiles))
+    n_rows = (len(sheet_tiles) + cols - 1) // cols
+    th, tw = sheet_tiles[0].shape[:2]
+    header_h = 34
+    sheet = np.full((header_h + n_rows * th, cols * tw, 3), 20, dtype=np.uint8)
+    hdr = (
+        f"Street View Capture #{cap_idx:03d} ({capture_id[:16]}) | ({lat:.6f}, {lng:.6f}) | "
+        f"vehicle_hdg={heading:.1f}deg | Grid: (u,v) original px + top cyan world azimuth | Imagery (c) Google"
+    )
+    cv2.putText(
+        sheet,
+        hdr,
+        (10, 22),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.44,
+        (255, 255, 255),
+        1,
+        cv2.LINE_AA,
+    )
+    for idx, tile in enumerate(sheet_tiles):
+        rr = idx // cols
+        cc = idx % cols
+        y0 = header_h + rr * th
+        x0 = cc * tw
+        sheet[y0 : y0 + th, x0 : x0 + tw] = tile
+
+    return {
+        "cap_idx": int(cap_idx),
+        "capture_id": capture_id,
+        "capture_date": capture_date,
+        "lat": lat,
+        "lng": lng,
+        "heading": heading,
+        "camera_frames": camera_frames,
+        "contact_sheet": sheet,
+        "cameras": cameras_meta,
+    }
+
+
+def triangulate_observations_2d_enu(
+    observations_by_pole: Mapping[str, Sequence[Mapping[str, Any]]],
+    frames_or_index: pd.DataFrame | Sequence[Mapping[str, Any]] | Mapping[str, Any],
+    intr: rosette.Intrinsics = rosette.DEFAULT_INTRINSICS,
+) -> list[dict[str, Any]]:
+    """Intersect 2D horizontal `(East, North)` camera rays in local ENU (`triangulate_horizontal_enu`),
+    enforcing the `> 10 deg` Parallax Rule (GDOP), `<= 1.5 m` residual gate, and `behind_camera` check.
+    """
+    from svi_geo import triangulate as tri
+
+    # Build lookup by (cap_idx, cam_k) and by (capture_id, cam_k)
+    by_idx: dict[tuple[int, int], dict[str, Any]] = {}
+    by_cid: dict[tuple[str, int], dict[str, Any]] = {}
+
+    if isinstance(frames_or_index, Mapping) and "captures" in frames_or_index:
+        for cap in frames_or_index.get("captures", []):
+            c_idx = int(cap.get("cap_idx", 0))
+            cid = str(cap.get("capture_id") or "")
+            for k_str, cam_info in (cap.get("cameras") or {}).items():
+                k = int(k_str)
+                pose = dict(cam_info.get("pose") or {})
+                pose.setdefault("latitude", float(cap.get("lat", 0.0)))
+                pose.setdefault("longitude", float(cap.get("lng", 0.0)))
+                pose.setdefault("heading", float(cap.get("heading", 0.0)))
+                entry = {"cap_idx": c_idx, "capture_id": cid, "cam_k": k, "pose": pose}
+                by_idx[(c_idx, k)] = entry
+                if cid:
+                    by_cid[(cid, k)] = entry
+    else:
+        rows = _iter_rows(frames_or_index)
+        seen_cids: list[str] = []
+        for r in rows:
+            cid = str(r.get("capture_id") or r.get("pano_id") or "")
+            if cid and cid not in seen_cids:
+                seen_cids.append(cid)
+        cid_to_idx = {cid: i for i, cid in enumerate(seen_cids)}
+        for r in rows:
+            cid = str(r.get("capture_id") or r.get("pano_id") or "")
+            k = int(r.get("cam_k", 0))
+            c_idx = int(r.get("cap_idx", cid_to_idx.get(cid, 0)))
+            pose = dict(r.get("camera_pose") or {})
+            pose.setdefault("latitude", float(r.get("lat", 0.0)))
+            pose.setdefault("longitude", float(r.get("lng", 0.0)))
+            pose.setdefault("heading", float(r.get("heading", 0.0)))
+            entry = {"cap_idx": c_idx, "capture_id": cid, "cam_k": k, "pose": pose}
+            by_idx[(c_idx, k)] = entry
+            if cid:
+                by_cid[(cid, k)] = entry
+
+    results: list[dict[str, Any]] = []
+    for pole_id, obs_list in observations_by_pole.items():
+        resolved_rays: list[dict[str, Any]] = []
+        for ob in obs_list:
+            k = int(ob.get("cam_k", ob.get("camera_idx", 0)))
+            entry = None
+            if "capture_id" in ob and ob["capture_id"] is not None:
+                entry = by_cid.get((str(ob["capture_id"]), k))
+            if entry is None and "cap_idx" in ob and ob["cap_idx"] is not None:
+                entry = by_idx.get((int(ob["cap_idx"]), k))
+            if entry is None:
+                continue
+
+            pose = entry["pose"]
+            u = float(ob.get("u", intr.cx))
+            v = float(ob.get("v", intr.cy))
+            if "az_deg" in ob and ob["az_deg"] is not None:
+                az_deg = float(ob["az_deg"])
+                el_deg = float(ob.get("el_deg", -8.0))
+                d_world = rosette.bearing_to_dir(az_deg, el_deg)
+            else:
+                d_world = rosette.world_rays(intr, pose, u, v, k)
+                az_deg, el_deg = rosette.dir_to_bearing(d_world)
+                az_deg = float(az_deg)
+                el_deg = float(el_deg)
+
+            resolved_rays.append(
+                {
+                    "cap_idx": int(entry["cap_idx"]),
+                    "capture_id": str(entry["capture_id"]),
+                    "cam_k": k,
+                    "u": round(u, 1),
+                    "v": round(v, 1),
+                    "az_deg": round(az_deg, 2),
+                    "el_deg": round(el_deg, 2),
+                    "cam_lat": float(pose["latitude"]),
+                    "cam_lng": float(pose["longitude"]),
+                    "ray_enu": np.asarray(d_world, dtype=float).reshape(3),
+                }
+            )
+
+        if not resolved_rays:
+            continue
+
+        if len(resolved_rays) == 1:
+            r0 = resolved_rays[0]
+            rng = tri.single_view_range(min(r0["el_deg"], -3.0), 2.5) or 14.0
+            rng = float(np.clip(rng, 3.0, 35.0))
+            az_r = math.radians(r0["az_deg"])
+            plat, plng, _ = geo.enu_to_lla(
+                rng * math.sin(az_r),
+                rng * math.cos(az_r),
+                0.0,
+                r0["cam_lat"],
+                r0["cam_lng"],
+                0.0,
+            )
+            results.append(
+                {
+                    "pole_id": str(pole_id),
+                    "lat": round(float(plat), 7),
+                    "lng": round(float(plng), 7),
+                    "n_views": 1,
+                    "method": "single_view_flat_ground",
+                    "max_parallax_deg": 0.0,
+                    "mean_residual_m": 0.0,
+                    "max_residual_m": 0.0,
+                    "min_forward_dist_m": round(rng, 2),
+                    "behind_camera": False,
+                    "gdop_warning": True,
+                    "high_residual_warning": False,
+                    "status": "SINGLE_RAY_UNVERIFIED",
+                    "rays": [
+                        {k: v for k, v in r0.items() if k != "ray_enu"}
+                        | {"forward_dist_m": round(rng, 2), "horiz_residual_m": 0.0}
+                    ],
+                }
+            )
+            continue
+
+        # 2D horizontal ENU least-squares intersection (height-invariant)
+        lat0 = float(np.mean([r["cam_lat"] for r in resolved_rays]))
+        lng0 = float(np.mean([r["cam_lng"] for r in resolved_rays]))
+        a_sum = np.zeros((2, 2), dtype=np.float64)
+        b_sum = np.zeros(2, dtype=np.float64)
+        origins_2d: list[np.ndarray] = []
+        dirs_2d: list[np.ndarray] = []
+
+        for r in resolved_rays:
+            de_a, dn_a, _ = geo.lla_to_enu(r["cam_lat"], r["cam_lng"], 0.0, lat0, lng0, 0.0)
+            o2 = np.array(
+                [float(np.asarray(de_a).item()), float(np.asarray(dn_a).item())],
+                dtype=np.float64,
+            )
+            re_v, rn_v = float(r["ray_enu"][0]), float(r["ray_enu"][1])
+            norm_h = math.hypot(re_v, rn_v)
+            v2 = (
+                np.array([re_v / norm_h, rn_v / norm_h], dtype=np.float64)
+                if norm_h > 1e-9
+                else np.array([0.0, 1.0], dtype=np.float64)
+            )
+            origins_2d.append(o2)
+            dirs_2d.append(v2)
+            proj = np.eye(2) - np.outer(v2, v2)
+            a_sum += proj
+            b_sum += proj @ o2
+
+        p2, *_ = np.linalg.lstsq(a_sum, b_sum, rcond=None)
+        plat, plng, _ = geo.enu_to_lla(float(p2[0]), float(p2[1]), 0.0, lat0, lng0, 0.0)
+
+        horiz_residuals: list[float] = []
+        forward_dists: list[float] = []
+        for o2, v2 in zip(origins_2d, dirs_2d, strict=True):
+            diff = p2 - o2
+            t_fwd = float(np.dot(diff, v2))
+            forward_dists.append(t_fwd)
+            perp = diff - t_fwd * v2
+            horiz_residuals.append(float(np.linalg.norm(perp)))
+
+        max_par = 0.0
+        for i in range(len(dirs_2d)):
+            for j in range(i + 1, len(dirs_2d)):
+                dot = float(np.clip(np.dot(dirs_2d[i], dirs_2d[j]), -1.0, 1.0))
+                ang = math.degrees(math.acos(dot))
+                max_par = max(max_par, ang)
+
+        max_res = max(horiz_residuals)
+        mean_res = float(np.mean(horiz_residuals))
+        min_fwd = min(forward_dists)
+        behind = any(f < 0.0 for f in forward_dists)
+        gdop_warn = max_par < 10.0
+        res_warn = max_res > 1.5
+        if behind:
+            status = "BEHIND_CAMERA"
+        elif gdop_warn:
+            status = "LOW_PARALLAX_WARNING"
+        elif res_warn:
+            status = "HIGH_RESIDUAL_WARNING"
+        else:
+            status = "OK"
+
+        ray_details = []
+        for r, fwd, res in zip(resolved_rays, forward_dists, horiz_residuals, strict=True):
+            ray_details.append(
+                {k: v for k, v in r.items() if k != "ray_enu"}
+                | {
+                    "forward_dist_m": round(float(fwd), 2),
+                    "horiz_residual_m": round(float(res), 3),
+                }
+            )
+
+        results.append(
+            {
+                "pole_id": str(pole_id),
+                "lat": round(float(plat), 7),
+                "lng": round(float(plng), 7),
+                "n_views": len(resolved_rays),
+                "method": "triangulated_2d_enu",
+                "max_parallax_deg": round(float(max_par), 2),
+                "mean_residual_m": round(mean_res, 3),
+                "max_residual_m": round(float(max_res), 3),
+                "min_forward_dist_m": round(float(min_fwd), 2),
+                "behind_camera": behind,
+                "gdop_warning": gdop_warn,
+                "high_residual_warning": res_warn,
+                "status": status,
+                "rays": ray_details,
+            }
+        )
+    return results
+
+
+def audit_corridor_span_gaps(
+    poles: Sequence[Mapping[str, Any] | Any],
+    frames: pd.DataFrame | Sequence[Mapping[str, Any]],
+    *,
+    max_span_m: float = 50.0,
+    max_lateral_m: float = 35.0,
+) -> dict[str, Any]:
+    """Audit consecutive same-side utility pole spans along the corridor (`Trigger B: > 50m gap check`)."""
+    from svi_geo import data
+
+    rows = _iter_rows(frames)
+    if not rows:
+        return {
+            "max_span_threshold_m": float(max_span_m),
+            "left_pole_count": 0,
+            "right_pole_count": 0,
+            "span_gaps": [],
+            "trigger_b_required": False,
+        }
+
+    frames_df = pd.DataFrame(rows)
+    if "capture_id" not in frames_df.columns and "pano_id" in frames_df.columns:
+        frames_df["capture_id"] = frames_df["pano_id"]
+    if {"snapshot_id", "capture_time"}.issubset(frames_df.columns):
+        rosettes_df = data.panos_from_frames(frames_df)
+    else:
+        rosettes_df = frames_df.drop_duplicates("capture_id").reset_index(drop=True)
+    pole_items: list[dict[str, Any]] = []
+    for p in poles:
+        if isinstance(p, Mapping):
+            if p.get("is_false_detection"):
+                continue
+            if "is_true_utility_pole" in p and not p.get("is_true_utility_pole"):
+                continue
+            eid = str(p.get("entity_id") or p.get("pole_id") or "pole")
+            lat = p.get("lat")
+            lng = p.get("lng")
+        else:
+            eid = str(getattr(p, "entity_id", "pole"))
+            lat = getattr(p, "lat", None)
+            lng = getattr(p, "lng", None)
+        if lat is None or lng is None:
+            continue
+        pole_items.append(
+            {
+                "entity_id": eid,
+                "class": "UTILITY_POLE",
+                "lat": float(lat),
+                "lng": float(lng),
+                "method": "triangulated",
+            }
+        )
+
+    audit = sequence.audit_corridor_spans(
+        rosettes_df,
+        pole_items,
+        classes=("UTILITY_POLE",),
+        max_lateral_m=max_lateral_m,
+        max_span_m=max_span_m,
+    )
+    pole_by_id = {p["entity_id"]: p for p in pole_items}
+
+    # Compute rosette stations so intermediate captures inside any >50m gap can be named directly
+    ros_sorted = (
+        rosettes_df.sort_values("seq_idx").reset_index(drop=True)
+        if "seq_idx" in rosettes_df.columns
+        else rosettes_df.reset_index(drop=True)
+    )
+    ref_lat = float(ros_sorted["lat"].iloc[0])
+    ref_lng = float(ros_sorted["lng"].iloc[0])
+    rx, ry, _ = geo.lla_to_enu(
+        ros_sorted["lat"].to_numpy(dtype=float),
+        ros_sorted["lng"].to_numpy(dtype=float),
+        0.0,
+        ref_lat,
+        ref_lng,
+        0.0,
+    )
+    seg_d = np.hypot(np.diff(rx), np.diff(ry)) if len(rx) >= 2 else np.array([], dtype=float)
+    ros_stations = np.concatenate([[0.0], np.cumsum(seg_d)]) if len(rx) >= 2 else np.array([0.0])
+    ros_cids = [str(c) for c in ros_sorted["capture_id"].tolist()]
+
+    enriched_gaps: list[dict[str, Any]] = []
+    for g in audit.get("span_gaps", []):
+        p_from = pole_by_id.get(g["from_entity_id"])
+        p_to = pole_by_id.get(g["to_entity_id"])
+        mid_lat = (
+            round(0.5 * (p_from["lat"] + p_to["lat"]), 7)
+            if p_from and p_to
+            else ref_lat
+        )
+        mid_lng = (
+            round(0.5 * (p_from["lng"] + p_to["lng"]), 7)
+            if p_from and p_to
+            else ref_lng
+        )
+        s0, s1 = float(g["from_station_m"]), float(g["to_station_m"])
+        inter_caps = [
+            cid
+            for cid, st in zip(ros_cids, ros_stations, strict=True)
+            if s0 - 4.0 <= float(st) <= s1 + 4.0
+        ]
+        enriched_gaps.append(
+            {
+                **g,
+                "span_m": round(float(g["span_m"]), 2),
+                "from_station_m": round(s0, 2),
+                "to_station_m": round(s1, 2),
+                "mid_station_m": round(float(g["mid_station_m"]), 2),
+                "midpoint_lat": mid_lat,
+                "midpoint_lng": mid_lng,
+                "intermediate_captures": inter_caps,
+            }
+        )
+
+    return {
+        "max_span_threshold_m": float(max_span_m),
+        "left_pole_count": int(len(audit["left"])),
+        "right_pole_count": int(len(audit["right"])),
+        "span_gaps": enriched_gaps,
+        "trigger_b_required": len(enriched_gaps) > 0,
     }
 
 
@@ -2562,6 +3287,7 @@ async def subclassify_poles(
                 "supporting_rosettes": [c["pano_id"] for c in composites],
                 "supporting_observations": [c["observation_id"] for c in composites],
                 "max_parallax_deg": round(max_par, 2),
+                "gdop_warning": bool(max_par < 10.0),
                 "opencv_vertical_support": round(best_vert_sup, 3),
                 "opencv_lsd_lean_deg": round(lsd_lean_med, 2),
                 "pole_subtype": verdict.pole_subtype.value,
@@ -2584,11 +3310,14 @@ async def subclassify_poles(
     non_util_count = sum(
         1 for r in records if not r["is_true_utility_pole"] and not r["is_false_detection"]
     )
+    span_audit = audit_corridor_span_gaps(records, all_rows)
     return {
         "records": records,
         "true_utility_pole_count": true_count,
         "non_utility_vertical_count": non_util_count,
         "false_detection_count": false_count,
+        "corridor_span_audit": span_audit,
     }
+
 
 
