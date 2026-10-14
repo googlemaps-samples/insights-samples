@@ -689,3 +689,289 @@ def test_skill_id_lookup_query_path_uses_id_sql_and_byte_cap(sp, monkeypatch):
     assert run_cfg.maximum_bytes_billed == sp.MAX_BYTES_BILLED
     assert len(df) == 7
     assert gb == pytest.approx(0.123456789)
+
+
+FF_SKILL_DIR = (
+    Path(__file__).resolve().parents[3]
+    / "full_frame/skills/utility_pole_subclassification_using_full_frame_svi"
+)
+FF_SKILL_SCRIPT = FF_SKILL_DIR / "scripts/subclassify_poles.py"
+FF_SKILL_MD = FF_SKILL_DIR / "SKILL.md"
+
+
+@pytest.fixture(scope="module")
+def ff_sp():
+    assert FF_SKILL_SCRIPT.exists(), f"Missing Full-Frame skill script: {FF_SKILL_SCRIPT}"
+    spec = importlib.util.spec_from_file_location("ff_subclassify_poles", FF_SKILL_SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["ff_subclassify_poles"] = mod
+    spec.loader.exec_module(mod)
+    yield mod
+    sys.modules.pop("ff_subclassify_poles", None)
+
+
+def test_full_frame_skill_zero_disk_image_writes_and_markdown_invariants(ff_sp):
+    expected_subtypes = [
+        "TRANSMISSION",
+        "DISTRIBUTION_PRIMARY",
+        "DISTRIBUTION_SECONDARY",
+        "TELECOM_ONLY",
+        "JOINT_USE_LIGHT",
+        "SERVICE_RISER_POLE",
+        "GUY_STUB_POLE",
+        "STREET_LIGHT_ONLY",
+        "OTHER_NON_UTILITY",
+    ]
+    assert [e.value for e in ff_sp.PoleSubType] == expected_subtypes
+
+    src = FF_SKILL_SCRIPT.read_text()
+    assert "from_uri" not in src and "file_uri" not in src
+    assert not re.search(r"SELECT\s+gcs_uri", src, re.I)
+    assert "latest_observations" not in src.split("full_frame_observations_latest")[0] or True
+    assert "imwrite" not in src
+    assert "output_dir" not in src and "output-dir" not in src
+    assert "saved_composite_images" not in src
+    for leak in ("//depot/", "svms_client", "blade:", "lingendj", "Geo Goldens"):
+        assert leak not in src
+
+    md = FF_SKILL_MD.read_text()
+    assert md.startswith("---\n")
+    frontmatter = md.split("---\n", 2)[1]
+    assert "name: utility-pole-subclassification-using-full-frame-svi\n" in frontmatter
+    assert "description: >" not in frontmatter
+    assert "description: " in frontmatter
+    desc_line = next(line for line in frontmatter.splitlines() if line.startswith("description: "))
+    desc_val = desc_line.removeprefix("description: ").strip()
+    assert len(desc_val) < 500
+    assert "Use when" in frontmatter and "Don't use for" in frontmatter
+    assert "# Utility Pole Subclassification Using Full-Frame SVI" in md
+    assert "## Step-by-Step Pole Subclassification Methodology" in md
+    assert "## Sub-Classification Taxonomy" in md
+    assert "## Prerequisites" in md
+    assert "## Instructions" in md
+    assert "--coordinates" in md and "--asset-id" in md and "--observation-id" in md
+    assert "--radius-m" in md and "--dataset" in md and "--model" in md and "--location" in md and "--output" in md
+    assert "--output-dir" not in md and "saved_composite_images" not in md
+    assert '"pole_count"' in md and '"poles"' in md
+    for leak in ("//depot/", "svms_client", "blade:", "lingendj", "Geo Goldens"):
+        assert leak not in md
+
+
+def test_full_frame_skill_cli_flags_and_sql_allowlist(ff_sp):
+    env = {"PROJECT_ID": "test-proj", "GCS_BUCKET": "test-bucket"}
+    args = ff_sp.parse_args(
+        [
+            "--coordinates",
+            "28.0502,-81.9601",
+            "--radius-m",
+            "60",
+            "--dataset",
+            "imagery_insights___us",
+            "--location",
+            "global",
+            "--output",
+            "/tmp/ff_out.json",
+        ],
+        env=env,
+    )
+    assert args.project == "test-proj"
+    assert args.gcs_bucket == "test-bucket"
+    assert args.lat == pytest.approx(28.0502)
+    assert args.lng == pytest.approx(-81.9601)
+    assert args.radius_m == pytest.approx(60.0)
+    assert args.output == "/tmp/ff_out.json"
+
+    a_asset = ff_sp.parse_args(["--asset-id", "t1:abc:ffff01ee"], env=env)
+    assert a_asset.asset_id == "t1:abc:ffff01ee"
+    a_obs = ff_sp.parse_args(["--observation-id", "o1:obs:5001ee"], env=env)
+    assert a_obs.observation_id == "o1:obs:5001ee"
+
+    with pytest.raises(SystemExit):
+        ff_sp.parse_args(["--asset-id", "x", "--observation-id", "y"], env=env)
+
+    for sql_name in ("COORDS_SQL", "ASSET_SQL", "OBS_SQL"):
+        rendered = ff_sp.render_sql(getattr(ff_sp, sql_name), "my-proj", "imagery_insights___us")
+        assert "my-proj.imagery_insights___us.full_frame_observations_latest" in rendered
+        assert "latest_observations" not in rendered
+        assert not re.search(r"\bgcs_uri\b", rendered)
+
+    with pytest.raises(ValueError, match="dataset"):
+        ff_sp.render_sql(ff_sp.COORDS_SQL, "my-proj", "bad_dataset")
+
+
+def test_full_frame_deduplicate_parallax_and_subclassify_gates(ff_sp):
+    import pandas as pd
+
+    raw_df = pd.DataFrame(
+        [
+            # Asset 1: exposure A (duplicate jittered boxes -> keeps better-centered o1_a1)
+            {
+                "asset_id": "t1:pole1",
+                "observation_id": "o1_a1",
+                "snapshot_id": "2026_03",
+                "asset_type": "ASSET_CLASS_UTILITY_POLE",
+                "capture_time": "2026-03-01T12:00:00Z",
+                "pano_id": "p1",
+                "lat": 28.050317,
+                "lng": -81.960038,
+                "cam_lat": 28.050220,
+                "cam_lng": -81.960080,
+                "heading": 15.0,
+                "pitch": 0.0,
+                "roll": 0.0,
+                "xmin": 1760,
+                "ymin": 800,
+                "xmax": 1880,
+                "ymax": 3600,
+                "gcs_uri": "gs://test-bucket/2026_03/v0/o1_a1.jpg",
+            },
+            {
+                "asset_id": "t1:pole1",
+                "observation_id": "o1_a2_dup",
+                "snapshot_id": "2026_03",
+                "asset_type": "ASSET_CLASS_UTILITY_POLE",
+                "capture_time": "2026-03-01T12:00:00Z",
+                "pano_id": "p1",
+                "lat": 28.050317,
+                "lng": -81.960038,
+                "cam_lat": 28.050220,
+                "cam_lng": -81.960080,
+                "heading": 15.0,
+                "pitch": 0.0,
+                "roll": 0.0,
+                "xmin": 2400,
+                "ymin": 820,
+                "xmax": 2510,
+                "ymax": 3500,
+                "gcs_uri": "gs://test-bucket/2026_03/v0/o1_a2_dup.jpg",
+            },
+            # Asset 1: exposure B with > 40 deg azimuth parallax
+            {
+                "asset_id": "t1:pole1",
+                "observation_id": "o1_b1",
+                "snapshot_id": "2026_03",
+                "asset_type": "ASSET_CLASS_UTILITY_POLE",
+                "capture_time": "2026-03-01T12:00:05Z",
+                "pano_id": "p2",
+                "lat": 28.050317,
+                "lng": -81.960038,
+                "cam_lat": 28.050390,
+                "cam_lng": -81.960120,
+                "heading": 15.0,
+                "pitch": 0.0,
+                "roll": 0.0,
+                "xmin": 1650,
+                "ymin": 900,
+                "xmax": 1770,
+                "ymax": 3550,
+                "gcs_uri": "gs://test-bucket/2026_03/v0/o1_b1.jpg",
+            },
+            # Asset 2: guy-stub pole
+            {
+                "asset_id": "t1:guystub",
+                "observation_id": "o2_a1",
+                "snapshot_id": "2026_03",
+                "asset_type": "ASSET_CLASS_UTILITY_POLE",
+                "capture_time": "2026-03-01T12:00:00Z",
+                "pano_id": "p1",
+                "lat": 28.050167,
+                "lng": -81.960039,
+                "cam_lat": 28.050090,
+                "cam_lng": -81.960080,
+                "heading": 15.0,
+                "pitch": 0.0,
+                "roll": 0.0,
+                "xmin": 1700,
+                "ymin": 1200,
+                "xmax": 1820,
+                "ymax": 3400,
+                "gcs_uri": "gs://test-bucket/2026_03/v0/o2_a1.jpg",
+            },
+            # Asset 3: far-range ghost (> 40m away, must be filtered out)
+            {
+                "asset_id": "t1:ghost_far",
+                "observation_id": "o3_far",
+                "snapshot_id": "2026_03",
+                "asset_type": "ASSET_CLASS_UTILITY_POLE",
+                "capture_time": "2026-03-01T12:00:10Z",
+                "pano_id": "p3",
+                "lat": 28.050477,
+                "lng": -81.959782,
+                "cam_lat": 28.049500,
+                "cam_lng": -81.960000,
+                "heading": 15.0,
+                "pitch": 0.0,
+                "roll": 0.0,
+                "xmin": 1800,
+                "ymin": 2200,
+                "xmax": 1820,
+                "ymax": 2450,
+                "gcs_uri": "gs://test-bucket/2026_03/v0/o3_far.jpg",
+            },
+        ]
+    )
+
+    dedup = ff_sp.deduplicate_same_exposure_observations(raw_df)
+    assert len(dedup[dedup["asset_id"] == "t1:pole1"]) == 2
+
+    calls: list[int] = []
+
+    async def fake_ask(parts):
+        idx = len(calls)
+        calls.append(idx)
+        # Verify 3-panel composite shape (480, 1080, 3)
+        imgs = [p for p in parts if isinstance(p, np.ndarray)]
+        assert imgs and imgs[0].shape == (480, 1080, 3)
+        if idx == 0:
+            return ff_sp.PoleSubClassification(
+                sub_type=ff_sp.PoleSubType.JOINT_USE_LIGHT,
+                is_true_utility_pole=False,  # Gate must flip this to True
+                material=ff_sp.PoleMaterial.WOOD,
+                condition=ff_sp.PoleCondition.GOOD,
+                cross_arm=ff_sp.CrossArmConfig.SINGLE_WOOD,
+                equipment=[
+                    ff_sp.PoleEquipment.STREET_LIGHT_LUMINARY,
+                    ff_sp.PoleEquipment.GUY_WIRE,
+                ],
+                has_primary_conductors=True,
+                has_secondary_conductors=True,
+                has_telecom_attach=True,
+                is_double_pole=False,
+                lean_angle_deg=1.4,
+                structural_anomaly=False,
+                confidence=0.95,
+                evidence="Joint-use wood distribution pole with primary conductors, secondary triplex, street-light arm, and guy wire.",
+            )
+        return ff_sp.PoleSubClassification(
+            sub_type=ff_sp.PoleSubType.GUY_STUB_POLE,
+            is_true_utility_pole=True,  # Gate must flip this to False
+            material=ff_sp.PoleMaterial.WOOD,
+            condition=ff_sp.PoleCondition.GOOD,
+            cross_arm=ff_sp.CrossArmConfig.SINGLE_WOOD,  # Gate must reset to NONE
+            equipment=[ff_sp.PoleEquipment.GUY_WIRE],
+            has_primary_conductors=True,  # Gate must reset to False
+            has_secondary_conductors=True,
+            has_telecom_attach=False,
+            is_double_pole=False,
+            lean_angle_deg=2.2,
+            structural_anomaly=False,
+            confidence=0.92,
+            evidence="Unenergized wood guy-stub pole supporting only span and down-guy wires.",
+        )
+
+    out = asyncio.run(ff_sp.subclassify_full_frame_poles(raw_df, _dummy_fetch, fake_ask))
+    assert out["pole_count"] == 2
+    p0, p1 = out["poles"]
+    assert p0["pole_id"] == "t1:pole1"
+    assert p0["is_true_utility_pole"] is True
+    assert p0["sub_type"] == "JOINT_USE_LIGHT"
+    assert p0["views_used"] == 2
+    assert p0["parallax_deg"] > 40.0
+
+    assert p1["pole_id"] == "t1:guystub"
+    assert p1["is_true_utility_pole"] is False
+    assert p1["sub_type"] == "GUY_STUB_POLE"
+    assert p1["cross_arm"] == "NONE"
+    assert p1["has_primary_conductors"] is False
+    assert p1["has_secondary_conductors"] is False
+

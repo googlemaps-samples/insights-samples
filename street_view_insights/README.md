@@ -16,6 +16,7 @@ street_view_insights/
 │   ├── notebooks/                           # Full-frame contextual analysis notebooks
 │   └── skills/                              # Production ADK skills for full-frame data
 │       ├── analyze_utility_pole/              # Multi-view utility pole inspection & reconciliation
+│       ├── utility_pole_subclassification_using_full_frame_svi/ # Cataloged full-frame pole sub-classification & equipment audit
 │       └── vegetation_encroachment_detection_using_full_frame_svi/ # Multi-view vegetation hazard audit
 └── panoramic/                               # 360-degree panoramic scene analytics
     ├── notebooks/                           # Panoramic sequential & material analysis notebooks
@@ -91,6 +92,8 @@ Load the skills directly such as:
 ```
 Load skill at 'street_view_insights/full_frame/skills/analyze_utility_pole'
 
+Load skill at 'street_view_insights/full_frame/skills/utility_pole_subclassification_using_full_frame_svi'
+
 Load skill at 'street_view_insights/full_frame/skills/vegetation_encroachment_detection_using_full_frame_svi'
 
 Load skill at 'street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi'
@@ -108,6 +111,10 @@ Run the skill of your choice:
 /analyze-utility-pole Reconcile images for asset t1:...
 
 /analyze-utility-pole Compare images for asset t1:...
+
+/utility-pole-subclassification-using-full-frame-svi Audit cataloged utility poles around GPS coordinates <lat,lng>
+
+/utility-pole-subclassification-using-full-frame-svi Audit cataloged utility pole asset t1:...
 
 /vegetation-encroachment-detection-using-full-frame-svi Audit full-frame observations for asset t1:...
 
