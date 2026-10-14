@@ -2248,35 +2248,15 @@ def render_pole_inspection_composite(
         float((p.max(axis=2) == 0).mean()) for p in (full_clean, crown_clean, base_clean)
     )
 
-    # Reproject 3D pole ground base (-2.5m below camera) onto Panel 1 for closed-loop 3D-to-2D verification
-    u_base_hi, v_base_hi, ok_base_hi = hi_view.bearing_to_pixel(
-        bearing, math.degrees(math.atan2(-2.5, eff_dist))
-    )
-    reproj_base_px = (
-        int(np.clip(round(float(u_base_hi) * (pw / float(hi_w))), 8, pw - 9)),
-        int(
-            np.clip(
-                round((float(v_base_hi) - top_trim) * (ph / float(max(1, valid_h)))),
-                28,
-                ph - 26,
-            )
-        ),
-    )
-
     def _annotate_panel(
         panel: np.ndarray,
         title: str,
         draw_guide: bool = False,
-        base_marker: tuple[int, int] | None = None,
     ) -> np.ndarray:
         out = panel.copy()
         if draw_guide:
             cx = pw // 2
             cv2.line(out, (cx, 28), (cx, ph - 8), (60, 210, 90), 1, cv2.LINE_AA)
-        if base_marker is not None and bool(ok_base_hi):
-            bx, by = base_marker
-            cv2.circle(out, (bx, by), 7, (128, 0, 255), 2, cv2.LINE_AA)
-            cv2.circle(out, (bx, by), 2, (255, 255, 255), -1, cv2.LINE_AA)
         cv2.rectangle(out, (0, 0), (pw, 24), (24, 28, 36), -1)
         cv2.putText(
             out,
@@ -2294,7 +2274,6 @@ def render_pole_inspection_composite(
         full_clean,
         f"1: FULL SHAFT ({dist_m:.1f}m)",
         draw_guide=True,
-        base_marker=reproj_base_px,
     )
     p2 = _annotate_panel(crown_clean, "2: CROWN & CROSS-ARM (2X)")
     p3 = _annotate_panel(base_clean, "3: BASE & GROUND (2X)")
@@ -2335,360 +2314,9 @@ def render_pole_inspection_composite(
         "vfov_deg": round(vfov_val, 2),
         "crown_el_range_deg": (round(crown_el_lo, 2), round(crown_el_hi, 2)),
         "base_el_range_deg": (round(base_el_lo, 2), round(base_el_hi, 2)),
-        "reprojected_base_px": reproj_base_px,
         "black_fraction": blk,
         "vertical_support": vert_sup,
         "lsd_lean_deg": lsd_lean,
-    }
-
-
-def annotate_calibrated_sv_frame(
-    raw_img: np.ndarray,
-    intr: rosette.Intrinsics,
-    pose: Mapping[str, Any],
-    cam_k: int,
-    *,
-    scale: float = 0.35,
-    cap_idx: int = 0,
-    capture_id: str = "",
-    capture_date: str = "",
-    candidates: Sequence[Mapping[str, Any]] | None = None,
-    z_ground_rel_m: float = -2.5,
-) -> np.ndarray:
-    """Stamp a Street View camera frame with calibrated `(u, v)` original-pixel rulers,
-    top-edge cyan world compass azimuth (`{az:03.0f}deg`), and optional 3D-to-2D reprojected
-    magenta candidate pole markers.
-    """
-    import cv2
-
-    orig_h, orig_w = raw_img.shape[:2]
-    intr_orig = intr.for_image(raw_img)
-    sw = max(1, int(round(orig_w * float(scale))))
-    sh = max(1, int(round(orig_h * float(scale))))
-    out = cv2.resize(
-        raw_img,
-        (sw, sh),
-        interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR,
-    )
-
-    # 1. Vertical u-grid lines every 200 original pixels + top cyan world azimuth at 400px marks
-    for u_orig in range(200, orig_w, 200):
-        x = int(round(u_orig * scale))
-        if not (0 <= x < sw):
-            continue
-        is_major = (u_orig % 400) == 0
-        color = (90, 200, 90) if is_major else (70, 130, 70)
-        cv2.line(out, (x, 0), (x, sh - 1), color, 1)
-        if is_major:
-            lbl = f"u={u_orig}"
-            cv2.rectangle(out, (max(0, x - 26), 20), (min(sw - 1, x + 28), 36), (0, 0, 0), -1)
-            cv2.putText(
-                out,
-                lbl,
-                (max(2, x - 24), 32),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.34,
-                (90, 255, 90),
-                1,
-                cv2.LINE_AA,
-            )
-            cv2.rectangle(
-                out,
-                (max(0, x - 26), max(0, sh - 54)),
-                (min(sw - 1, x + 28), max(0, sh - 38)),
-                (0, 0, 0),
-                -1,
-            )
-            cv2.putText(
-                out,
-                lbl,
-                (max(2, x - 24), max(12, sh - 42)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.34,
-                (90, 255, 90),
-                1,
-                cv2.LINE_AA,
-            )
-            az_deg, _ = rosette.pixel_to_bearing(
-                intr_orig, pose, float(u_orig), float(orig_h * 0.5), int(cam_k)
-            )
-            az_lbl = f"{float(az_deg):03.0f}deg"
-            cv2.rectangle(out, (max(0, x - 24), 2), (min(sw - 1, x + 26), 18), (0, 0, 0), -1)
-            cv2.putText(
-                out,
-                az_lbl,
-                (max(2, x - 22), 14),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.34,
-                (255, 255, 0),
-                1,
-                cv2.LINE_AA,
-            )
-
-    # 100px yellow sub-ticks along top, center, and bottom
-    for u_orig in range(100, orig_w, 200):
-        x = int(round(u_orig * scale))
-        if 0 <= x < sw:
-            cv2.line(out, (x, 38), (x, 48), (80, 220, 220), 1)
-            cv2.line(out, (x, sh // 2 - 8), (x, sh // 2 + 8), (80, 220, 220), 1)
-            cv2.line(out, (x, max(0, sh - 60)), (x, max(0, sh - 50)), (80, 220, 220), 1)
-
-    # 2. Horizontal v-grid lines every 200 original pixels
-    for v_orig in range(200, orig_h, 200):
-        y = int(round(v_orig * scale))
-        if not (0 <= y < sh):
-            continue
-        is_major = (v_orig % 400) == 0
-        color = (90, 200, 90) if is_major else (70, 130, 70)
-        cv2.line(out, (0, y), (sw - 1, y), color, 1)
-        if is_major:
-            lbl = f"v={v_orig}"
-            cv2.rectangle(out, (2, max(0, y - 8)), (54, min(sh - 1, y + 8)), (0, 0, 0), -1)
-            cv2.putText(
-                out,
-                lbl,
-                (4, min(sh - 4, y + 4)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.34,
-                (90, 255, 90),
-                1,
-                cv2.LINE_AA,
-            )
-            cv2.rectangle(
-                out,
-                (max(0, sw - 54), max(0, y - 8)),
-                (sw - 2, min(sh - 1, y + 8)),
-                (0, 0, 0),
-                -1,
-            )
-            cv2.putText(
-                out,
-                lbl,
-                (max(2, sw - 52), min(sh - 4, y + 4)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.34,
-                (90, 255, 90),
-                1,
-                cv2.LINE_AA,
-            )
-
-    for v_orig in range(100, orig_h, 200):
-        y = int(round(v_orig * scale))
-        if 0 <= y < sh:
-            cv2.line(out, (0, y), (10, y), (80, 220, 220), 1)
-            cv2.line(out, (sw // 2 - 8, y), (sw // 2 + 8, y), (80, 220, 220), 1)
-            cv2.line(out, (max(0, sw - 10), y), (sw - 1, y), (80, 220, 220), 1)
-
-    # 3. Closed-loop 3D-to-2D candidate reprojection (magenta circle + white center + plumb line)
-    cam_lat = float(pose.get("latitude", 0.0))
-    cam_lng = float(pose.get("longitude", 0.0))
-    if candidates:
-        for cand in candidates:
-            cid = str(
-                cand.get("pole_id")
-                or cand.get("entity_id")
-                or cand.get("id")
-                or "P"
-            )
-            clat = cand.get("lat")
-            clng = cand.get("lng")
-            if clat is None or clng is None:
-                continue
-            lbl = str(
-                cand.get("pole_subtype")
-                or cand.get("label")
-                or cand.get("initial_cls")
-                or "POLE"
-            )
-            de_arr, dn_arr, _ = geo.lla_to_enu(
-                float(clat), float(clng), 0.0, cam_lat, cam_lng, 0.0
-            )
-            de = float(np.asarray(de_arr).item())
-            dn = float(np.asarray(dn_arr).item())
-            horiz = math.hypot(de, dn)
-            if horiz < 0.8 or horiz > 75.0:
-                continue
-            dz_b = float(cand.get("z_rel_m", z_ground_rel_m))
-            az_b, el_b = rosette.dir_to_bearing(np.array([de, dn, dz_b], dtype=float))
-            u_b, v_b, ok_b = rosette.bearing_to_pixel(
-                intr_orig, pose, float(az_b), float(el_b), int(cam_k)
-            )
-            if not bool(ok_b):
-                continue
-            px = int(round(float(u_b) * scale))
-            py = int(round(float(v_b) * scale))
-            if not (0 <= px < sw and 0 <= py < sh):
-                continue
-
-            az_t, el_t = rosette.dir_to_bearing(np.array([de, dn, dz_b + 8.5], dtype=float))
-            u_t, v_t, ok_t = rosette.bearing_to_pixel(
-                intr_orig, pose, float(az_t), float(el_t), int(cam_k)
-            )
-            if bool(ok_t):
-                px_t = int(np.clip(round(float(u_t) * scale), 0, sw - 1))
-                py_t = int(np.clip(round(float(v_t) * scale), 0, sh - 1))
-                cv2.line(out, (px_t, py_t), (px, py), (180, 0, 255), 1, cv2.LINE_AA)
-
-            r = max(6, int(round(14 * scale)))
-            cv2.circle(out, (px, py), r, (128, 0, 255), 2, cv2.LINE_AA)
-            cv2.circle(out, (px, py), 2, (255, 255, 255), -1, cv2.LINE_AA)
-            tag = f"{cid}:{lbl[:18]}"
-            tx = min(max(2, px + r + 3), max(2, sw - 135))
-            ty = min(max(18, py - 4), max(18, sh - 40))
-            cv2.rectangle(
-                out,
-                (tx - 2, ty - 11),
-                (min(sw - 1, tx + len(tag) * 6 + 4), ty + 3),
-                (0, 0, 0),
-                -1,
-            )
-            cv2.putText(
-                out,
-                tag,
-                (tx, ty),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.33,
-                (180, 80, 255),
-                1,
-                cv2.LINE_AA,
-            )
-
-    # 4. Bottom metadata + Google attribution bar
-    hdg = float(pose.get("heading", 0.0))
-    cam_yaw = (hdg + int(cam_k) * 60.0) % 360.0
-    cv2.rectangle(out, (0, max(0, sh - 34)), (sw, sh), (0, 0, 0), -1)
-    footer = (
-        f"Cap #{cap_idx:03d} ({capture_id[:14]}) | Cam {cam_k} (yaw~{cam_yaw:.0f}deg) | "
-        f"{capture_date[:10]} | orig={orig_w}x{orig_h} | Imagery (c) Google"
-    )
-    cv2.putText(
-        out,
-        footer,
-        (6, max(12, sh - 12)),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.35,
-        (255, 255, 255),
-        1,
-        cv2.LINE_AA,
-    )
-    return out
-
-
-def render_capture_contact_sheet(
-    pano_rows: Sequence[Mapping[str, Any]] | pd.DataFrame,
-    fetch: Callable[[str], bytes],
-    intr: rosette.Intrinsics = rosette.DEFAULT_INTRINSICS,
-    *,
-    cap_idx: int = 0,
-    camera_indices: Sequence[int] = (0, 1, 2, 3, 4, 5),
-    single_scale: float = 0.35,
-    sheet_scale: float = 0.22,
-    candidates: Sequence[Mapping[str, Any]] | None = None,
-) -> dict[str, Any] | None:
-    """Render calibrated `(u,v)` + compass-azimuth single camera frames and a 3-column contact sheet."""
-    import cv2
-
-    rows = [r for r in _iter_rows(pano_rows) if int(r.get("cam_k", -1)) in set(camera_indices)]
-    rows.sort(key=lambda r: int(r["cam_k"]))
-    if not rows:
-        return None
-
-    r0 = rows[0]
-    capture_id = str(r0.get("capture_id") or r0.get("pano_id") or "")
-    capture_date = str(r0.get("capture_time") or "")[:10]
-    lat = float(r0.get("lat") or r0.get("camera_pose", {}).get("latitude", 0.0))
-    lng = float(r0.get("lng") or r0.get("camera_pose", {}).get("longitude", 0.0))
-    heading = float(r0.get("heading") or r0.get("camera_pose", {}).get("heading", 0.0))
-
-    camera_frames: dict[int, np.ndarray] = {}
-    sheet_tiles: list[np.ndarray] = []
-    cameras_meta: dict[str, dict[str, Any]] = {}
-
-    for r in rows:
-        k = int(r["cam_k"])
-        pose = r["camera_pose"]
-        raw_img = images.decode(fetch(r["gcs_uri"]))
-        orig_h, orig_w = raw_img.shape[:2]
-        intr_orig = intr.for_image(raw_img)
-        center_az, center_el = rosette.pixel_to_bearing(
-            intr_orig, pose, orig_w * 0.5, orig_h * 0.5, k
-        )
-        single_im = annotate_calibrated_sv_frame(
-            raw_img,
-            intr,
-            pose,
-            k,
-            scale=single_scale,
-            cap_idx=cap_idx,
-            capture_id=capture_id,
-            capture_date=capture_date,
-            candidates=candidates,
-        )
-        tile_im = annotate_calibrated_sv_frame(
-            raw_img,
-            intr,
-            pose,
-            k,
-            scale=sheet_scale,
-            cap_idx=cap_idx,
-            capture_id=capture_id,
-            capture_date=capture_date,
-            candidates=candidates,
-        )
-        camera_frames[k] = single_im
-        sheet_tiles.append(tile_im)
-        cameras_meta[str(k)] = {
-            "cam_k": k,
-            "observation_id": str(r.get("observation_id") or ""),
-            "orig_width": int(orig_w),
-            "orig_height": int(orig_h),
-            "center_azimuth_deg": round(float(center_az), 2),
-            "center_elevation_deg": round(float(center_el), 2),
-            "pose": {
-                "latitude": float(pose.get("latitude", lat)),
-                "longitude": float(pose.get("longitude", lng)),
-                "heading": float(pose.get("heading", heading)),
-                "pitch": float(pose.get("pitch", 0.0)),
-                "roll": float(pose.get("roll", 0.0)),
-            },
-        }
-
-    cols = min(3, len(sheet_tiles))
-    n_rows = (len(sheet_tiles) + cols - 1) // cols
-    th, tw = sheet_tiles[0].shape[:2]
-    header_h = 34
-    sheet = np.full((header_h + n_rows * th, cols * tw, 3), 20, dtype=np.uint8)
-    hdr = (
-        f"Street View Capture #{cap_idx:03d} ({capture_id[:16]}) | ({lat:.6f}, {lng:.6f}) | "
-        f"vehicle_hdg={heading:.1f}deg | Grid: (u,v) original px + top cyan world azimuth | Imagery (c) Google"
-    )
-    cv2.putText(
-        sheet,
-        hdr,
-        (10, 22),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.44,
-        (255, 255, 255),
-        1,
-        cv2.LINE_AA,
-    )
-    for idx, tile in enumerate(sheet_tiles):
-        rr = idx // cols
-        cc = idx % cols
-        y0 = header_h + rr * th
-        x0 = cc * tw
-        sheet[y0 : y0 + th, x0 : x0 + tw] = tile
-
-    return {
-        "cap_idx": int(cap_idx),
-        "capture_id": capture_id,
-        "capture_date": capture_date,
-        "lat": lat,
-        "lng": lng,
-        "heading": heading,
-        "camera_frames": camera_frames,
-        "contact_sheet": sheet,
-        "cameras": cameras_meta,
     }
 
 
@@ -2920,7 +2548,7 @@ def audit_corridor_span_gaps(
     max_span_m: float = 50.0,
     max_lateral_m: float = 35.0,
 ) -> dict[str, Any]:
-    """Audit consecutive same-side utility pole spans along the corridor (`Trigger B: > 50m gap check`)."""
+    """Audit consecutive same-side utility pole spans along the corridor (`> 50m gap check`)."""
     from svi_geo import data
 
     rows = _iter_rows(frames)
@@ -2975,7 +2603,6 @@ def audit_corridor_span_gaps(
     )
     pole_by_id = {p["entity_id"]: p for p in pole_items}
 
-    # Compute rosette stations so intermediate captures inside any >50m gap can be named directly
     ros_sorted = (
         rosettes_df.sort_values("seq_idx").reset_index(drop=True)
         if "seq_idx" in rosettes_df.columns
@@ -3131,7 +2758,7 @@ async def subclassify_poles(
     panel_height: int = 480,
     seed: int | None = 0,
 ) -> dict[str, Any]:
-    """Sub-classify triangulated vertical pole candidates using 3-panel multi-view composites and LSD gates."""
+    """Sub-classify triangulated vertical pole candidates using in-memory 3-panel multi-view composites and LSD gates."""
     pole_candidates: list[dict[str, Any]] = []
     for e in entities:
         if isinstance(e, Mapping):
@@ -3197,6 +2824,7 @@ async def subclassify_poles(
             rows_by_pano.setdefault(pid, []).append(r)
 
     records: list[dict[str, Any]] = []
+    poles: list[dict[str, Any]] = []
     for cand in pole_candidates:
         sel_panos, max_par = _select_parallax_panos_for_pole(
             cand["lat"],
@@ -3206,7 +2834,6 @@ async def subclassify_poles(
             max_views=max_views_per_pole,
         )
         max_par = max(max_par, cand["entity_max_parallax_deg"])
-        # Also include parallax from original observations if larger
         ob = cand["obs_bearings"]
         for i in range(len(ob)):
             for j in range(i + 1, len(ob)):
@@ -3277,6 +2904,46 @@ async def subclassify_poles(
         else:
             fused_lean = round(llm_lean, 2)
 
+        eq_vals = [eq.value for eq in verdict.attached_equipment]
+        has_primary = bool(
+            verdict.has_primary_conductors
+            or (
+                is_true_utility
+                and (
+                    verdict.crossarm_config != schemas.CrossArmConfig.NONE
+                    or schemas.PoleEquipment.OVERHEAD_CONDUCTORS in verdict.attached_equipment
+                    or schemas.PoleEquipment.POLE_MOUNT_TRANSFORMER in verdict.attached_equipment
+                )
+            )
+        )
+        has_secondary = bool(
+            verdict.has_secondary_conductors
+            or (
+                is_true_utility
+                and verdict.pole_subtype != schemas.PoleSubType.TRANSMISSION_POLE
+                and (
+                    schemas.PoleEquipment.OVERHEAD_CONDUCTORS in verdict.attached_equipment
+                    or schemas.PoleEquipment.POLE_MOUNT_TRANSFORMER in verdict.attached_equipment
+                    or schemas.PoleEquipment.STREET_LIGHT_LUMINAIRE in verdict.attached_equipment
+                )
+            )
+        )
+        has_telecom = bool(
+            verdict.has_telecom_attach
+            or verdict.pole_subtype
+            in {
+                schemas.PoleSubType.JOINT_USE_UTILITY_POLE,
+                schemas.PoleSubType.TELECOM_OR_CELL_MONOPOLE,
+            }
+            or schemas.PoleEquipment.TELECOM_SPLICE_CASE in verdict.attached_equipment
+        )
+        has_anomaly = bool(
+            verdict.structural_anomaly
+            or abs(fused_lean) > 8.0
+            or verdict.condition == schemas.AssetCondition.POOR
+            or is_double
+        )
+
         records.append(
             {
                 "entity_id": cand["entity_id"],
@@ -3296,28 +2963,57 @@ async def subclassify_poles(
                 "material": verdict.material.value,
                 "condition": verdict.condition.value,
                 "crossarm_config": verdict.crossarm_config.value,
-                "attached_equipment": [eq.value for eq in verdict.attached_equipment],
+                "attached_equipment": eq_vals,
+                "has_primary_conductors": has_primary,
+                "has_secondary_conductors": has_secondary,
+                "has_telecom_attach": has_telecom,
                 "is_double_pole": is_double,
                 "lean_deg": fused_lean,
+                "structural_anomaly": has_anomaly,
                 "confidence": round(float(verdict.confidence), 3),
                 "evidence_summary": verdict.evidence_summary,
                 "composites": composites,
             }
         )
+        if not is_false_det:
+            poles.append(
+                {
+                    "pole_id": cand["entity_id"],
+                    "lat": round(cand["lat"], 6),
+                    "lng": round(cand["lng"], 6),
+                    "is_true_utility_pole": bool(is_true_utility),
+                    "sub_type": verdict.pole_subtype.value,
+                    "material": verdict.material.value,
+                    "condition": verdict.condition.value,
+                    "cross_arm": verdict.crossarm_config.value,
+                    "equipment": eq_vals,
+                    "has_primary_conductors": has_primary,
+                    "has_secondary_conductors": has_secondary,
+                    "has_telecom_attach": has_telecom,
+                    "is_double_pole": is_double,
+                    "lean_angle_deg": fused_lean,
+                    "structural_anomaly": has_anomaly,
+                    "confidence": round(float(verdict.confidence), 3),
+                    "views_used": len(composites),
+                    "parallax_deg": round(max_par, 1),
+                    "evidence": verdict.evidence_summary,
+                }
+            )
 
     true_count = sum(1 for r in records if r["is_true_utility_pole"])
     false_count = sum(1 for r in records if r["is_false_detection"])
     non_util_count = sum(
         1 for r in records if not r["is_true_utility_pole"] and not r["is_false_detection"]
     )
-    span_audit = audit_corridor_span_gaps(records, all_rows)
     return {
+        "pole_count": len(poles),
+        "poles": poles,
         "records": records,
         "true_utility_pole_count": true_count,
         "non_utility_vertical_count": non_util_count,
         "false_detection_count": false_count,
-        "corridor_span_audit": span_audit,
     }
+
 
 
 

@@ -122,12 +122,17 @@ def test_pole_subclassification_schemas_and_enums():
             schemas.PoleEquipment.POLE_MOUNT_TRANSFORMER,
             schemas.PoleEquipment.TELECOM_SPLICE_CASE,
         ],
+        has_primary_conductors=True,
+        has_secondary_conductors=True,
+        has_telecom_attach=True,
         is_double_pole=False,
         lean_deg=1.8,
+        structural_anomaly=False,
         confidence=0.93,
         evidence_summary="Treated timber pole with primary cross-arm, can transformer, and lower telecom strand.",
     )
     assert obj.is_true_utility_pole is True
+    assert obj.has_primary_conductors is True
     assert obj.lean_deg == pytest.approx(1.8)
     from pydantic import ValidationError
 
@@ -201,7 +206,6 @@ def test_render_pole_inspection_composite_seam_bearing_has_under_1pct_black_bord
     pano_rows = fr[fr["seq_idx"] == 0]
     r0 = pano_rows.iloc[0]
     clat, clng = float(r0["lat"]), float(r0["lng"])
-    # Place pole at bearing = 30.0 deg (directly on the seam between cam 0 at 0 deg and cam 1 at 60 deg)
     dist_m = 14.0
     az_rad = math.radians(30.0)
     pole_lat, pole_lng, _ = geo.enu_to_lla(
@@ -222,16 +226,12 @@ def test_render_pole_inspection_composite_seam_bearing_has_under_1pct_black_bord
     assert len(comp["used_cam_ks"]) >= 2
 
 
-def test_subclassify_poles_fuses_multi_view_parallax_and_deterministic_gates():
+def test_subclassify_poles_returns_flat_poles_schema_and_fuses_gates():
     from svi_geo import entities as ent
 
     fr = _attach_uris(sim.synthetic_frames(4, 12.0, 28.0502, -81.9601, travel_deg=0.0))
     ref = (28.0502, -81.9601, 0.0)
 
-    # Create three triangulated pole candidates:
-    # Pole 1: True Joint-Use Utility Pole
-    # Pole 2: Standalone Street Light where LLM mistakenly says is_true_utility_pole=True
-    # Pole 3: Low-confidence empty-curb false detection (SIGN_POST_OR_OTHER, conf=0.10)
     p0 = fr[(fr["seq_idx"] == 0) & (fr["cam_k"] == 0)].iloc[0]
     p1 = fr[(fr["seq_idx"] == 1) & (fr["cam_k"] == 0)].iloc[0]
 
@@ -259,7 +259,6 @@ def test_subclassify_poles_fuses_multi_view_parallax_and_deterministic_gates():
     e3 = _make_entity("utility_pole_03", 10.0, 8.0)
 
     def _blank_fetch(_uri: str) -> bytes:
-        # Featureless image so e3 has 0.0 vertical support
         img = np.full((5472, 3648, 3), 145, dtype=np.uint8)
         from svi_geo import images
 
@@ -275,8 +274,12 @@ def test_subclassify_poles_fuses_multi_view_parallax_and_deterministic_gates():
                 '"condition": "GOOD", '
                 '"crossarm_config": "SINGLE_ARM", '
                 '"attached_equipment": ["OVERHEAD_CONDUCTORS", "POLE_MOUNT_TRANSFORMER", "TELECOM_SPLICE_CASE"], '
+                '"has_primary_conductors": true, '
+                '"has_secondary_conductors": true, '
+                '"has_telecom_attach": true, '
                 '"is_double_pole": false, '
                 '"lean_deg": 1.2, '
+                '"structural_anomaly": false, '
                 '"confidence": 0.94, '
                 '"evidence_summary": "Joint-use wooden distribution pole with primary cross-arm, transformer, and lower telecom bundle."}'
             )
@@ -317,31 +320,54 @@ def test_subclassify_poles_fuses_multi_view_parallax_and_deterministic_gates():
             max_poles=5,
         )
     )
-    assert len(out["records"]) == 3
+    # 2 valid poles (empty-curb false detection e3 is excluded from out["poles"])
+    assert out["pole_count"] == 2
+    assert len(out["poles"]) == 2
     assert out["true_utility_pole_count"] == 1
     assert out["non_utility_vertical_count"] == 1
     assert out["false_detection_count"] == 1
 
-    r1, r2, r3 = out["records"][0], out["records"][1], out["records"][2]
-    # Deterministic gate: JOINT_USE_UTILITY_POLE forces is_true_utility_pole=True
-    assert r1["pole_subtype"] == "JOINT_USE_UTILITY_POLE"
-    assert r1["is_true_utility_pole"] is True
-    assert r1["is_false_detection"] is False
-    # Parallax is strictly between the 2 selected views (not inflated to >100 deg by unselected panos)
-    assert 5.0 < r1["max_parallax_deg"] < 90.0
-    assert len(r1["composites"]) == 2
+    expected_pole_keys = {
+        "pole_id",
+        "lat",
+        "lng",
+        "is_true_utility_pole",
+        "sub_type",
+        "material",
+        "condition",
+        "cross_arm",
+        "equipment",
+        "has_primary_conductors",
+        "has_secondary_conductors",
+        "has_telecom_attach",
+        "is_double_pole",
+        "lean_angle_deg",
+        "structural_anomaly",
+        "confidence",
+        "views_used",
+        "parallax_deg",
+        "evidence",
+    }
+    p_first = out["poles"][0]
+    assert set(p_first.keys()) == expected_pole_keys
+    assert p_first["pole_id"] == "utility_pole_01"
+    assert p_first["is_true_utility_pole"] is True
+    assert p_first["sub_type"] == "JOINT_USE_UTILITY_POLE"
+    assert p_first["cross_arm"] == "SINGLE_ARM"
+    assert p_first["has_primary_conductors"] is True
+    assert p_first["has_secondary_conductors"] is True
+    assert p_first["has_telecom_attach"] is True
+    assert p_first["views_used"] == 2
+    assert 5.0 < p_first["parallax_deg"] < 90.0
 
-    # Deterministic gate: STANDALONE_STREET_LIGHT forces is_true_utility_pole=False
-    assert r2["pole_subtype"] == "STANDALONE_STREET_LIGHT"
-    assert r2["is_true_utility_pole"] is False
-    assert r2["is_false_detection"] is False
-
-    # False detection gate: SIGN_POST_OR_OTHER + low confidence + low vertical support
-    assert r3["is_false_detection"] is True
-    assert r3["is_true_utility_pole"] is False
+    p_second = out["poles"][1]
+    assert p_second["pole_id"] == "utility_pole_02"
+    assert p_second["is_true_utility_pole"] is False
+    assert p_second["sub_type"] == "STANDALONE_STREET_LIGHT"
+    assert p_second["has_primary_conductors"] is False
 
 
-def test_skill_script_and_markdown_safety_invariants(sp):
+def test_skill_script_zero_disk_image_writes_and_markdown_invariants(sp):
     assert [e.value for e in sp.PoleSubType] == [e.value for e in schemas.PoleSubType]
     assert [e.value for e in sp.CrossArmConfig] == [e.value for e in schemas.CrossArmConfig]
     assert [e.value for e in sp.PoleEquipment] == [e.value for e in schemas.PoleEquipment]
@@ -353,6 +379,11 @@ def test_skill_script_and_markdown_safety_invariants(sp):
     src = SKILL_SCRIPT.read_text()
     assert "from_uri" not in src and "file_uri" not in src
     assert not re.search(r"SELECT\s+gcs_uri", src, re.I)
+    # Zero disk image writes: no cv2.imwrite, no output_dir, no saved_composite_images, cache_dir=None
+    assert "imwrite" not in src
+    assert "output_dir" not in src and "output-dir" not in src
+    assert "saved_composite_images" not in src
+    assert "cache_dir=None" in src
     for leak in ("//depot/", "svms_client", "blade:", "lingendj", "Geo Goldens"):
         assert leak not in src
 
@@ -367,81 +398,22 @@ def test_skill_script_and_markdown_safety_invariants(sp):
     assert len(desc_val) < 500
     assert "Use when" in frontmatter and "Don't use for" in frontmatter
     assert "# Utility Pole Subclassification Using Panoramic SVI" in md
-    assert "## How it works" in md
-    assert "## Core Principles & Lessons Learned" in md
-    assert "## Taxonomy & Sub-Classification Policy" in md
-    assert "### Utility Pole vs. Lookalike Decision Policy" in md
+    assert "## Step-by-Step Pole Subclassification Methodology" in md
+    assert "Step 1 — Corridor Discovery & 2D Horizontal ENU Triangulation" in md
+    assert "Step 2 — In-Memory 3-Panel Multi-Zone Crop Generation" in md
+    assert "Step 3 — Gate 1: True Utility Pole vs. False-Positive Exclusion" in md
+    assert "Step 4 — Gate 2: Crown & Cross-Arm Voltage-Tier Classification" in md
+    assert "Step 5 — Gate 3: Mid-Shaft Equipment & Riser Audit" in md
+    assert "Step 6 — Gate 4: Base Material, Buddy-Pole & Structural Lean Audit" in md
+    assert "## Sub-Classification Taxonomy" in md
     assert "## Prerequisites" in md
-    assert "## Instructions (Step-by-Step Agentic Workflow)" in md
-    assert "--mode fetch_sv" in md and "--mode triangulate" in md and "--mode render_candidates" in md
-    assert "Trigger A" in md and "Trigger B" in md and "Trigger C" in md
-    assert "--capture-id" in md and "--pano-id" in md and "--observation-id" in md
-    assert "--coordinates" in md and "--output-dir" in md and "--output" in md
-    assert "--location" in md and "--model" in md
-    assert "saved_composite_images" in md and "false_detection_count" in md
-    assert "svi_geo.data.render_sql" not in md
+    assert "## Instructions" in md
+    assert "--coordinates" in md and "--capture-id" in md and "--observation-id" in md
+    assert "--radius-m" in md and "--dataset" in md and "--model" in md and "--location" in md and "--output" in md
+    assert "--output-dir" not in md and "saved_composite_images" not in md
+    assert '"pole_count"' in md and '"poles"' in md
     for leak in ("//depot/", "svms_client", "blade:", "lingendj", "Geo Goldens"):
         assert leak not in md
-
-
-def test_annotate_calibrated_sv_frame_and_contact_sheet_with_3d_reprojection():
-    intr = rosette.DEFAULT_INTRINSICS
-    fr = _attach_uris(sim.synthetic_frames(1, 12.0, 28.0502, -81.9601, travel_deg=0.0))
-    pano_rows = fr[fr["seq_idx"] == 0]
-    r0 = pano_rows[pano_rows["cam_k"] == 0].iloc[0]
-    pose = r0["camera_pose"]
-    clat, clng = float(pose["latitude"]), float(pose["longitude"])
-
-    # Place a 3D candidate pole 14m ahead of cam 0 (heading ~0 deg = North)
-    pole_lat, pole_lng, _ = geo.enu_to_lla(0.0, 14.0, 0.0, clat, clng, 0.0)
-    raw_img = np.full((intr.height, intr.width, 3), 120, dtype=np.uint8)
-    annotated = uc.annotate_calibrated_sv_frame(
-        raw_img,
-        intr,
-        pose,
-        0,
-        scale=0.25,
-        cap_idx=0,
-        capture_id="t1:cap0",
-        capture_date="2026-03-01",
-        candidates=[
-            {
-                "pole_id": "P01",
-                "lat": float(pole_lat),
-                "lng": float(pole_lng),
-                "pole_subtype": "JOINT_USE_UTILITY_POLE",
-            }
-        ],
-    )
-    assert annotated.shape == (int(round(intr.height * 0.25)), int(round(intr.width * 0.25)), 3)
-    # Verify top-edge cyan world compass azimuth text (BGR = (255, 255, 0)) was stamped in top band (y < 20)
-    top_band = annotated[:20, :, :]
-    cyan_pixels = (top_band[:, :, 0] > 200) & (top_band[:, :, 1] > 200) & (top_band[:, :, 2] < 50)
-    assert int(cyan_pixels.sum()) > 10
-
-    # Verify 3D-to-2D reprojected magenta marker (BGR = (128, 0, 255) / (180, 0, 255)) was drawn
-    magenta_pixels = (
-        (annotated[:, :, 2] > 200)
-        & (annotated[:, :, 1] < 90)
-        & (annotated[:, :, 0] > 100)
-    )
-    assert int(magenta_pixels.sum()) > 15
-
-    # Verify contact sheet rendering across all 6 ground cameras
-    sheet_out = uc.render_capture_contact_sheet(
-        pano_rows,
-        _dummy_fetch,
-        intr,
-        cap_idx=0,
-        camera_indices=(0, 1, 2, 3, 4, 5),
-        single_scale=0.20,
-        sheet_scale=0.15,
-        candidates=[{"pole_id": "P01", "lat": float(pole_lat), "lng": float(pole_lng)}],
-    )
-    assert sheet_out is not None
-    assert len(sheet_out["camera_frames"]) == 6
-    assert sheet_out["contact_sheet"].shape[2] == 3
-    assert set(sheet_out["cameras"].keys()) == {"0", "1", "2", "3", "4", "5"}
 
 
 def test_triangulate_observations_2d_enu_and_gdop_rule():
@@ -452,7 +424,6 @@ def test_triangulate_observations_2d_enu_and_gdop_rule():
     r_cap2 = fr[(fr["cap_idx"] == 2) & (fr["cam_k"] == 2)].iloc[0]
 
     ref_lat, ref_lng = float(r_cap0["lat"]), float(r_cap0["lng"])
-    # Place ground-truth pole at (East=+10m, North=+15m) relative to cap 0 (between cap 0 at N=0m and cap 2 at N=30m)
     true_lat, true_lng, _ = geo.enu_to_lla(10.0, 15.0, 0.0, ref_lat, ref_lng, 0.0)
 
     def _project_pole_into_row(row):
@@ -512,11 +483,10 @@ def test_triangulate_observations_2d_enu_and_gdop_rule():
     assert p3["gdop_warning"] is True
 
 
-def test_audit_corridor_span_gaps_flags_over_50m_trigger_b():
+def test_audit_corridor_span_gaps_flags_over_50m():
     fr = _attach_uris(sim.synthetic_frames(7, 15.0, 28.0502, -81.9601, travel_deg=0.0))
     r0 = fr.iloc[0]
     ref_lat, ref_lng = float(r0["lat"]), float(r0["lng"])
-    # Place two right-side poles at station 5m and station 75m (70m gap > 50m threshold)
     p1_lat, p1_lng, _ = geo.enu_to_lla(6.0, 5.0, 0.0, ref_lat, ref_lng, 0.0)
     p2_lat, p2_lng, _ = geo.enu_to_lla(6.0, 75.0, 0.0, ref_lat, ref_lng, 0.0)
     poles = [
@@ -533,90 +503,23 @@ def test_audit_corridor_span_gaps_flags_over_50m_trigger_b():
     assert len(gap["intermediate_captures"]) >= 3
 
 
-def test_multi_mode_cli_and_offline_triangulate(sp, tmp_path):
-    spec_str = "P01=0:1:1820:2900,2:2:1900:2950;P02=1:4:2100:3100"
-    parsed = sp.parse_observation_spec(spec_str)
-    assert list(parsed.keys()) == ["P01", "P02"]
-    assert len(parsed["P01"]) == 2 and parsed["P01"][0]["cap_idx"] == 0 and parsed["P01"][0]["cam_k"] == 1
-
-    # Write a minimal sv_index.json to tmp_path and run --mode=triangulate completely offline
-    sv_index = {
-        "captures": [
-            {
-                "cap_idx": 0,
-                "capture_id": "t1:cap0",
-                "lat": 28.05020,
-                "lng": -81.96010,
-                "heading": 0.0,
-                "cameras": {
-                    "1": {
-                        "pose": {
-                            "latitude": 28.05020,
-                            "longitude": -81.96010,
-                            "heading": 60.0,
-                            "pitch": 0.0,
-                            "roll": 0.0,
-                        }
-                    }
-                },
-            },
-            {
-                "cap_idx": 2,
-                "capture_id": "t1:cap2",
-                "lat": 28.05045,
-                "lng": -81.96010,
-                "heading": 0.0,
-                "cameras": {
-                    "2": {
-                        "pose": {
-                            "latitude": 28.05045,
-                            "longitude": -81.96010,
-                            "heading": 120.0,
-                            "pitch": 0.0,
-                            "roll": 0.0,
-                        }
-                    }
-                },
-            },
-        ]
-    }
-    (tmp_path / "sv_index.json").write_text(sp.json.dumps(sv_index))
-    args = sp.parse_args(
-        [
-            "--mode",
-            "triangulate",
-            "--output-dir",
-            str(tmp_path),
-            "--observations",
-            "P01=0:1:1824:2850,2:2:1824:2850",
-        ],
-        env={},
-    )
-    out = asyncio.run(sp.run_pipeline(args))
-    assert out["mode"] == "triangulate"
-    assert len(out["triangulated_poles"]) == 1
-    assert out["triangulated_poles"][0]["pole_id"] == "P01"
-    assert out["triangulated_poles"][0]["status"] == "OK"
-
-
 def test_skill_cli_flags_and_sql_allowlist(sp):
     env = {"PROJECT_ID": "test-proj", "GCS_BUCKET": "test-bucket"}
+    # 1. --coordinates as comma-separated string
     args = sp.parse_args(
         [
-            "--lat",
-            "28.0502",
-            "--lng",
-            "-81.9601",
-            "--radius_m",
-            "80",
-            "--max_rosettes",
-            "6",
-            "--max_poles",
-            "5",
-            "--output_json",
+            "--coordinates",
+            "28.0502,-81.9601",
+            "--radius-m",
+            "60",
+            "--dataset",
+            "imagery_insights___us",
+            "--model",
+            gemini_client.DEFAULT_MODEL,
+            "--location",
+            "us-central1",
+            "--output",
             "/tmp/out.json",
-            "--output_dir",
-            "/tmp/out_dir",
         ],
         env=env,
     )
@@ -624,13 +527,12 @@ def test_skill_cli_flags_and_sql_allowlist(sp):
     assert args.gcs_bucket == "test-bucket"
     assert args.lat == pytest.approx(28.0502)
     assert args.lng == pytest.approx(-81.9601)
-    assert args.radius_m == pytest.approx(80.0)
-    assert args.max_rosettes == 6
-    assert args.max_poles == 5
-    assert args.output_json == "/tmp/out.json"
-    assert args.output_dir == "/tmp/out_dir"
+    assert args.radius_m == pytest.approx(60.0)
+    assert args.dataset == "imagery_insights___us"
+    assert args.location == "us-central1"
+    assert args.output == "/tmp/out.json"
 
-    # Also support --coordinates lat,lng and hyphenated flags
+    # 2. --coordinates as two space-separated tokens (LAT LNG)
     args2 = sp.parse_args(
         [
             "--project",
@@ -638,13 +540,8 @@ def test_skill_cli_flags_and_sql_allowlist(sp):
             "--gcs-bucket",
             "gs://b2/",
             "--coordinates",
-            "28.0502,-81.9601",
-            "--radius-m",
-            "60",
-            "--max-rosettes",
-            "4",
-            "--max-poles",
-            "3",
+            "28.0502",
+            "-81.9601",
         ],
         env={},
     )
@@ -652,16 +549,22 @@ def test_skill_cli_flags_and_sql_allowlist(sp):
     assert args2.gcs_bucket == "b2"
     assert args2.lat == pytest.approx(28.0502)
     assert args2.lng == pytest.approx(-81.9601)
+    assert args2.radius_m == pytest.approx(60.0)
 
-    # Support --capture-id, --pano-id, and --observation-id (wired to ID_SQL)
+    # 3. --capture-id and --observation-id (mutually exclusive with --coordinates)
     a_cap = sp.parse_args(["--capture-id", "t1:abc"], env=env)
     assert a_cap.capture_id == "t1:abc" and a_cap.lookup_id == "t1:abc"
-    a_pano = sp.parse_args(["--pano-id", "pano123"], env=env)
-    assert a_pano.pano_id == "pano123" and a_pano.lookup_id == "pano123"
     a_obs = sp.parse_args(["--observation-id", "o1:abc_0:5001ee"], env=env)
     assert a_obs.observation_id == "o1:abc_0:5001ee" and a_obs.lookup_id == "o1:abc_0:5001ee"
+
+    # Mutually exclusive target selectors
     with pytest.raises(SystemExit):
-        sp.parse_args(["--observation-id", "x", "--pano-id", "y"], env=env)
+        sp.parse_args(["--observation-id", "x", "--capture-id", "y"], env=env)
+    # Removed legacy flags must be rejected
+    with pytest.raises(SystemExit):
+        sp.parse_args(["--coordinates", "28.0,-81.9", "--output-dir", "/tmp/x"], env=env)
+    with pytest.raises(SystemExit):
+        sp.parse_args(["--coordinates", "28.0,-81.9", "--mode", "fetch_sv"], env=env)
 
     for sql_name in ("COORDS_SQL", "ID_SQL"):
         rendered = sp.render_sql(getattr(sp, sql_name), "my-proj", "imagery_insights___us")
@@ -776,8 +679,7 @@ def test_skill_id_lookup_query_path_uses_id_sql_and_byte_cap(sp, monkeypatch):
         "imagery_insights___us",
         "my-bucket",
         lookup_id="t1:cap0",
-        radius_m=80.0,
-        max_rosettes=4,
+        radius_m=60.0,
     )
     assert len(captured_calls) == 2
     sql_used, dry_cfg = captured_calls[0]
@@ -787,5 +689,3 @@ def test_skill_id_lookup_query_path_uses_id_sql_and_byte_cap(sp, monkeypatch):
     assert run_cfg.maximum_bytes_billed == sp.MAX_BYTES_BILLED
     assert len(df) == 7
     assert gb == pytest.approx(0.123456789)
-
-

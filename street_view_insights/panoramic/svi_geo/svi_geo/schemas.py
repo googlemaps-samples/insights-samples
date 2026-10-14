@@ -498,8 +498,12 @@ class PoleSubClassification(BaseModel):
     condition: AssetCondition
     crossarm_config: CrossArmConfig
     attached_equipment: list[PoleEquipment] = Field(default_factory=list)
+    has_primary_conductors: bool = False
+    has_secondary_conductors: bool = False
+    has_telecom_attach: bool = False
     is_double_pole: bool
     lean_deg: float = Field(ge=-45.0, le=45.0)
+    structural_anomaly: bool = False
     confidence: float = Field(ge=0.0, le=1.0)
     evidence_summary: str
 
