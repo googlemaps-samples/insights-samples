@@ -1,181 +1,572 @@
 #!/usr/bin/env python3
-import os
-import sys
-import argparse
-import urllib.parse
-import json
-from io import BytesIO
-from PIL import Image
-from google import genai
-from google.cloud import bigquery, storage
-from google.genai import types
+"""Surface material detection on one panoramic Street View frame (pano views only).
 
-SURFACE_MATERIAL_PROMPT = """Act as a civil engineering material analyst specializing in road and ground surfaces. 
-Analyze the provided panoramic street view image, accurately identify the dominant surface material, and assess pavement condition.
-
-Follow these evaluation steps:
-1. **Identify Primary Ground Surface**: Delineate the main traveled road, pathway, or ground surface area.
-2. **Granular Material Classification**: Classify into standard civil surface types:
-   - Asphalt Concrete (Paved)
-   - Portland Cement Concrete (Paved)
-   - Pavers / Cobblestone
-   - Unpaved Gravel
-   - Dirt / Soil
-   - Mud
-3. **Pavement Condition Index (PCI) & Distress Detection**:
-   - Pavement Health: Good | Fair | Poor | N/A (Unpaved)
-   - Distresses Detected: Potholes, Alligator Cracking, Longitudinal Cracks, Rutting, Sealed Cracks, Ruts, None
-
-Return your analysis strictly in structured JSON format matching this schema:
-{
-  "primary_material": "[Asphalt Concrete (Paved) | Portland Cement Concrete (Paved) | Pavers / Cobblestone | Unpaved Gravel | Dirt / Soil | Mud]",
-  "pavement_condition": "[Good | Fair | Poor | N/A (Unpaved)]",
-  "distress_features_detected": ["Potholes", "Alligator Cracking", "None"],
-  "confidence_score": "High | Medium | Low",
-  "visual_reasoning": "[1-3 sentences describing specific visual cues supporting the classification]"
-}
+Pipeline (all deterministic code except the single Gemini perception call):
+1. Metadata lookup in `pano_observations_latest` with parameterised SQL (no `gcs_uri` column:
+   selecting it scans ~1.9 GB, so the frame path is derived from the published pattern
+   gs://<bucket>/<snapshot_id>/v0/<observation_id>.jpg).
+2. Travel direction from the neighbouring panos of the same drive (or `--travel-deg`); the
+   script stops if neither is available rather than guessing a camera.
+3. Download the frame(s) with the caller's credentials and render a road view in code: with
+   svi_geo installed, a view centred on the travel direction and pitched down in world
+   coordinates (`sequence.road_view`: the covering camera, or the two cameras flanking the
+   seam composited), with the vehicle hood cropped and less than 1 % outside the sensor
+   (checked); otherwise a fixed lower-frame crop of the camera nearest the travel direction.
+4. Send the view INLINE as bytes to Gemini with a pydantic `response_schema`; the reply is
+   validated in code (numeric confidence, shared material taxonomy incl. Turf). The token
+   usage and estimated cost are printed.
 """
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Dedicated Surface Material Detection Skill.")
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--image", help="Path to local image file or gs:// URI.")
-    group.add_argument("--observation-id", "--track-id", dest="observation_id", 
-                       help="Lookup observation ID, pano ID, or capture ID in BigQuery.")
-    group.add_argument("--coordinates", help="Lookup nearest observation by coordinates in format 'lat,lng'.")
-    
-    parser.add_argument("--output", help="Optional path to save JSON result file.")
-    
-    # BigQuery connection arguments
-    parser.add_argument("--project", default=os.getenv("GOOGLE_CLOUD_PROJECT"), 
-                        help="Google Cloud project ID.")
-    parser.add_argument("--dataset", default=os.getenv("BIGQUERY_DATASET", "imagery_insights___us"), 
-                        help="BigQuery dataset name.")
-    parser.add_argument("--table", default="pano_observations_latest", 
-                        help="BigQuery panoramic observations table name.")
-    
-    # Gemini model arguments
-    parser.add_argument("--location", default="global", help="Google Cloud location/region.")
-    parser.add_argument("--model", default="gemini-3.7-flash", help="Model to use (e.g. gemini-3.7-flash).")
-    return parser.parse_args()
+from __future__ import annotations
 
-def convert_to_gs_uri(image_url: str) -> str:
-    if image_url.startswith("gs://"):
-        return image_url
+import argparse
+import dataclasses
+import datetime as dt
+import json
+import math
+import os
+import re
+import sys
+from enum import Enum
+from pathlib import Path
+
+import cv2
+import numpy as np
+from pydantic import BaseModel, Field
+
+DEFAULT_DATASET = "imagery_insights___us"
+MAX_BYTES_BILLED = 2_000_000_000
+MAX_IMAGE_SIDE = 1536
+
+# ----------------------------------------------------------------------------- schema
+# Copied from svi_geo.schemas so the skill runs stand-alone; a test keeps them identical.
+
+
+class SurfaceMaterial(str, Enum):
+    PAVED_ASPHALT = "Paved Asphalt"
+    CONCRETE = "Concrete"
+    BRICK_PAVERS = "Brick/Pavers"
+    COBBLESTONE = "Cobblestone"
+    GRAVEL = "Gravel"
+    DIRT = "Dirt"
+    MUD = "Mud"
+    TURF = "Turf"
+    UNPAVED = "Unpaved"
+    OTHER = "Other"
+
+
+class SurfaceCondition(str, Enum):
+    GOOD = "Good"
+    FAIR = "Fair"
+    DAMAGED = "Damaged/Potholes"
+    SEVERELY_DEGRADED = "Severely Degraded"
+
+
+class SurfaceMaterialResult(BaseModel):
+    """Single-image surface material answer (the skill's output)."""
+
+    primary_material: SurfaceMaterial
+    secondary_materials: list[SurfaceMaterial] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+    surface_condition: SurfaceCondition
+    visual_reasoning: str
+
+
+SURFACE_MATERIAL_PROMPT = (
+    "Act as a civil engineering material analyst. The image is a rectified, downward-looking "
+    "street-level view of the ground in front of the capture vehicle. Identify the dominant "
+    "material of the main traveled surface, any secondary surface materials, and the surface "
+    "condition. Base the answer only on visible texture, aggregate, joints, colour and wear. "
+    "confidence is your probability (0-1) that primary_material is correct."
+)
+
+# ----------------------------------------------------------------------------- SQL
+
+_FIELDS = """
+  capture_id, pano_id, observation_id, snapshot_id, capture_time,
+  capture_location.latitude AS lat, capture_location.longitude AS lng,
+  camera_pose.heading AS heading, camera_pose.pitch AS pitch, camera_pose.roll AS roll"""
+
+# Frames of every rosette within @radius_m of the point (the nearest rosette plus its neighbours,
+# which give the travel direction). Filtered with ST_DWITHIN, never a full-table ORDER BY.
+# Keyed on capture_id (pano_id is nullable publishable metadata; keeping NULLs recovers ~69% of frames).
+COORDS_SQL = (
+    "SELECT"
+    + _FIELDS
+    + """
+FROM `__PROJECT__.__DATASET__.pano_observations_latest`
+WHERE ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
+                 ST_GEOGPOINT(@lng, @lat), @radius_m)
+"""
+)
+
+# Frames of the rosette identified by @id (observation_id, capture_id, or pano_id) plus its neighbours:
+# the id is looked up once (LIMIT 1) and the frames are filtered by distance to that location (~1.63 GB).
+ID_SQL = (
+    """WITH hit AS (
+  SELECT capture_location.latitude AS lat, capture_location.longitude AS lng
+  FROM `__PROJECT__.__DATASET__.pano_observations_latest`
+  WHERE observation_id = @id OR capture_id = @id OR pano_id = @id
+  LIMIT 1
+)
+SELECT hit.lat AS hit_lat, hit.lng AS hit_lng,"""
+    + _FIELDS
+    + """
+FROM `__PROJECT__.__DATASET__.pano_observations_latest`, hit
+WHERE ST_DWITHIN(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude),
+                 ST_GEOGPOINT(hit.lng, hit.lat), @radius_m)
+"""
+)
+
+_IDENT = re.compile(r"^[A-Za-z0-9_\-.]+$")
+
+
+def _allowed_datasets() -> set[str]:
     try:
-        clean_url = image_url.replace("https://", "")
-        domain, path = clean_url.split("/", 1)
-        if "storage" in domain or "googleapis" in domain:
-            path = urllib.parse.unquote(path)
-            return f"gs://{path}"
-    except Exception as e:
-        print(f"Warning: failed to convert URL to GCS URI: {e}", file=sys.stderr)
-    return image_url
+        from svi_geo import data
 
-def query_image_from_bq(args):
-    client_bq = bigquery.Client(project=args.project)
-    project_id = client_bq.project or args.project
-    
-    if args.observation_id:
-        print(f"Querying BigQuery table `{project_id}.{args.dataset}.{args.table}` for ID: {args.observation_id}...", file=sys.stderr)
-        query = f"""
-        SELECT gcs_uri 
-        FROM `{project_id}`.`{args.dataset}`.`{args.table}` 
-        WHERE observation_id = @id OR capture_id = @id OR pano_id = @id 
-        LIMIT 1
-        """
-        job_config = bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", args.observation_id)])
-        rows = list(client_bq.query(query, job_config=job_config).result())
-        if not rows:
-            raise ValueError(f"No image observation found in BigQuery for ID: {args.observation_id}")
-        return rows[0].gcs_uri, project_id
-        
-    elif args.coordinates:
-        parts = args.coordinates.split(",")
-        lat, lng = float(parts[0]), float(parts[1])
-        print(f"Querying BigQuery table `{project_id}.{args.dataset}.{args.table}` near: {lat}, {lng}...", file=sys.stderr)
-        query = f"""
-        SELECT gcs_uri 
-        FROM `{project_id}`.`{args.dataset}`.`{args.table}` 
-        ORDER BY ST_DISTANCE(ST_GEOGPOINT(capture_location.longitude, capture_location.latitude), ST_GEOGPOINT(@lng, @lat)) ASC
-        LIMIT 1
-        """
-        job_config = bigquery.QueryJobConfig(query_parameters=[
+        return set(data.allowed_datasets())
+    except ImportError:
+        raw = os.environ.get("SVI_ALLOWED_DATASETS", "")
+        extra = {x.strip() for x in raw.split(",") if x.strip()}
+        return {DEFAULT_DATASET} | extra
+
+
+def render_sql(template: str, project: str, dataset: str) -> str:
+    """Substitute validated identifiers (values always go through query parameters)."""
+    for v in (project, dataset):
+        if not _IDENT.match(v or ""):
+            raise ValueError(f"invalid BigQuery identifier: {v!r}")
+    allowed = _allowed_datasets()
+    if dataset not in allowed:
+        raise ValueError(f"dataset {dataset!r} is not in allowed_datasets {sorted(allowed)}")
+    try:
+        from svi_geo import data
+
+        table = data.pano_table(project, dataset, "pano_observations_latest")
+    except ImportError:
+        table = f"{project}.{dataset}.pano_observations_latest"
+    return template.replace("__PROJECT__.__DATASET__.pano_observations_latest", table)
+
+
+def run_query(client, sql: str, params: list) -> list:
+    from google.cloud import bigquery
+
+    dry = client.query(
+        sql,
+        job_config=bigquery.QueryJobConfig(
+            dry_run=True, use_query_cache=False, query_parameters=params
+        ),
+    )
+    gb = (dry.total_bytes_processed or 0) / 1e9
+    print(
+        f"[bigquery] dry run: {gb:.3f} GB (cap {MAX_BYTES_BILLED / 1e9:.1f} GB)",
+        file=sys.stderr,
+    )
+    if (dry.total_bytes_processed or 0) > MAX_BYTES_BILLED:
+        raise RuntimeError(f"query would scan {gb:.2f} GB > cap")
+    cfg = bigquery.QueryJobConfig(maximum_bytes_billed=MAX_BYTES_BILLED, query_parameters=params)
+    return [dict(r) for r in client.query(sql, job_config=cfg).result()]
+
+
+def gcs_uri_for(bucket: str, snapshot_id: str, observation_id: str) -> str:
+    """gs://<bucket>/<snapshot_id>/v0/<observation_id>.jpg (the published frame layout)."""
+    return f"gs://{bucket}/{snapshot_id}/v0/{observation_id}.jpg"
+
+
+# ----------------------------------------------------------------------------- geometry
+
+
+def _camera_index(observation_id: str) -> int | None:
+    m = re.match(r"^o1:.+_(\d):5001ee$", observation_id or "")
+    return int(m.group(1)) if m else None
+
+
+def _bearing(lat1, lng1, lat2, lng2) -> float:
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dl = math.radians(lng2 - lng1)
+    x = math.sin(dl) * math.cos(p2)
+    y = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
+    return math.degrees(math.atan2(x, y)) % 360.0
+
+
+def _dist_m(lat1, lng1, lat2, lng2) -> float:
+    k = 111_320.0
+    return math.hypot((lat2 - lat1) * k, (lng2 - lng1) * k * math.cos(math.radians(lat1)))
+
+
+def _rosette_key(r: dict) -> str:
+    return str(r.get("capture_id") or r.get("pano_id") or "")
+
+
+def travel_direction(rows: list[dict], key_id: str, max_dt_s: float = 5.0) -> float | None:
+    """Bearing from the previous to the next rosette of the same drive (same snapshot, <= 5 s)."""
+    panos: dict[str, dict] = {}
+    me = None
+    for r in rows:
+        rk = _rosette_key(r)
+        panos.setdefault(rk, r)
+        if key_id in (rk, r.get("capture_id"), r.get("pano_id")):
+            me = panos[rk]
+    if me is None:
+        me = panos[key_id]
+    t0 = me["capture_time"]
+    same = [
+        p
+        for p in panos.values()
+        if p["snapshot_id"] == me["snapshot_id"]
+        and abs((p["capture_time"] - t0).total_seconds()) <= max_dt_s
+    ]
+    same.sort(key=lambda p: p["capture_time"])
+    if len(same) < 2:
+        return None
+    first, last = same[0], same[-1]
+    if _dist_m(first["lat"], first["lng"], last["lat"], last["lng"]) < 1.0:
+        return None
+    return _bearing(first["lat"], first["lng"], last["lat"], last["lng"])
+
+
+def resolve_travel(measured: float | None, override: float | None) -> float:
+    """`--travel-deg` if given, else the measured travel direction; never a guess."""
+    if override is not None:
+        return float(override) % 360.0
+    if measured is None:
+        raise ValueError(
+            "cannot determine the travel direction (no neighbouring pano of the same drive "
+            "within 5 s); pass --travel-deg"
+        )
+    return float(measured)
+
+
+def pick_front_camera(frames: list[dict], travel_deg: float | None) -> dict:
+    """Ground camera (0-5) whose heading is closest to the travel direction (fallback view
+    when svi_geo is not installed)."""
+    ground = [f for f in frames if 0 <= int(f["cam_k"]) <= 5]
+    if travel_deg is None:
+        raise ValueError("the travel direction is required to pick the front camera")
+
+    def diff(f):
+        return abs(((float(f["heading"]) - travel_deg + 180.0) % 360.0) - 180.0)
+
+    return min(ground, key=lambda f: (diff(f), int(f["cam_k"])))
+
+
+def _fit_within(img: np.ndarray, max_side: int = MAX_IMAGE_SIDE) -> np.ndarray:
+    h, w = img.shape[:2]
+    s = max_side / max(h, w)
+    return cv2.resize(img, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA) if s < 1 else img
+
+
+ROAD_PITCH_DEG = -22.0  # world pitch of the road view (PerspectiveView angles are world)
+ROAD_HFOV_DEG = 60.0
+ROAD_VIEW_SIZE = (1024, 768)
+
+
+MAX_BLACK = 0.01  # share of the sent view allowed outside the sensor
+
+
+def plan_road_view(frames: list[dict], travel_deg: float):
+    """svi_geo `RoadView` centred on `travel_deg`: the ground camera that covers it, or the
+    cameras flanking the seam composited. Raises ValueError if no view can be rendered."""
+    from svi_geo import rosette, sequence
+
+    rv = sequence.road_view(
+        frames, rosette.load_intrinsics(), travel_deg, "front",
+        pitch_deg=ROAD_PITCH_DEG, hfov_deg=ROAD_HFOV_DEG, size=ROAD_VIEW_SIZE,
+    )  # fmt: skip
+    if rv is None:
+        raise ValueError(f"no camera of this pano covers a road view at {travel_deg:.1f} deg")
+    return rv
+
+
+def check_black(rv, max_black: float = MAX_BLACK) -> None:
+    """Raise if more than `max_black` of the hood-cropped view is outside the sensor."""
+    if not rv.black_sent < max_black:
+        raise ValueError(
+            f"road view black fraction {rv.black_sent:.4f} >= {max_black} (outside the sensor)"
+        )
+
+
+def cost_line(usage, model: str) -> str:
+    """Token usage and estimated cost of the Gemini call (svi_geo price table)."""
+    from svi_geo import gemini_client
+
+    tracker = gemini_client.CostTracker(prices=gemini_client.prices_for(model))
+    tracker.add(usage)
+    return (
+        f"[gemini] calls={tracker.calls} input_tokens={tracker.input_tokens:,} "
+        f"output_tokens={tracker.output_tokens:,} est. ${tracker.usd:.4f}"
+    )
+
+
+def road_view_spec(pose: dict, cam_k: int | None, intr):
+    """World-oriented road view along the camera's calibrated heading (pose heading + the
+    fitted per-camera yaw delta), pitched `ROAD_PITCH_DEG` below the horizon."""
+    from svi_geo import rosette
+
+    delta = intr.cam_rot_delta_deg.get(int(cam_k), (0.0,))[0] if cam_k is not None else 0.0
+    yaw = (float(pose["heading"]) + delta) % 360.0
+    return rosette.PerspectiveView(yaw, ROAD_PITCH_DEG, ROAD_HFOV_DEG, *ROAD_VIEW_SIZE)
+
+
+def road_view(image: np.ndarray, pose: dict | None = None, cam_k: int | None = None) -> np.ndarray:
+    """Deterministic road-facing view.
+
+    With svi_geo installed and the frame's `camera_pose`: a 60 deg wide view rectified with the
+    fitted fisheye model along the camera's calibrated heading, pitched 22 deg below the
+    horizon in world coordinates (the pose's pitch and roll are applied), with the rows that
+    show the vehicle hood cropped. Without a pose (`--image`), the image is treated as a level
+    camera looking along its optical axis. Without svi_geo, a fixed crop of the lower frame."""
+    try:
+        from svi_geo import rosette
+    except ImportError:
+        h, w = image.shape[:2]
+        return _fit_within(image[int(0.55 * h) : int(0.82 * h), int(0.1 * w) : int(0.9 * w)])
+    intr = rosette.load_intrinsics()
+    if pose is None:
+        pose, cam_k = {"heading": 0.0, "pitch": 0.0, "roll": 0.0}, None
+        intr = dataclasses.replace(intr, pose_convention=(1, 1), cam_rot_delta_deg={})
+    view = road_view_spec(pose, cam_k, intr)
+    out = rosette.render_perspective(image, intr, pose, view, cam_k)
+    keep = rosette.hood_row(view, pose, intr, rosette.HOOD_ELEV_DEG, cam_k)
+    return _fit_within(out[:keep])
+
+
+# ----------------------------------------------------------------------------- auth
+
+
+def _optional_svi_geo_auth():
+    """(credentials, extra genai HttpOptions kwargs) from svi_geo if installed, else defaults.
+
+    svi_geo honours SVI_USE_GCLOUD_TOKEN / SVI_ECP_PROXY_URL (optional workstation helpers);
+    without it every client uses Application Default Credentials and the public endpoint."""
+    try:
+        from svi_geo import auth
+    except ImportError:
+        return None, {}
+    return auth.get_credentials(), auth.genai_http_options_kwargs()
+
+
+# ----------------------------------------------------------------------------- main
+
+
+def _default_model() -> str:
+    try:
+        from svi_geo import gemini_client
+
+        return gemini_client.DEFAULT_MODEL
+    except ImportError:
+        return os.environ.get("SVI_GEMINI_MODEL") or "-".join(("gemini", "3", "flash", "preview"))
+
+
+def parse_args(argv=None, env=None):
+    """CLI arguments. `env` (default: the process environment) supplies PROJECT_ID /
+    GOOGLE_CLOUD_PROJECT / GCS_BUCKET / BIGQUERY_DATASET defaults; nothing else is guessed."""
+    env = dict(os.environ) if env is None else env
+    p = argparse.ArgumentParser(description="Surface material detection (panoramic SVI).")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--image", help="Path to a local image file (already downloaded).")
+    g.add_argument("--observation-id", dest="observation_id", help="Panoramic observation_id.")
+    g.add_argument("--capture-id", dest="capture_id", help="Panoramic capture_id (rosette key).")
+    g.add_argument("--pano-id", dest="pano_id", help="Panoramic pano_id.")
+    g.add_argument("--coordinates", help="'lat,lng' - nearest rosette within --radius-m")
+    p.add_argument("--radius-m", type=float, default=30.0)
+    p.add_argument(
+        "--travel-deg",
+        type=float,
+        help="Travel direction (deg from north) if it cannot be measured from neighbouring panos.",
+    )
+    p.add_argument("--output", help="Optional path to save the JSON result.")
+    p.add_argument(
+        "--project",
+        default=env.get("PROJECT_ID") or env.get("GOOGLE_CLOUD_PROJECT"),
+        help="Billing project (default: $PROJECT_ID, then $GOOGLE_CLOUD_PROJECT).",
+    )
+    p.add_argument("--dataset", default=env.get("BIGQUERY_DATASET", DEFAULT_DATASET))
+    p.add_argument(
+        "--gcs-bucket",
+        default=env.get("GCS_BUCKET"),
+        help="Frame bucket linked to your dataset (default: $GCS_BUCKET). Required unless --image.",
+    )
+    p.add_argument("--location", default="global")
+    p.add_argument("--model", default=_default_model())
+    args = p.parse_args(argv)
+    if not args.project:
+        p.error("set --project or the PROJECT_ID environment variable")
+    args.gcs_bucket = (args.gcs_bucket or "").removeprefix("gs://").strip("/") or None
+    if not args.image and not args.gcs_bucket:
+        p.error("set --gcs-bucket or the GCS_BUCKET environment variable")
+    return args
+
+
+def frame_rows(rows: list[dict], key_id: str) -> list[dict]:
+    """The frames of `key_id` (`capture_id` or `pano_id`) with their camera index and full
+    `camera_pose` (missing pitch or roll are treated as level)."""
+    out = []
+    for r in rows:
+        k = _camera_index(r["observation_id"])
+        rk = _rosette_key(r)
+        if key_id not in (rk, r.get("capture_id"), r.get("pano_id")) or k is None:
+            continue
+        pose = {
+            "heading": float(r["heading"]),
+            "pitch": float(r["pitch"] or 0.0),
+            "roll": float(r["roll"] or 0.0),
+            "latitude": float(r["lat"]),
+            "longitude": float(r["lng"]),
+        }
+        out.append({**r, "cam_k": k, "camera_pose": pose})
+    return sorted(out, key=lambda f: f["cam_k"])
+
+
+def _download(gcs, bucket: str, frame: dict) -> np.ndarray:
+    uri = gcs_uri_for(bucket, frame["snapshot_id"], frame["observation_id"])
+    data = gcs.bucket(bucket).blob(uri.removeprefix("gs://").split("/", 1)[1]).download_as_bytes()
+    img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError(f"cannot decode {uri}")
+    return img
+
+
+def fetch_view(args) -> tuple[np.ndarray, dict]:
+    """Look up the rosette, download the frame(s) with the caller's credentials and return the
+    road view to send plus its metadata."""
+    from google.cloud import bigquery, storage
+
+    creds, _ = _optional_svi_geo_auth()
+    project = args.project
+    bq = bigquery.Client(project=project, credentials=creds)
+    if args.coordinates:
+        lat, lng = (float(x) for x in args.coordinates.split(","))
+        params = [
+            bigquery.ScalarQueryParameter("lat", "FLOAT64", lat),
             bigquery.ScalarQueryParameter("lng", "FLOAT64", lng),
-            bigquery.ScalarQueryParameter("lat", "FLOAT64", lat)
-        ])
-        rows = list(client_bq.query(query, job_config=job_config).result())
+            bigquery.ScalarQueryParameter("radius_m", "FLOAT64", args.radius_m),
+        ]
+        rows = run_query(bq, render_sql(COORDS_SQL, project, args.dataset), params)
         if not rows:
-            raise ValueError(f"No image observation found near coordinates: {lat}, {lng}")
-        return rows[0].gcs_uri, project_id
-        
-    return None, project_id
+            raise ValueError(f"no pano within {args.radius_m} m of {lat},{lng}")
+        near = min(rows, key=lambda r: _dist_m(lat, lng, r["lat"], r["lng"]))
+    else:
+        target_id = args.observation_id or getattr(args, "capture_id", None) or args.pano_id
+        print(
+            "[bigquery] note: ID lookup scans ~1.63 GB even on a miss; prefer --coordinates when known.",
+            file=sys.stderr,
+        )
+        params = [
+            bigquery.ScalarQueryParameter("id", "STRING", target_id),
+            bigquery.ScalarQueryParameter("radius_m", "FLOAT64", args.radius_m),
+        ]
+        rows = run_query(bq, render_sql(ID_SQL, project, args.dataset), params)
+        if not rows:
+            raise ValueError(
+                f"no pano observation found for {target_id} (note: a miss still billed ~1.63 GB; consider --coordinates)"
+            )
+        near = min(
+            rows,
+            key=lambda r: (
+                target_id not in (r["observation_id"], r.get("capture_id"), r.get("pano_id")),
+                _dist_m(r["hit_lat"], r["hit_lng"], r["lat"], r["lng"]),
+            ),
+        )
+    rosette_id = _rosette_key(near)
+    frames = frame_rows(rows, rosette_id)
+    travel = resolve_travel(travel_direction(rows, rosette_id), args.travel_deg)
+    gcs = storage.Client(project=project, credentials=creds)
+    meta = {
+        "capture_id": near.get("capture_id") or rosette_id,
+        "pano_id": near.get("pano_id"),
+        "travel_deg": round(travel, 1),
+        "capture_time": str(near["capture_time"]),
+        "project": project,
+    }
+    try:
+        from svi_geo import images, rosette, sequence
+    except ImportError:
+        cam = pick_front_camera(frames, travel)
+        img = _download(gcs, args.gcs_bucket, cam)
+        meta.update(observation_id=cam["observation_id"], cam_k=cam["cam_k"])
+        return road_view(img), meta
+    rv = plan_road_view(frames, travel)
+    check_black(rv)
+    imgs = {int(r["cam_k"]): _download(gcs, args.gcs_bucket, r) for r in rv.rows}
+    view = sequence.render_road_view(imgs, rosette.load_intrinsics(), rv)
+    print(
+        f"[view] yaw={rv.view.yaw_deg:.1f} hfov={rv.view.hfov_deg:.1f} cameras="
+        f"{sorted(imgs)} black_fraction_sent={rv.black_sent:.4f} "
+        f"dark_pixel_fraction={images.dark_pixel_fraction(view):.4f}",
+        file=sys.stderr,
+    )
+    meta.update(
+        observation_ids=[r["observation_id"] for r in rv.rows],
+        cam_k=sorted(imgs),
+        black_fraction_sent=round(float(rv.black_sent), 4),
+    )
+    return _fit_within(view), meta
+
 
 def main():
     args = parse_args()
-    project_id = args.project
-    
-    if args.image:
-        gcs_uri = convert_to_gs_uri(args.image)
-    else:
-        try:
-            gcs_uri, project_id = query_image_from_bq(args)
-        except Exception as e:
-            print(f"Error querying BigQuery: {e}", file=sys.stderr)
-            sys.exit(1)
-            
-    if not gcs_uri:
-        print(json.dumps({"error": "No image observation found."}))
-        sys.exit(1)
-        
-    client = genai.Client(vertexai=True, project=project_id, location=args.location)
-    
     try:
-        if gcs_uri.startswith("gs://"):
-            try:
-                bucket_name, blob_name = gcs_uri.replace("gs://", "").split("/", 1)
-                storage_client = storage.Client(project=project_id)
-                bucket = storage_client.bucket(bucket_name)
-                blob = bucket.blob(blob_name)
-                img_data = blob.download_as_bytes()
-                image_part = types.Part.from_bytes(data=img_data, mime_type="image/jpeg")
-            except Exception as download_err:
-                print(f"Warning: GCS direct download failed ({download_err}), trying from_uri...", file=sys.stderr)
-                image_part = types.Part.from_uri(file_uri=gcs_uri, mime_type="image/jpeg")
+        if args.image:
+            img = cv2.imread(args.image, cv2.IMREAD_COLOR)
+            if img is None:
+                raise ValueError(f"cannot read {args.image}")
+            meta = {"image": args.image, "project": args.project}
+            view = road_view(img)
         else:
-            img = Image.open(gcs_uri)
-            if img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
-            img_byte_arr = BytesIO()
-            img.save(img_byte_arr, format='JPEG')
-            image_part = types.Part.from_bytes(data=img_byte_arr.getvalue(), mime_type="image/jpeg")
-    except Exception as e:
-        print(f"Error loading image {gcs_uri}: {e}", file=sys.stderr)
+            view, meta = fetch_view(args)
+    except Exception as e:  # noqa: BLE001 - CLI boundary
+        print(f"Error loading image: {e}", file=sys.stderr)
         sys.exit(1)
-        
-    contents = [image_part, SURFACE_MATERIAL_PROMPT]
-    
+
+    from google import genai
+    from google.genai import types
+
+    ok, jpg = cv2.imencode(".jpg", view, [cv2.IMWRITE_JPEG_QUALITY, 90])
+    if not ok:
+        print("Error: could not encode the road view", file=sys.stderr)
+        sys.exit(1)
+    creds, http_kw = _optional_svi_geo_auth()
+    client = genai.Client(
+        vertexai=True,
+        project=meta["project"],
+        location=args.location,
+        credentials=creds,
+        http_options=types.HttpOptions(**http_kw) if http_kw else None,
+    )
     try:
-        response = client.models.generate_content(
+        resp = client.models.generate_content(
             model=args.model,
-            contents=contents,
+            contents=[
+                types.Part.from_bytes(data=jpg.tobytes(), mime_type="image/jpeg"),
+                SURFACE_MATERIAL_PROMPT,
+            ],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                temperature=0.1
-            )
+                response_schema=SurfaceMaterialResult,
+            ),
         )
-        output_json = response.text
-        print(output_json)
-        
-        if args.output:
-            os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
-            with open(args.output, "w") as f:
-                f.write(output_json)
-            print(f"Successfully saved surface material analysis to {args.output}", file=sys.stderr)
-            
-    except Exception as e:
+        result = SurfaceMaterialResult.model_validate_json(resp.text)
+    except Exception as e:  # noqa: BLE001 - CLI boundary
         print(f"Material detection failed: {e}", file=sys.stderr)
         sys.exit(1)
+    try:
+        print(cost_line(resp.usage_metadata, args.model), file=sys.stderr)
+    except ImportError:  # no svi_geo price table: report the raw token counts only
+        print(f"[gemini] calls=1 usage={resp.usage_metadata}", file=sys.stderr)
+    out = {
+        **result.model_dump(mode="json"),
+        "source": {k: v for k, v in meta.items() if k not in ("project", "camera_pose")},
+        "created": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+    }
+    text = json.dumps(out, indent=2)
+    print(text)
+    if args.output:
+        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.output).write_text(text)
+        print(f"Saved surface material analysis to {args.output}", file=sys.stderr)
+
 
 if __name__ == "__main__":
     main()

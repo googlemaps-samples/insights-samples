@@ -1,0 +1,8 @@
+label_id,pano_id,observation_id,view_yaw_deg,class,x0,y0,x1,y1,object_key,material,condition,notes,side,present,edge_type,points_json,labeller
+S1,P1,,,ROAD_SEGMENT,,,,,,Paved Asphalt,Good,synthetic fixture,CENTER,true,,,fixture
+S2,P1,,,SIDEWALK_SEGMENT,,,,,,Concrete,Good,synthetic fixture,LEFT,true,,,fixture
+S3,P1,,,SIDEWALK_SEGMENT,,,,,,,,synthetic fixture,RIGHT,false,,,fixture
+S4,P2,,,SIDEWALK_SEGMENT,,,,,,Concrete,Fair,synthetic fixture,LEFT,true,,,fixture
+S5,P2,,,SIDEWALK_SEGMENT,,,,,,,,synthetic fixture,RIGHT,false,,,fixture
+R1,P1,,90,ROOF_EDGE,,,,,,,,synthetic fixture,,,RIDGE,"[[100, 100], [300, 100]]",fixture
+R2,P1,,90,ROOF_EDGE,,,,,,,,synthetic fixture,,,EAVE,"[[100, 250], [300, 250]]",fixture

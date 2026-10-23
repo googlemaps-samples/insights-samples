@@ -1,0 +1,576 @@
+"""Drive-sequence reconstruction for pano captures.
+
+`capture_id` holds exactly one pano, so drives are rebuilt from `snapshot_id` +
+`capture_time` + distance. Nothing here assumes a particular pano spacing: the gap threshold
+defaults to a multiple of the spacing *measured* on the same data (`spacing_stats`).
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import math
+from collections.abc import Mapping, Sequence
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from svi_geo import geo, rosette
+
+_REQUIRED_COORDS = ("snapshot_id", "capture_time", "lat", "lng")
+
+
+def _ensure_capture_id(panos: pd.DataFrame) -> pd.DataFrame:
+    if "capture_id" in panos.columns and "pano_id" in panos.columns:
+        return panos
+    out = panos.copy()
+    if "capture_id" not in out.columns:
+        if "pano_id" not in out.columns:
+            raise ValueError("panos frame missing 'capture_id' (or 'pano_id') column")
+        out["capture_id"] = out["pano_id"]
+    if "pano_id" not in out.columns:
+        out["pano_id"] = out["capture_id"]
+    return out
+
+
+def _prep(panos: pd.DataFrame) -> pd.DataFrame:
+    missing = [c for c in _REQUIRED_COORDS if c not in panos.columns]
+    if missing or ("capture_id" not in panos.columns and "pano_id" not in panos.columns):
+        req = ("capture_id", *_REQUIRED_COORDS)
+        raise ValueError(
+            f"panos frame missing columns {[c for c in req if c not in panos.columns]}"
+        )
+    df = _ensure_capture_id(panos).drop_duplicates("capture_id").copy()
+    df["capture_time"] = pd.to_datetime(df["capture_time"], utc=True)
+    df["_t"] = (df["capture_time"] - pd.Timestamp("1970-01-01", tz="UTC")).dt.total_seconds()
+    lat0, lng0 = float(df["lat"].mean()), float(df["lng"].mean())
+    e, n, _ = geo.lla_to_enu(df["lat"].to_numpy(), df["lng"].to_numpy(), 0.0, lat0, lng0, 0.0)
+    df["_e"], df["_n"] = e, n
+    return df.sort_values(["snapshot_id", "_t", "capture_id"]).reset_index(drop=True)
+
+
+def spacing_stats(panos: pd.DataFrame, max_dt_s: float = 5.0, max_d_m: float = 50.0) -> dict:
+    """Distance between time-consecutive panos of a snapshot (0 < dt <= max_dt, d < max_d)."""
+    df = _prep(panos)
+    ds = []
+    for _, g in df.groupby("snapshot_id", sort=False):
+        dt = np.diff(g["_t"].to_numpy())
+        d = np.hypot(np.diff(g["_e"].to_numpy()), np.diff(g["_n"].to_numpy()))
+        keep = (dt > 0) & (dt <= max_dt_s) & (d < max_d_m)
+        ds.append(d[keep])
+    d = np.concatenate(ds) if ds else np.array([])
+    if d.size == 0:
+        return {"n": 0, "median_m": float("nan"), "p10_m": float("nan"), "p90_m": float("nan")}
+    return {
+        "n": int(d.size),
+        "median_m": float(np.median(d)),
+        "p10_m": float(np.percentile(d, 10)),
+        "p90_m": float(np.percentile(d, 90)),
+    }
+
+
+def build_sequences(
+    panos: pd.DataFrame,
+    max_dt_s: float = 5.0,
+    max_gap_m: float | None = None,
+    gap_factor: float = 3.0,
+) -> pd.DataFrame:
+    """Chain panos into drive sequences keyed by `capture_id`.
+
+    Per snapshot, in time order, each pano's predecessor is the spatially nearest earlier pano
+    within `max_dt_s` and `max_gap_m` that has no successor yet. `max_gap_m` defaults to
+    `gap_factor` x the measured median spacing. Returns the panos with `seq_id`, `seq_idx`.
+    """
+    df = _prep(panos)
+    if max_gap_m is None:
+        med = spacing_stats(panos, max_dt_s=max_dt_s)["median_m"]
+        max_gap_m = gap_factor * (med if np.isfinite(med) else 10.0)
+    t = df["_t"].to_numpy()
+    e = df["_e"].to_numpy()
+    n = df["_n"].to_numpy()
+    snap = df["snapshot_id"].to_numpy()
+    pred = np.full(len(df), -1)
+    has_succ = np.zeros(len(df), bool)
+    lo = 0
+    for i in range(len(df)):
+        while lo < i and (snap[lo] != snap[i] or t[i] - t[lo] > max_dt_s):
+            lo += 1
+        best, best_d = -1, np.inf
+        for j in range(lo, i):
+            if has_succ[j] or t[j] >= t[i] or snap[j] != snap[i]:
+                continue
+            d = np.hypot(e[i] - e[j], n[i] - n[j])
+            if d <= max_gap_m and d < best_d:
+                best, best_d = j, d
+        if best >= 0:
+            pred[i] = best
+            has_succ[best] = True
+    seq_id = np.empty(len(df), dtype=object)
+    seq_idx = np.zeros(len(df), int)
+    cid = df["capture_id"].to_numpy()
+    for i in range(len(df)):
+        if pred[i] < 0:
+            seq_id[i] = f"{str(snap[i])[:8]}_{cid[i]}"
+            seq_idx[i] = 0
+        else:
+            seq_id[i] = seq_id[pred[i]]
+            seq_idx[i] = seq_idx[pred[i]] + 1
+    df["seq_id"] = seq_id
+    df["seq_idx"] = seq_idx
+    df.attrs["max_gap_m"] = float(max_gap_m)
+    return (
+        df.drop(columns=["_t", "_e", "_n"])
+        .sort_values(["seq_id", "seq_idx"])
+        .reset_index(drop=True)
+    )
+
+
+def select_by_spacing(
+    seq: pd.DataFrame,
+    target_spacing_m: float = 10.0,
+    max_panos: int | None = None,
+) -> pd.DataFrame:
+    """Subsample a sequence so consecutive kept rosettes are at least `target_spacing_m` apart."""
+    if seq.empty:
+        return seq.copy()
+    df = _ensure_capture_id(seq)
+    if "seq_idx" in df.columns:
+        df = df.sort_values("seq_idx").reset_index(drop=True)
+    elif "capture_time" in df.columns:
+        df = df.sort_values(["capture_time", "capture_id"]).reset_index(drop=True)
+    else:
+        df = df.reset_index(drop=True)
+    if target_spacing_m <= 0:
+        return df.head(max_panos).reset_index(drop=True) if max_panos is not None else df
+    lat = df["lat"].to_numpy(dtype=float)
+    lng = df["lng"].to_numpy(dtype=float)
+    keep_idx = [0]
+    last_i = 0
+    for i in range(1, len(df)):
+        if max_panos is not None and len(keep_idx) >= max_panos:
+            break
+        d = float(geo.haversine_m(lat[last_i], lng[last_i], lat[i], lng[i]))
+        if d >= target_spacing_m - 1e-6:
+            keep_idx.append(i)
+            last_i = i
+    return df.iloc[keep_idx].reset_index(drop=True)
+
+
+def travel_bearing(seqs: pd.DataFrame) -> np.ndarray:
+    """Travel direction (deg) per row: central difference inside a sequence, one-sided at ends."""
+    out = np.full(len(seqs), np.nan)
+    order = seqs.sort_values(["seq_id", "seq_idx"])
+    for _, g in order.groupby("seq_id", sort=False):
+        idx = g.index.to_numpy()
+        lat, lng = g["lat"].to_numpy(), g["lng"].to_numpy()
+        m = len(g)
+        if m < 2:
+            continue
+        for a in range(m):
+            p, q = max(a - 1, 0), min(a + 1, m - 1)
+            out[idx[a]] = geo.bearing_deg(lat[p], lng[p], lat[q], lng[q])
+    return out
+
+
+def neighbours(seqs: pd.DataFrame, capture_id: str, k: int = 2) -> pd.DataFrame:
+    """Rosettes within k steps of `capture_id` in its sequence (excluding itself), in order."""
+    df = _ensure_capture_id(seqs)
+    row = df.loc[df["capture_id"] == capture_id]
+    if row.empty and "pano_id" in df.columns:
+        row = df.loc[df["pano_id"] == capture_id]
+    if row.empty:
+        return seqs.iloc[0:0]
+    sid, i = row.iloc[0]["seq_id"], int(row.iloc[0]["seq_idx"])
+    g = seqs[(seqs["seq_id"] == sid) & (seqs["seq_idx"] != i) & ((seqs["seq_idx"] - i).abs() <= k)]
+    return g.sort_values("seq_idx")
+
+
+ROLE_OFFSETS = {"front": 0.0, "right": 90.0, "back": 180.0, "left": -90.0}
+
+
+def _pose(row: Any) -> Mapping[str, Any]:
+    return row["camera_pose"] if isinstance(row, Mapping) else row.camera_pose
+
+
+def camera_roles(frames: pd.DataFrame | list, travel_deg: float, include_sky: bool = False) -> dict:
+    """Map front/right/back/left (and optionally sky) to the frame rows of one pano."""
+    rows = frames.to_dict("records") if isinstance(frames, pd.DataFrame) else list(frames)
+    ground, sky = [], None
+    for r in rows:
+        k = rosette.camera_index(r["observation_id"])
+        if k is None:
+            continue
+        if rosette.is_ground_camera(k) and abs(float(_pose(r).get("pitch", 0.0))) <= 45.0:
+            ground.append(r)
+        elif k == rosette.SKY_CAMERA:
+            sky = r
+    roles = {}
+    if ground and np.isfinite(travel_deg):
+        for role, off in ROLE_OFFSETS.items():
+            target = travel_deg + off
+            roles[role] = min(
+                ground, key=lambda r: abs(float(geo.angdiff(float(_pose(r)["heading"]), target)))
+            )
+    if include_sky and sky is not None:
+        roles["sky"] = sky
+    return roles
+
+
+ROAD_VIEW_ROLES = {"front": 0.0, "left": -90.0, "right": 90.0}
+
+
+def road_view_yaw(travel_deg: float, role: str) -> float:
+    """World yaw of a road view: travel direction + 0 (front), -90 (left) or +90 (right)."""
+    return float((travel_deg + ROAD_VIEW_ROLES[role]) % 360.0)
+
+
+@dataclasses.dataclass(frozen=True)
+class RoadView:
+    choice: rosette.CameraChoice
+    view: rosette.PerspectiveView
+    keep_rows: int  # rows above the vehicle hood; the rest is cropped after rendering
+    rows: tuple = ()  # the frames the view is rendered from (2 when composited on a seam)
+    black: float = math.nan  # analytic share of view pixels without image data
+    black_sent: float = math.nan  # the same share in the hood-cropped image sent to Gemini
+
+
+def road_view(
+    pano_rows: Sequence[Any],
+    intr: rosette.Intrinsics,
+    travel_deg: float,
+    role: str,
+    pitch_deg: float = -22.0,
+    hfov_deg: float = 70.0,
+    size: tuple[int, int] = (1024, 768),
+    hood_elev_deg: float = rosette.HOOD_ELEV_DEG,
+    min_hfov_deg: float = 40.0,
+    max_black: float = 0.01,
+) -> RoadView | None:
+    """A world-oriented road view centred on travel + role offset (not on a camera heading).
+
+    The camera is whichever ground camera of the pano covers the view best
+    (`rosette.best_camera_for_view`); the FOV is narrowed from `hfov_deg` if needed so that
+    less than `max_black` of the view falls outside the sensor. Rows below the vehicle hood
+    are reported in `keep_rows` so `render_road_view` crops them. None if no camera reaches
+    `min_hfov_deg`.
+
+    If no single camera reaches `min_hfov_deg` (the view is centred on the seam between two
+    cameras, as the travel direction is on the real rosette), the view is composited from the
+    ground cameras that cover it (`rosette.render_perspective_multi`); `rows` then lists them
+    and `choice` is the one whose axis is nearest the view centre."""
+    w, h = size
+    yaw = road_view_yaw(travel_deg, role)
+    choice = rosette.best_camera_for_view(
+        pano_rows, intr, yaw, pitch_deg, w / h,
+        min_hfov=min_hfov_deg, max_black=max_black, hfov_cap=hfov_deg,
+    )  # fmt: skip
+    if choice is not None:
+        view = rosette.PerspectiveView(yaw, float(pitch_deg), choice.hfov_deg, w, h)
+        keep = rosette.hood_row(view, _pose(choice.row), intr, hood_elev_deg, choice.cam_k)
+        pose = _pose(choice.row)
+        black = rosette.view_black_fraction(intr, pose, view, choice.cam_k)
+        sent = rosette.view_black_fraction(intr, pose, view, choice.cam_k, max_row=keep)
+        return RoadView(choice, view, keep, (choice.row,), black, sent)
+    hfov, vfov = rosette.max_view_fov_multi(
+        intr, pano_rows, yaw, pitch_deg, w / h, max_black=max_black, hfov_cap=hfov_deg,
+        min_hfov=min_hfov_deg,
+    )  # fmt: skip
+    if hfov < min_hfov_deg:
+        return None
+    view = rosette.PerspectiveView(yaw, float(pitch_deg), hfov, w, h)
+    used = rosette.composite_rows(intr, pano_rows, view)
+    ks = [rosette.camera_index(r["observation_id"]) for r in used]
+    centre = [
+        abs(geo.angdiff(_axis_heading(intr, r, k), yaw)) for r, k in zip(used, ks, strict=True)
+    ]
+    i = int(np.argmin(centre))
+    choice = rosette.CameraChoice(used[i], ks[i], hfov, vfov)
+    keep = min(rosette.hood_row(view, _pose(r), intr, hood_elev_deg, k)
+               for r, k in zip(used, ks, strict=True))  # fmt: skip
+    black = rosette.view_black_fraction_multi(intr, used, view)
+    sent = rosette.view_black_fraction_multi(intr, used, view, max_row=keep)
+    return RoadView(choice, view, keep, used, black, sent)
+
+
+def _axis_heading(intr: rosette.Intrinsics, row: Any, k: int) -> float:
+    return float(_pose(row)["heading"]) + intr.cam_rot_delta_deg.get(k, (0.0,))[0]
+
+
+def render_road_view(
+    image: np.ndarray | Mapping[int, np.ndarray], intr: rosette.Intrinsics, rv: RoadView
+) -> np.ndarray:
+    """Render `rv` and crop the rows below the vehicle hood. `image` is the frame of
+    `rv.choice`, or a {cam_k: frame} mapping covering every row in `rv.rows` (required when
+    the view is composited from two cameras)."""
+    if len(rv.rows) > 1:
+        if not isinstance(image, Mapping):
+            raise TypeError("a composited road view needs {cam_k: frame} for all of rv.rows")
+        out = rosette.render_perspective_multi(image, intr, rv.rows, rv.view)
+    else:
+        img = image[rv.choice.cam_k] if isinstance(image, Mapping) else image
+        out = rosette.render_perspective(img, intr, _pose(rv.choice.row), rv.view, rv.choice.cam_k)
+    return out[: rv.keep_rows]
+
+
+def repeat_pairs(
+    seqs: pd.DataFrame,
+    max_sep_m: float = 15.0,
+    min_overlap_m: float = 80.0,
+    min_matched_panos: int = 3,
+) -> list[dict[str, Any]]:
+    """Find pairs of sequences captured on different UTC calendar days whose paths overlap.
+
+    Two sequences (sid_a, sid_b) captured on distinct UTC calendar days (`capture_time.dt.date`)
+    form a repeat pair when:
+      1. At least `min_matched_panos` rosettes of sequence A lie within `max_sep_m` of a rosette in
+         sequence B, and
+      2. The path length along sequence A covered by those matched rosettes is `>= min_overlap_m`.
+    """
+    if seqs.empty:
+        return []
+    df = _ensure_capture_id(seqs).drop_duplicates("capture_id").copy()
+    df["capture_time"] = pd.to_datetime(df["capture_time"], utc=True)
+    df["_date"] = df["capture_time"].dt.date
+    lat0, lng0 = float(df["lat"].mean()), float(df["lng"].mean())
+    e, n, _ = geo.lla_to_enu(df["lat"].to_numpy(), df["lng"].to_numpy(), 0.0, lat0, lng0, 0.0)
+    df["_e"], df["_n"] = e, n
+    df = df.sort_values(["seq_id", "seq_idx"]).reset_index(drop=True)
+
+    groups = {sid: g.reset_index(drop=True) for sid, g in df.groupby("seq_id", sort=True)}
+    sids = sorted(groups.keys())
+    pairs: list[dict[str, Any]] = []
+    for i, sid_a in enumerate(sids):
+        ga = groups[sid_a]
+        dates_a = set(ga["_date"])
+        xy_a = np.column_stack([ga["_e"].to_numpy(), ga["_n"].to_numpy()])
+        if len(xy_a) < min_matched_panos:
+            continue
+        for sid_b in sids[i + 1 :]:
+            gb = groups[sid_b]
+            dates_b = set(gb["_date"])
+            if dates_a & dates_b:
+                continue
+            xy_b = np.column_stack([gb["_e"].to_numpy(), gb["_n"].to_numpy()])
+            if len(xy_b) < min_matched_panos:
+                continue
+            diff = xy_a[:, None, :] - xy_b[None, :, :]
+            dists = np.hypot(diff[:, :, 0], diff[:, :, 1])
+            min_d = dists.min(axis=1)
+            nearest_b = dists.argmin(axis=1)
+            matched_idx = np.flatnonzero(min_d <= max_sep_m)
+            if matched_idx.size < min_matched_panos:
+                continue
+            lo_idx, hi_idx = int(matched_idx[0]), int(matched_idx[-1])
+            seg = xy_a[lo_idx : hi_idx + 1]
+            overlap_m = float(np.sum(np.hypot(np.diff(seg[:, 0]), np.diff(seg[:, 1]))))
+            if overlap_m < min_overlap_m:
+                continue
+            matched_pairs = [
+                (
+                    str(ga.loc[int(k), "capture_id"]),
+                    str(gb.loc[int(nearest_b[k]), "capture_id"]),
+                )
+                for k in matched_idx
+            ]
+            pairs.append(
+                {
+                    "seq_a": str(sid_a),
+                    "seq_b": str(sid_b),
+                    "date_a": str(min(dates_a)),
+                    "date_b": str(min(dates_b)),
+                    "overlap_m": overlap_m,
+                    "median_sep_m": float(np.median(min_d[matched_idx])),
+                    "capture_pairs": matched_pairs,
+                    "pano_pairs": matched_pairs,
+                }
+            )
+    return pairs
+
+
+def blocks(seqs: pd.DataFrame, block_size: int = 5) -> dict[str, str]:
+    """Assign each `capture_id` in `seqs` to a deterministic spatial block of `block_size` consecutive rosettes."""
+    if block_size <= 0:
+        raise ValueError("block_size must be >= 1")
+    df = (
+        _ensure_capture_id(seqs)
+        .drop_duplicates("capture_id")
+        .sort_values(["seq_id", "seq_idx"])
+        .reset_index(drop=True)
+    )
+    out: dict[str, str] = {}
+    for sid, g in df.groupby("seq_id", sort=True):
+        for pos, cid in enumerate(g["capture_id"].tolist()):
+            out[str(cid)] = f"{sid}:b{pos // block_size:03d}"
+    return out
+
+
+def audit_corridor_spans(
+    rosettes: pd.DataFrame,
+    entities: pd.DataFrame | Sequence[Any],
+    *,
+    classes: Sequence[str] = ("UTILITY_POLE", "STREET_LIGHT"),
+    max_lateral_m: float = 35.0,
+    max_span_m: float = 50.0,
+) -> dict[str, Any]:
+    """Project located corridor entities onto the sequence polyline, partition LEFT vs RIGHT,
+    compute consecutive same-side pole-to-pole span distances, and flag span gaps > `max_span_m`."""
+    empty_cols = [
+        "entity_id",
+        "class",
+        "lat",
+        "lng",
+        "station_m",
+        "signed_lateral_m",
+        "side",
+        "span_from_prev_m",
+    ]
+    if rosettes is None or rosettes.empty:
+        empty = pd.DataFrame(columns=empty_cols)
+        return {"left": empty, "right": empty.copy(), "span_gaps": []}
+
+    ros = _ensure_capture_id(rosettes).copy()
+    if "seq_idx" in ros.columns:
+        ros = ros.sort_values("seq_idx").reset_index(drop=True)
+    else:
+        ros = ros.reset_index(drop=True)
+
+    ref_lat = float(ros["lat"].iloc[0])
+    ref_lng = float(ros["lng"].iloc[0])
+    rx, ry, _ = geo.lla_to_enu(
+        ros["lat"].to_numpy(dtype=float),
+        ros["lng"].to_numpy(dtype=float),
+        0.0,
+        ref_lat,
+        ref_lng,
+        0.0,
+    )
+    track_xy = np.column_stack([rx, ry])
+    n_pts = len(track_xy)
+    seg_lens = np.hypot(np.diff(rx), np.diff(ry)) if n_pts >= 2 else np.array([], dtype=float)
+    cum_s = np.concatenate([[0.0], np.cumsum(seg_lens)]) if n_pts >= 2 else np.array([0.0])
+    total_len = float(cum_s[-1]) if len(cum_s) else 0.0
+
+    if isinstance(entities, pd.DataFrame):
+        ent_records = entities.to_dict("records")
+    else:
+        ent_records = [
+            {
+                "entity_id": getattr(e, "entity_id", None)
+                if not isinstance(e, Mapping)
+                else e.get("entity_id"),
+                "class": (
+                    getattr(e, "cls", None)
+                    if not isinstance(e, Mapping)
+                    else (e.get("class") or e.get("cls"))
+                ),
+                "lat": getattr(e, "lat", None) if not isinstance(e, Mapping) else e.get("lat"),
+                "lng": getattr(e, "lng", None) if not isinstance(e, Mapping) else e.get("lng"),
+                "method": (
+                    getattr(e, "method", "triangulated")
+                    if not isinstance(e, Mapping)
+                    else e.get("method", "triangulated")
+                ),
+            }
+            for e in (entities or ())
+        ]
+
+    cls_set = set(classes)
+    proj_rows: list[dict[str, Any]] = []
+    for r in ent_records:
+        c_name = str(r.get("class") or r.get("cls") or "")
+        if cls_set and c_name not in cls_set:
+            continue
+        if str(r.get("method", "triangulated")) == "unlocated":
+            continue
+        lat = r.get("lat")
+        lng = r.get("lng")
+        if lat is None or lng is None or not (math.isfinite(float(lat)) and math.isfinite(float(lng))):
+            continue
+        ex_arr, ey_arr, _ = geo.lla_to_enu(float(lat), float(lng), 0.0, ref_lat, ref_lng, 0.0)
+        p = np.array([float(np.asarray(ex_arr).item()), float(np.asarray(ey_arr).item())])
+
+        if n_pts >= 2:
+            best_d = float("inf")
+            best_s = 0.0
+            best_signed_lat = 0.0
+            for i in range(n_pts - 1):
+                a = track_xy[i]
+                b = track_xy[i + 1]
+                ab = b - a
+                L2 = float(np.dot(ab, ab))
+                if L2 < 1e-12:
+                    continue
+                L = math.sqrt(L2)
+                t_raw = float(np.dot(p - a, ab) / L2)
+                t_clamped = max(0.0, min(1.0, t_raw))
+                proj = a + t_clamped * ab
+                d = float(np.linalg.norm(p - proj))
+                if d < best_d:
+                    best_d = d
+                    # Allow at most +-5.0 m overhang at sequence endpoints so station_m stays physical
+                    t_s = t_raw if (i == 0 and t_raw < 0.0) or (i == n_pts - 2 and t_raw > 1.0) else t_clamped
+                    best_s = float(np.clip(cum_s[i] + t_s * L, -5.0, total_len + 5.0))
+                    u_tan = ab / L
+                    # Right-of-way normal in ENU: if tangent is (tx, ty), right normal is (ty, -tx)
+                    n_right = np.array([u_tan[1], -u_tan[0]])
+                    best_signed_lat = float(np.dot(p - a, n_right))
+        else:
+            best_d = float(np.linalg.norm(p - track_xy[0]))
+            best_s = 0.0
+            best_signed_lat = float(p[0] - track_xy[0, 0])
+
+        if abs(best_signed_lat) > float(max_lateral_m) or best_d > float(max_lateral_m):
+            continue
+        side = "RIGHT" if best_signed_lat >= 0.0 else "LEFT"
+        proj_rows.append(
+            {
+                "entity_id": str(r.get("entity_id") or ""),
+                "class": c_name,
+                "lat": float(lat),
+                "lng": float(lng),
+                "station_m": best_s,
+                "signed_lateral_m": best_signed_lat,
+                "side": side,
+            }
+        )
+
+    if not proj_rows:
+        empty = pd.DataFrame(columns=empty_cols)
+        return {"left": empty, "right": empty.copy(), "span_gaps": []}
+
+    df_all = pd.DataFrame(proj_rows)
+    span_gaps: list[dict[str, Any]] = []
+    out_sides: dict[str, pd.DataFrame] = {}
+    for side_key, side_label in (("left", "LEFT"), ("right", "RIGHT")):
+        sub = df_all[df_all["side"] == side_label].sort_values("station_m").reset_index(drop=True)
+        if sub.empty:
+            sub["span_from_prev_m"] = pd.Series(dtype=float)
+            out_sides[side_key] = sub[empty_cols]
+            continue
+        spans = [float("nan")]
+        for idx in range(1, len(sub)):
+            s0 = float(sub.loc[idx - 1, "station_m"])
+            s1 = float(sub.loc[idx, "station_m"])
+            ds = s1 - s0
+            spans.append(ds)
+            if ds > float(max_span_m):
+                span_gaps.append(
+                    {
+                        "side": side_label,
+                        "from_entity_id": str(sub.loc[idx - 1, "entity_id"]),
+                        "to_entity_id": str(sub.loc[idx, "entity_id"]),
+                        "from_station_m": s0,
+                        "to_station_m": s1,
+                        "span_m": ds,
+                        "mid_station_m": 0.5 * (s0 + s1),
+                    }
+                )
+        sub["span_from_prev_m"] = spans
+        out_sides[side_key] = sub[empty_cols]
+
+    return {
+        "left": out_sides["left"],
+        "right": out_sides["right"],
+        "span_gaps": span_gaps,
+    }
+

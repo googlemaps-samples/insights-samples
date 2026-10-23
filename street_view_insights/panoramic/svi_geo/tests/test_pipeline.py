@@ -1,0 +1,282 @@
+"""Zero-mock geometry tests for the detection pipeline, with a scripted Gemini backend."""
+
+import asyncio
+import math
+
+import numpy as np
+import pytest
+
+from svi_geo import gemini_client as gc
+from svi_geo import images, pipeline, rosette, schemas
+from svi_geo import simulate as sim
+
+INTR = rosette.DEFAULT_INTRINSICS
+
+
+def _frames():
+    fr = sim.synthetic_frames(2, 10.0, 48.85, 2.35, travel_deg=0.0)
+    fr["gcs_uri"] = [f"gs://b/s/v0/{o}.jpg" for o in fr["observation_id"]]
+    return fr
+
+
+def test_views_cover_the_six_ground_cameras_level():
+    fr = _frames()
+    rows = fr[fr["pano_id"] == fr["pano_id"].iloc[0]].to_dict("records")
+    specs = pipeline.views_for_pano(rows, INTR)
+    assert [s.cam_k for s in specs] == list(range(6))
+    assert all(s.view.pitch_deg == 0.0 for s in specs)
+    yaws = sorted(s.view.yaw_deg for s in specs)
+    np.testing.assert_allclose(np.diff(yaws), 60.0, atol=1e-9)
+
+
+def test_box_to_observation_uses_view_geometry_and_camera_centre():
+    fr = _frames()
+    ref = sim.scene_ref(fr)
+    rows = fr[fr["pano_id"] == fr["pano_id"].iloc[0]].to_dict("records")
+    spec = pipeline.views_for_pano(rows, INTR)[1]
+    fd = schemas.FrameDetections(
+        detections=[
+            {"label": "UTILITY_POLE", "box_2d": [200, 480, 700, 520], "confidence": 0.9},
+            {"label": "UTILITY_POLE", "box_2d": [200, 100, 1000, 140], "confidence": 0.9},
+            {"label": "HOUSE", "box_2d": [100, 600, 500, 900], "confidence": 0.1},  # low conf
+        ]
+    )
+    obs = pipeline.detections_to_observations(fd, spec, ref)
+    assert len(obs) == 2
+    o = obs[0]
+    w, h = spec.view.width, spec.view.height
+    az, el_b = spec.view.pixel_to_bearing(0.5 * w, 0.7 * h)
+    assert abs(o.ray.az_deg - float(az)) < 0.1
+    assert o.ray.el_deg == pytest.approx(float(el_b)) == pytest.approx(o.el_bottom_deg)
+    np.testing.assert_allclose(o.ray.origin, rosette.camera_center_enu(spec.pose, ref))
+    assert obs[1].el_bottom_deg is None  # box touches the view bottom: no ground contact
+
+
+def test_merge_intra_pano_keeps_most_confident_duplicate():
+    fr = _frames()
+    ref = sim.scene_ref(fr)
+    rows = fr[fr["pano_id"] == fr["pano_id"].iloc[0]].to_dict("records")
+    s0, s1 = pipeline.views_for_pano(rows, INTR)[:2]
+    # the seam between views 0 and 1 is at +30 deg; a pole there appears in both views
+    az = 30.0
+    u0, v0, _ = s0.view.bearing_to_pixel(az, -10.0)
+    u1, v1, _ = s1.view.bearing_to_pixel(az, -10.0)
+
+    def box(u, v, w, h):
+        return [int(1000 * (v - 200) / h), int(1000 * (u - 10) / w), int(1000 * v / h),
+                int(1000 * (u + 10) / w)]  # fmt: skip
+
+    w, h = s0.view.width, s0.view.height
+    fd0 = schemas.FrameDetections(
+        detections=[{"label": "UTILITY_POLE", "box_2d": box(u0, v0, w, h), "confidence": 0.6}]
+    )
+    fd1 = schemas.FrameDetections(
+        detections=[{"label": "UTILITY_POLE", "box_2d": box(u1, v1, w, h), "confidence": 0.8}]
+    )
+    obs = pipeline.detections_to_observations(fd0, s0, ref)
+    obs += pipeline.detections_to_observations(fd1, s1, ref)
+    merged = pipeline.merge_intra_pano(obs)
+    assert len(merged) == 1 and merged[0].confidence == 0.8
+
+
+class BoxBackend:
+    def __init__(self):
+        self.n = 0
+
+    async def generate(self, parts, schema, code_execution=False):
+        self.n += 1
+        text = (
+            '{"detections": [{"label": "ROAD_SIGN", "box_2d": [400, 490, 600, 510], '
+            '"confidence": 0.7, "material": "METAL"}]}'
+        )
+        return gc.RawReply(text, {"prompt_token_count": 1000, "candidates_token_count": 50})
+
+
+def test_detect_panos_renders_in_code_and_sends_inline_images():
+    fr = _frames()
+    ref = sim.scene_ref(fr)
+    jpg = images.encode_jpeg(np.full((INTR.height // 8, INTR.width // 8, 3), 120, np.uint8))
+    fetched = []
+
+    def fetch(uri):
+        fetched.append(uri)
+        return jpg
+
+    backend = BoxBackend()
+    runner = gc.GeminiRunner(backend, max_calls=100, log=lambda *_: None)
+    run = asyncio.run(pipeline.detect_panos(fr, fetch, runner, INTR, ref))
+    assert backend.n == 12  # 2 panos x 6 ground views, sky camera skipped
+    assert all(not u.endswith("_6:5001ee.jpg") for u in fetched)
+    assert len(run.records) == 12
+    # one sign per view, but views of one pano never repeat an azimuth -> 12 observations
+    assert len(run.observations) == 12
+    assert {o.attrs["material"] for o in run.observations} == {"METAL"}
+    assert all(math.isfinite(o.ray.az_deg) for o in run.observations)
+
+
+def test_task_renderer_centres_a_small_view_on_the_predicted_bearing():
+    from svi_geo import eval as ev
+
+    fr = _frames()
+    frame = np.full((5472 // 8, 3648 // 8, 3), 90, np.uint8)
+    blob = images.encode_jpeg(frame)
+    fetched = []
+
+    def fetch(uri):
+        fetched.append(uri)
+        return blob
+
+    render = pipeline.task_renderer(fr, fetch, INTR)
+    row = fr.iloc[2]
+    task = ev.ViewTask(
+        "e1", "UTILITY_POLE", row.pano_id, int(row.cam_k), 123.0, -10.0, 8.0, row.observation_id
+    )
+    img, view, black = render(task)
+    assert img.shape[:2] == (768, 768)
+    assert view.yaw_deg == 123.0 and 20.0 <= view.hfov_deg <= 40.0
+    # poles/signs are centred ~2 m above the ground point, so the view looks up from -10 deg
+    assert -10.0 < view.pitch_deg < 10.0
+    pano_uris = set(fr.loc[fr.pano_id == row.pano_id, "gcs_uri"])
+    assert len(fetched) == 1 and fetched[0] in pano_uris
+    assert black < 0.01
+
+
+def test_task_renderer_views_are_black_free_at_every_bearing():
+    """The task's camera faces the target, but a 40 deg view centred up to 30 deg off its axis
+    runs off the sensor; the renderer must pick the covering camera or narrow the view."""
+    from svi_geo import eval as ev
+
+    fr = _frames()
+    blob = images.encode_jpeg(np.full((5472 // 8, 3648 // 8, 3), 90, np.uint8))
+    render = pipeline.task_renderer(fr, lambda uri: blob, INTR, size=256)
+    row = fr.iloc[0]
+    for az in np.arange(0.0, 360.0, 11.0):
+        task = ev.ViewTask("e", "HOUSE", row.pano_id, int(row.cam_k), float(az), 0.0, 12.0, "o")
+        img, view, black = render(task)
+        measured = float(np.mean(img.max(axis=-1) == 0))
+        assert measured < 0.01 and black < 0.01, (az, measured, black)
+        assert 20.0 <= view.hfov_deg <= 40.0
+
+
+def test_detect_panos_records_black_fraction_per_view():
+    fr = _frames()
+    runner = gc.GeminiRunner(BoxBackend(), max_calls=100, log=lambda *_: None)
+    run = asyncio.run(pipeline.detect_panos(fr, _fetch_grey, runner, INTR, sim.scene_ref(fr)))
+    assert all(0.0 <= r["black_fraction"] < 0.01 for r in run.records)
+
+
+class UnauthorizedBackend:
+    async def generate(self, parts, schema, code_execution=False):
+        raise PermissionError("401 UNAUTHENTICATED")
+
+
+def _fetch_grey(uri):
+    return images.encode_jpeg(np.full((INTR.height // 8, INTR.width // 8, 3), 120, np.uint8))
+
+
+def test_detect_panos_raises_when_every_gemini_request_fails():
+    fr = _frames()
+    runner = gc.GeminiRunner(UnauthorizedBackend(), max_calls=100, log=lambda *_: None)
+    with pytest.raises(gc.AllRequestsFailed, match="401"):
+        asyncio.run(pipeline.detect_panos(fr, _fetch_grey, runner, INTR, sim.scene_ref(fr)))
+
+
+def test_detect_panos_can_opt_out_of_raising():
+    fr = _frames()
+    runner = gc.GeminiRunner(UnauthorizedBackend(), max_calls=100, log=lambda *_: None)
+    run = asyncio.run(
+        pipeline.detect_panos(
+            fr, _fetch_grey, runner, INTR, sim.scene_ref(fr), raise_if_all_failed=False
+        )
+    )
+    assert run.observations == [] and runner.cost.failures == 12
+
+
+def test_public_row_classes_and_detection_prompt():
+    assert pipeline.PUBLIC_ROW_CLASSES == (
+        "UTILITY_POLE",
+        "ROAD_SIGN",
+        "STREET_LIGHT",
+        "FIRE_HYDRANT",
+        "STREET_TREE",
+    )
+    assert pipeline.DETECT_CLASSES == pipeline.PUBLIC_ROW_CLASSES
+    assert "HOUSE" not in pipeline.DETECT_CLASSES
+    prompt = pipeline.detection_prompt()
+    assert "STREET_TREE" in prompt
+    assert "trunk base" in prompt
+    assert "Do NOT box residential houses" in prompt
+
+
+def test_build_fewshot_prompt_parts_interleaves_examples():
+    img1 = np.full((64, 64, 3), 120, dtype=np.uint8)
+    img2 = np.full((64, 64, 3), 140, dtype=np.uint8)
+    query_img = np.full((64, 64, 3), 160, dtype=np.uint8)
+    ex1_fd = schemas.FrameDetections(
+        detections=[
+            schemas.Detection(
+                label="UTILITY_POLE", box_2d=[120, 460, 890, 520], confidence=0.92, material="WOOD"
+            )
+        ]
+    )
+    ex2_fd = schemas.FrameDetections(
+        detections=[
+            schemas.Detection(
+                label="STREET_TREE", box_2d=[180, 380, 870, 560], confidence=0.89, condition="GOOD"
+            )
+        ]
+    )
+    parts = pipeline.build_fewshot_prompt_parts(
+        [(img1, ex1_fd, "pole example"), (img2, ex2_fd, "tree example")],
+        query_img,
+    )
+    assert len(parts) == 1 + 3 * 2 + 2
+    assert "Few-Shot Example 1" in parts[1]
+    assert isinstance(parts[2], np.ndarray)
+    assert "UTILITY_POLE" in parts[3]
+    assert "Few-Shot Example 2" in parts[4]
+    assert isinstance(parts[5], np.ndarray)
+    assert "STREET_TREE" in parts[6]
+    assert "Target Perspective View" in parts[7]
+    assert parts[8] is query_img
+
+
+def test_detection_prompt_includes_joint_use_and_shaft_tight_rules_and_condition_attr():
+    prompt = pipeline.detection_prompt()
+    assert "wooden timber pole" in prompt.lower()
+    assert "overhead" in prompt.lower()
+    assert "standalone" in prompt.lower()
+    assert "shaft" in prompt.lower()
+
+    spec = pipeline.ViewSpec(
+        pano_id="p0",
+        observation_id="o1:p0_0:1",
+        cam_k=0,
+        gcs_uri="gs://b/s/v0/o1:p0_0:1.jpg",
+        pose={
+            "heading": 0.0,
+            "pitch": 0.0,
+            "roll": 0.0,
+            "latitude": 28.05,
+            "longitude": -81.96,
+            "altitude": 30.0,
+        },
+        view=rosette.PerspectiveView(0.0, 0.0, 70.0, 1024, 1280),
+    )
+    fd = schemas.FrameDetections(
+        detections=[
+            schemas.Detection(
+                label="UTILITY_POLE",
+                box_2d=[100, 480, 900, 520],
+                confidence=0.91,
+                material="WOOD",
+                condition="GOOD",
+            )
+        ]
+    )
+    obs = pipeline.detections_to_observations(fd, spec, (28.05, -81.96, 0.0))
+    assert len(obs) == 1
+    assert obs[0].attrs["material"] == "WOOD"
+    assert obs[0].attrs["condition"] == "GOOD"
+
+

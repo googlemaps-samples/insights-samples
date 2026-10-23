@@ -1,0 +1,9 @@
+# Lint settings for everything under panoramic/ (notebooks and skills) when ruff is run from the
+# repository root. svi_geo/ keeps its own pyproject.toml settings.
+extend = "svi_geo/pyproject.toml"
+
+[lint]
+extend-select = ["RUF007"]
+
+[lint.isort]
+known-first-party = ["svi_geo"]

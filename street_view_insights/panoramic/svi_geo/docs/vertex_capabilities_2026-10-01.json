@@ -1,0 +1,172 @@
+{
+  "date": "2026-10-01",
+  "project": "imagery-insights-sandbox",
+  "model": "gemini-3.5-flash",
+  "location": "global",
+  "sdk_version": "google-genai",
+  "expected_widths_px": [
+    60,
+    100,
+    140
+  ],
+  "probes": {
+    "schema_native_medium_high": {
+      "http_ok": true,
+      "executable_code_count": 1,
+      "executable_code_languages": [
+        "Language.PYTHON"
+      ],
+      "outcomes": [
+        "Outcome.OUTCOME_OK"
+      ],
+      "outcome_ok": true,
+      "stdout_preview": [
+        "{\"count\": 3, \"widths_px\": [60, 100, 140]}\n"
+      ],
+      "inline_image_parts": 0,
+      "parsed": {
+        "count": 3,
+        "widths_px": [
+          60,
+          100,
+          140
+        ]
+      },
+      "widths_within_3px": true,
+      "usage_metadata": {
+        "prompt_token_count": 1208,
+        "candidates_token_count": 335,
+        "thoughts_token_count": 77,
+        "tool_use_prompt_token_count": 1467,
+        "cached_content_token_count": null,
+        "total_token_count": 3087
+      }
+    },
+    "schema_in_prompt_medium_high": {
+      "http_ok": true,
+      "executable_code_count": 4,
+      "executable_code_languages": [
+        "Language.PYTHON",
+        "Language.PYTHON",
+        "Language.PYTHON",
+        "Language.PYTHON"
+      ],
+      "outcomes": [
+        "Outcome.OUTCOME_OK",
+        "Outcome.OUTCOME_FAILED",
+        "Outcome.OUTCOME_FAILED",
+        "Outcome.OUTCOME_OK"
+      ],
+      "outcome_ok": true,
+      "stdout_preview": [
+        "MEASURE: {\"count\": 3, \"widths_px\": [60, 100, 140]}\n",
+        "\nTraceback (most recent call last):\n  File \"<string>\", line 6, in <module>\nNameError: name 'img' is not defined\n",
+        "\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nNameError: name 'cv2' is not defined\n",
+        "Using exact column-based detection:\nRectangles detected: 3, Widths: [60, 100, 140]\n"
+      ],
+      "inline_image_parts": 0,
+      "parsed": {
+        "count": 3,
+        "widths_px": [
+          60,
+          100,
+          140
+        ]
+      },
+      "widths_within_3px": true,
+      "usage_metadata": {
+        "prompt_token_count": 1220,
+        "candidates_token_count": 1608,
+        "thoughts_token_count": 220,
+        "tool_use_prompt_token_count": 2167,
+        "cached_content_token_count": null,
+        "total_token_count": 5215
+      }
+    },
+    "code_exec_minimal_thinking": {
+      "http_ok": true,
+      "executable_code_count": 1,
+      "executable_code_languages": [
+        "Language.PYTHON"
+      ],
+      "outcomes": [
+        "Outcome.OUTCOME_OK"
+      ],
+      "outcome_ok": true,
+      "stdout_preview": [
+        "MEASURE: {\"count\": 3, \"widths_px\": [60, 100, 140]}\n"
+      ],
+      "inline_image_parts": 0,
+      "parsed": {
+        "count": 3,
+        "widths_px": [
+          60,
+          100,
+          140
+        ]
+      },
+      "widths_within_3px": true,
+      "usage_metadata": {
+        "prompt_token_count": 1122,
+        "candidates_token_count": 432,
+        "thoughts_token_count": null,
+        "tool_use_prompt_token_count": 1404,
+        "cached_content_token_count": null,
+        "total_token_count": 2958
+      }
+    },
+    "plain_thinking_low": {
+      "http_ok": true,
+      "executable_code_count": 0,
+      "executable_code_languages": [],
+      "outcomes": [],
+      "outcome_ok": false,
+      "stdout_preview": [],
+      "inline_image_parts": 0,
+      "parsed": {
+        "count": 3,
+        "widths_px": [
+          94,
+          156,
+          219
+        ]
+      },
+      "widths_within_3px": false,
+      "usage_metadata": {
+        "prompt_token_count": 639,
+        "candidates_token_count": 25,
+        "thoughts_token_count": 366,
+        "tool_use_prompt_token_count": null,
+        "cached_content_token_count": null,
+        "total_token_count": 1030
+      }
+    },
+    "plain_thinking_medium": {
+      "http_ok": true,
+      "executable_code_count": 0,
+      "executable_code_languages": [],
+      "outcomes": [],
+      "outcome_ok": false,
+      "stdout_preview": [],
+      "inline_image_parts": 0,
+      "parsed": {
+        "count": 3,
+        "widths_px": [
+          94,
+          156,
+          220
+        ]
+      },
+      "widths_within_3px": false,
+      "usage_metadata": {
+        "prompt_token_count": 639,
+        "candidates_token_count": 25,
+        "thoughts_token_count": 1141,
+        "tool_use_prompt_token_count": null,
+        "cached_content_token_count": null,
+        "total_token_count": 1805
+      }
+    }
+  },
+  "recommended_mode": "SCHEMA_NATIVE"
+}
