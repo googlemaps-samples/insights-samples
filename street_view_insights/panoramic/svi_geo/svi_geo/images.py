@@ -1,0 +1,245 @@
+"""Frame download + decoding helpers (user credentials, optional short-lived disk cache).
+
+Frames are always downloaded with the caller's own credentials (`download_as_bytes`) and
+later sent to Gemini inline; nothing here grants or relies on service-agent bucket access.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import os
+import time
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from typing import Any, Protocol
+
+import cv2
+import numpy as np
+from google.api_core import exceptions as gexc
+
+from svi_geo.data import split_gcs_uri
+
+DEFAULT_FRAME_CACHE = Path.home() / ".cache" / "svi_geo" / "frames"
+# Frames are licensed imagery: a local copy is only a short-lived working cache.
+DEFAULT_CACHE_TTL_S = 86_400
+
+_TRANSIENT = (
+    gexc.ServiceUnavailable,
+    gexc.TooManyRequests,
+    gexc.InternalServerError,
+    gexc.GatewayTimeout,
+    # Observed spuriously when many threads refresh a gcloud-token credential at once.
+    gexc.Unauthorized,
+    ConnectionError,
+    TimeoutError,
+)
+
+
+def is_transient(e: BaseException) -> bool:
+    """Errors worth retrying (5xx, 429, connection resets); 404/403 are not."""
+    if isinstance(e, _TRANSIENT):
+        return True
+    name = type(e).__name__
+    return name in {"ConnectionError", "Timeout", "ReadTimeout", "ChunkedEncodingError"}
+
+
+class ImageFetcher(Protocol):
+    def fetch(self, uri: str) -> bytes: ...
+
+
+class GcsImageFetcher:
+    """Download `gs://` objects as bytes with the user's credentials.
+
+    Disk caching is opt-in (`cache_dir`, e.g. `DEFAULT_FRAME_CACHE`). A cached frame older
+    than `cache_ttl_s` is downloaded again, and `purge_expired()` deletes stale files."""
+
+    def __init__(
+        self,
+        storage_client: Any,
+        cache_dir: str | Path | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        cache_ttl_s: float = DEFAULT_CACHE_TTL_S,
+        clock: Callable[[], float] = time.time,
+    ):
+        self.client = storage_client
+        self._sleep = sleep
+        self._clock = clock
+        self.cache_ttl_s = float(cache_ttl_s)
+        self.cache_dir = Path(cache_dir) if cache_dir else None
+        self.n_downloads = 0
+        self.bytes_downloaded = 0
+
+    def _cache_path(self, uri: str) -> Path | None:
+        if self.cache_dir is None:
+            return None
+        bucket, name = split_gcs_uri(uri)
+        safe = name.replace("/", "__").replace(":", "_")
+        h = hashlib.sha1(uri.encode()).hexdigest()[:8]
+        return self.cache_dir / f"{h}_{safe}"
+
+    def cached_content_hash(self, uri: str) -> str | None:
+        """Return `sha256(bytes)[:16]` for the cached frame of `uri`, or None."""
+        path = self._cache_path(uri)
+        if path is None or not path.exists():
+            return None
+        return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+
+    def _fresh(self, path: Path) -> bool:
+        return self._clock() - path.stat().st_mtime <= self.cache_ttl_s
+
+    def purge_expired(self) -> int:
+        """Delete cached frames older than the TTL; returns how many were deleted."""
+        if self.cache_dir is None or not self.cache_dir.exists():
+            return 0
+        n = 0
+        for f in self.cache_dir.iterdir():
+            if f.is_file() and not self._fresh(f):
+                f.unlink(missing_ok=True)
+                n += 1
+        return n
+
+    def fetch(self, uri: str, *, expected_sha256: str | None = None) -> bytes:
+        path = self._cache_path(uri)
+        if path is not None and path.exists() and self._fresh(path):
+            cached_bytes = path.read_bytes()
+            cached_h = hashlib.sha256(cached_bytes).hexdigest()[:16]
+            if expected_sha256 is None or cached_h.startswith(expected_sha256[:16]):
+                return cached_bytes
+        bucket, name = split_gcs_uri(uri)
+        data = self.client.bucket(bucket).blob(name).download_as_bytes()
+        self.n_downloads += 1
+        self.bytes_downloaded += len(data)
+        if path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(path.suffix + ".part")
+            tmp.write_bytes(data)
+            now = self._clock()
+            os.utime(tmp, (now, now))  # the TTL counts from the download time
+            tmp.replace(path)
+        return data
+
+    def iter_fetch_many(self, uris: list[str], max_workers: int = 8, retries: int = 3):
+        """Yield `(uri, bytes | Exception)` as downloads complete, bounding peak RAM."""
+
+        def one(u):
+            err: Exception | None = None
+            for attempt in range(retries):
+                try:
+                    return u, self.fetch(u)
+                except Exception as e:  # noqa: BLE001 - reported per item
+                    err = e
+                    if not is_transient(e) or attempt == retries - 1:
+                        break
+                    self._sleep(0.5 * 2**attempt)
+            return u, err
+
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            yield from ex.map(one, uris)
+
+    def fetch_many(
+        self, uris: list[str], max_workers: int = 8, retries: int = 3
+    ) -> dict[str, bytes | Exception]:
+        return dict(self.iter_fetch_many(uris, max_workers=max_workers, retries=retries))
+
+    def exists(self, uri: str) -> bool:
+        bucket, name = split_gcs_uri(uri)
+        return bool(self.client.bucket(bucket).blob(name).exists())
+
+
+_REDUCED = {
+    (0.5, False): cv2.IMREAD_REDUCED_COLOR_2,
+    (0.5, True): cv2.IMREAD_REDUCED_GRAYSCALE_2,
+    (0.25, False): cv2.IMREAD_REDUCED_COLOR_4,
+    (0.25, True): cv2.IMREAD_REDUCED_GRAYSCALE_4,
+}
+
+
+def decode_scale_for_view(
+    view_width: int,
+    hfov_deg: float,
+    sensor_px_per_deg: float = 55.14,
+) -> float:
+    """Power-of-two decode scale `s* in {0.25, 0.5, 1.0}` for a view of `view_width` and `hfov_deg`:
+
+    `s* = min(1, pow2_fraction(1.2 * view_px_per_deg / sensor_px_per_deg))`.
+    """
+    view_px_per_deg = float(view_width) / max(1.0, float(hfov_deg))
+    ratio = 1.2 * view_px_per_deg / max(1.0, float(sensor_px_per_deg))
+    if ratio <= 0.25:
+        return 0.25
+    if ratio <= 0.5:
+        return 0.5
+    return 1.0
+
+
+def decode(data: bytes, scale: float = 1.0, gray: bool = False) -> np.ndarray:
+    """JPEG bytes -> BGR (or gray) uint8 array, optionally resized by `scale`.
+
+    Scales 0.5 / 0.25 use libjpeg's DCT-domain reduction (fast); others use INTER_AREA.
+    """
+    flag = _REDUCED.get((scale, gray))
+    buf = np.frombuffer(data, np.uint8)
+    if flag is not None:
+        img = cv2.imdecode(buf, flag)
+        if img is None:
+            raise ValueError("could not decode image bytes")
+        return img
+    img = cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE if gray else cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError("could not decode image bytes")
+    if scale != 1.0:
+        img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    return img
+
+
+def clahe_lab(img: np.ndarray, clip: float = 2.0, tile: int = 8) -> np.ndarray:
+    """Apply CLAHE on the L channel of CIE Lab (or directly on a grayscale image)."""
+    arr = np.asarray(img, dtype=np.uint8)
+    clahe = cv2.createCLAHE(clipLimit=float(clip), tileGridSize=(int(tile), int(tile)))
+    if arr.ndim == 2:
+        return clahe.apply(arr)
+    lab = cv2.cvtColor(arr, cv2.COLOR_BGR2LAB)
+    l_ch, a_ch, b_ch = cv2.split(lab)
+    l_eq = clahe.apply(l_ch)
+    return cv2.cvtColor(cv2.merge([l_eq, a_ch, b_ch]), cv2.COLOR_LAB2BGR)
+
+
+def encode_jpeg(img: np.ndarray, quality: int = 90) -> bytes:
+    ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, int(quality)])
+    if not ok:
+        raise ValueError("jpeg encode failed")
+    return buf.tobytes()
+
+
+def fit_within(img: np.ndarray, max_side: int) -> np.ndarray:
+    """Downscale so the longest side is <= max_side (never upscales)."""
+    h, w = img.shape[:2]
+    s = max_side / max(h, w)
+    if s >= 1.0:
+        return img
+    return cv2.resize(
+        img, (max(1, round(w * s)), max(1, round(h * s))), interpolation=cv2.INTER_AREA
+    )
+
+
+def dark_pixel_fraction(img: np.ndarray, max_value: int = 8) -> float:
+    """Measured share of pixels whose every channel is <= `max_value` (near black).
+
+    `rosette.view_black_fraction` is analytic sensor coverage only. This measures the image
+    that is actually sent, so it also counts near-black content inside the frames: the
+    dataset's black redaction blobs (and any genuinely black object)."""
+    a = np.asarray(img)
+    peak = a.max(axis=2) if a.ndim == 3 else a
+    return float(np.mean(peak <= max_value))
+
+
+def peak_rss_mb() -> float:
+    """Return the process peak resident set size in megabytes (`ru_maxrss`)."""
+    import resource
+    import sys
+
+    rss = float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    if sys.platform == "darwin":
+        return rss / (1024.0 * 1024.0)
+    return rss / 1024.0

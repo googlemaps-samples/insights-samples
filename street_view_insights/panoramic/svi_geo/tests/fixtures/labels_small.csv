@@ -1,0 +1,7 @@
+label_id,pano_id,observation_id,view_yaw_deg,class,x0,y0,x1,y1,object_key,material,condition,notes
+L1,P1,o1:P1_0:x,0,UTILITY_POLE,100,100,120,400,pole_a,,,synthetic fixture
+L2,P2,o1:P2_0:x,0,UTILITY_POLE,200,100,220,400,pole_a,,,synthetic fixture
+L3,P1,o1:P1_0:x,0,ROAD_SIGN,300,200,340,240,sign_a,,,synthetic fixture
+L4,P2,o1:P2_1:x,90,HOUSE,0,0,500,400,house_a,,,synthetic fixture
+L5,P1,o1:P1_0:x,0,ROAD_SEGMENT,,,,,,Paved Asphalt,Good,synthetic fixture
+L6,P2,o1:P2_0:x,0,ROAD_SEGMENT,,,,,,Paved Concrete,Good,synthetic fixture
