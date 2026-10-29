@@ -30,8 +30,8 @@ You can learn more about the products on the [product page](https://mapsplatform
 
 ## Available Recipe Collections
 
-*   [`earth_ai_remote_sensing/`](earth_ai_remote_sensing/): Samples for indexing aerial/satellite orthoimagery with Earth AI Remote Sensing Foundation Models (`RS-SigLIP2`) and running regional vector search and spatial joins in BigQuery.
-    *   [`notebooks/region_search_bigquery/`](earth_ai_remote_sensing/notebooks/region_search_bigquery/): End-to-end Google Colab Enterprise / BigQuery Studio notebook demonstrating `512×512` public-domain USDA/USGS NAIP tile embedding (`1152-D`), `Text → Image` and `Image → Image` `VECTOR_SEARCH`, Opportunity Finder (`A − B`) vector algebra, and spatial joins with Places Insights.
+*   [`earth_ai_remote_sensing/`](earth_ai_remote_sensing/): Samples for indexing aerial/satellite orthoimagery with Earth AI Remote Sensing Foundation Models and running regional vector search in BigQuery.
+    *   [`notebooks/region_search_bigquery/`](earth_ai_remote_sensing/notebooks/region_search_bigquery/): End-to-end Google Colab Enterprise / BigQuery Studio notebook demonstrating `512×512` public-domain USDA/USGS NAIP tile embedding (`1152-D`), `Text → Image` and `Image → Image` `VECTOR_SEARCH`, and Opportunity Finder (`A − B`) vector algebra.
 *   [`places_insights/`](places_insights/): Samples for analyzing the Places Insights BigQuery dataset.
     *   [`notebooks/`](places_insights/notebooks/): Example Google Colab notebooks for querying the dataset and visualizing the results.
         *   [`custom_location_scores/`](places_insights/notebooks/custom_location_scores/): Combines Places Insights data with BigQuery `AI.GENERATE` (Gemini) to calculate and visualize AI-powered suitability scores for real estate listings based on a specific user persona.
