@@ -1,4 +1,4 @@
-# Earth AI Remote Sensing: Region Search with BigQuery Vector Search
+# Aerial and Satellite Models: Region Search with BigQuery Vector Search
 
 <table align="left">
   <td style="text-align: center">
@@ -13,7 +13,7 @@
   </td>
   <td style="text-align: center">
     <a href="https://console.cloud.google.com/vertex-ai/workbench/deploy-notebook?download_url=https://raw.githubusercontent.com/googlemaps-samples/insights-samples/main/earth_ai_remote_sensing/notebooks/region_search_bigquery/earth_ai_region_search_bigquery.ipynb&utm_source=earth_ai_remote_sensing_notebooks">
-      <img src="https://www.gstatic.com/images/branding/gcpiconscolors/vertexai/v1/32px.svg" alt="Vertex AI Workbench logo"><br> Run in Workbench
+      <img src="https://www.gstatic.com/images/branding/gcpiconscolors/vertexai/v1/32px.svg" alt="Workbench logo"><br> Run in Workbench
     </a>
   </td>
   <td style="text-align: center">
@@ -28,10 +28,10 @@
 
 ## Overall Goal
 
-This notebook provides an end-to-end blueprint for **metro-scale overhead imagery discovery and opportunity analysis** by combining:
-1. **Google Earth AI Remote Sensing on Vertex AI Model Garden** (deployed via the official [`google-research/remote-sensing`](https://github.com/google-research/remote-sensing/blob/main/remote_sensing/vertex_ai/utils.py) `remote_sensing.vertex_ai.utils` module) to encode `512×512` overhead aerial/satellite imagery tiles and natural-language text prompts into a shared, L2-normalized **`1152-D` vector space**.
-2. **BigQuery (`VECTOR_SEARCH` & `ML.DISTANCE`)** to execute sub-second **Text-to-Tile Semantic Search**, **Tile-to-Tile Visual Similarity**, and **Opportunity Finder (Vector Algebra)** queries in pure SQL (`$0/hr` idle GPU cost).
-3. **Interactive Map Visualization (`Folium` + Google Maps 2D Tiles)** to overlay and inspect the discovered `307 m × 307 m` tile footprints on an interactive map.
+This notebook provides an end-to-end blueprint for **metro-scale overhead imagery discovery and opportunity analysis** by combining **Google Maps Platform Aerial and Satellite Models** on **Agent Platform Model Garden** (part of the **Google Earth AI Remote Sensing Foundation Models** effort) with **BigQuery Vector Search**:
+1. **Aerial and Satellite Models (`RS-SigLIP2`) on Agent Platform Model Garden** — deployed via the official [`google-research/remote-sensing`](https://github.com/google-research/remote-sensing/blob/main/remote_sensing/vertex_ai/utils.py) `remote_sensing.vertex_ai.utils` module — encode `512×512` overhead aerial/satellite imagery tiles and natural-language text prompts into a shared, L2-normalized **`1152-D` vector space**.
+2. **BigQuery (`VECTOR_SEARCH` & `ML.DISTANCE`)** executes sub-second **Text-to-Tile Semantic Search**, **Tile-to-Tile Visual Similarity**, and **Opportunity Finder (Vector Algebra)** queries in pure SQL (`$0/hr` idle GPU cost).
+3. **Interactive Map Visualization (`Folium` + Google Maps 2D Tiles)** overlays and inspects the discovered `307 m × 307 m` tile footprints on an interactive map.
 
 ---
 
@@ -43,21 +43,21 @@ All user-configurable `# @param` fields are consolidated at the top of the noteb
 | :--- | :--- | :--- | :--- |
 | **1. Google Cloud & BigQuery** | `PROJECT_ID`, `REGION`, `BQ_DATASET`, `TILES_TABLE_NAME`, `QUERIES_TABLE_NAME`, `GMP_API_KEY` | `REGION="us-central1"`, `BQ_DATASET="rsfm_demo"`, `TILES_TABLE_NAME="region_tiles_la"` | Selects the GCP project, BigQuery dataset/tables (`region_tiles_la` or `region_tiles_sf`), and optional Google Maps 2D Tile API key. |
 | **2. AOI & Public-Domain NAIP Grid** | `AOI_NAME`, `AOI_MIN_LAT`, `AOI_MIN_LNG`, `AOI_MAX_LAT`, `AOI_MAX_LNG`, `TILE_SIZE_PX`, `MAX_DEMO_TILES`, `FETCH_LIVE_NAIP_TILES` | `TILE_SIZE_PX=512`, `FETCH_LIVE_NAIP_TILES=False` | Bounding box and resolution for fetching live public-domain USDA/USGS NAIP (`0.6 m` GSD) orthoimagery tiles (`17 U.S.C. § 105`). |
-| **3. Earth AI Model Garden (`remote_sensing.vertex_ai.utils`)** | `DEPLOY_LIVE_VERTEX_ENDPOINT`, `EXISTING_ENDPOINT_ID`, `DISPLAY_NAME`, `MODEL_TYPE`, `MODEL_MODE`, `ACCELERATOR`, `USE_DEDICATED_ENDPOINT`, `MIN_REPLICA_COUNT`, `MAX_REPLICA_COUNT`, `RUN_BATCH_JOB_EXAMPLE` | `MODEL_TYPE="SIGLIP2_512_RC1"`, `MODEL_MODE="COMBINED"`, `ACCELERATOR="NVIDIA_L4"` | Configures `utils.create_model(...)` and `utils.deploy_model(...)` from `remote_sensing.vertex_ai.utils` (or skips GPU deployment when `DEPLOY_LIVE_VERTEX_ENDPOINT=False` to query pre-computed BigQuery tables immediately). |
+| **3. Aerial & Satellite Models — Agent Platform Model Garden (`remote_sensing.vertex_ai.utils`)** | `DEPLOY_LIVE_ENDPOINT`, `EXISTING_ENDPOINT_ID`, `DISPLAY_NAME`, `MODEL_TYPE`, `MODEL_MODE`, `ACCELERATOR`, `USE_DEDICATED_ENDPOINT`, `MIN_REPLICA_COUNT`, `MAX_REPLICA_COUNT`, `RUN_BATCH_JOB_EXAMPLE` | `MODEL_TYPE="SIGLIP2_512_RC1"`, `MODEL_MODE="COMBINED"`, `ACCELERATOR="NVIDIA_L4"` | Configures `utils.create_model(...)` and `utils.deploy_model(...)` from `remote_sensing.vertex_ai.utils` for `RS-SigLIP2` (or skips GPU deployment when `DEPLOY_LIVE_ENDPOINT=False` to query pre-computed BigQuery tables immediately). |
 | **4. Search & Vector Algebra** | `SEARCH_QUERY_ID`, `SEED_TILE_ID`, `POSITIVE_QUERY_ID`, `NEGATIVE_QUERY_ID`, `NEGATIVE_WEIGHT`, `TOP_K_RESULTS`, `VISUAL_GRID_TILES` | `SEARCH_QUERY_ID="distribution_warehouses"`, `NEGATIVE_WEIGHT=0.5`, `TOP_K_RESULTS=10` | Configures Step 5A (Text-to-Tile Search), Step 5B (Tile-to-Tile Visual Similarity), and Step 5C (Opportunity Finder Vector Algebra). |
-| **5. Resource Cleanup** | `UNDEPLOY_ENDPOINT_ON_FINISH`, `DELETE_ENDPOINT_AND_MODEL` | `UNDEPLOY_ENDPOINT_ON_FINISH=False` | Controls Step 7 Vertex AI GPU endpoint teardown. |
+| **5. Resource Cleanup** | `UNDEPLOY_ENDPOINT_ON_FINISH`, `DELETE_ENDPOINT_AND_MODEL` | `UNDEPLOY_ENDPOINT_ON_FINISH=False` | Controls Step 7 GPU endpoint teardown. |
 
 ---
 
 ## Step-by-Step Notebook Walkthrough
 
 1. **Step 1 — Setup & Authentication**: Installs `google-cloud-aiplatform`, `google-cloud-bigquery`, and `folium`, clones [`google-research/remote-sensing`](https://github.com/google-research/remote-sensing) (`from remote_sensing.vertex_ai import utils`), and authenticates via Google Colab (`google.colab.userdata`) or Application Default Credentials (`google.auth.default()`).
-2. **Step 2 — Configuration & All Notebook Parameters**: Consolidates all `# @param` settings into one top-of-notebook configuration form and displays a summary table including `utils.MODEL_CONFIGS[MODEL_TYPE]` and `utils.PLATFORM_CONFIGS[ACCELERATOR]`.
-3. **Step 3 — Earth AI Remote Sensing Model Garden Architecture & Feature Extraction**: Uses `utils.create_model(...)`, `utils.deploy_model(...)`, and `utils.b64_png(...)` from `remote_sensing.vertex_ai.utils` to demonstrate online endpoint deployment (`endpoint.predict`) and batch prediction (`batch_model.batch_predict` with `batch_model=True`).
+2. **Step 2 — Configuration & All Notebook Parameters**: Consolidates all `# @param` settings into one top-of-notebook configuration form and displays a summary table including `utils.MODEL_CONFIGS[MODEL_TYPE]` (`RS-SigLIP2`) and `utils.PLATFORM_CONFIGS[ACCELERATOR]`.
+3. **Step 3 — Aerial and Satellite Models (`RS-SigLIP2`) on Agent Platform Model Garden**: Uses `utils.create_model(...)`, `utils.deploy_model(...)`, and `utils.b64_png(...)` from `remote_sensing.vertex_ai.utils` to demonstrate online endpoint deployment (`endpoint.predict`) and batch prediction (`batch_model.batch_predict` with `batch_model=True`).
 4. **Step 4 — Inspect (or Populate) BigQuery Spatial & `1152-D` Embedding Tables**: Summarizes tile coverage (`17,589` tiles / `~1,660 km²` in LA South Bay; `7,244` tiles / `~684 km²` in SF Bay Area), lists indexed `1152-D` text queries, and optionally fetches live public-domain USGS NAIP imagery.
 5. **Step 5 — Three Metro-Scale BigQuery Retrieval Patterns**:
    - **5A (`Text-to-Tile Semantic Search`)**: Ranks regional tiles by cosine similarity (`1 - ML.DISTANCE(img, txt, 'COSINE')`) and regional z-score (`+σ`), and plots a visual grid of the top USDA NAIP tiles.
    - **5B (`Tile-to-Tile Visual Similarity`)**: Finds the top $K$ visually similar footprints across the metro area given a seed `tile_id`.
    - **5C (`Opportunity Finder — Vector Algebra`)**: Computes normalized composite vector algebra (`+distribution_warehouses - 0.5 * solar_rooftops`) to identify large commercial warehouse roofs without existing solar installations.
 6. **Step 6 — Interactive Map Visualization**: Renders an interactive Folium map with **Google Maps 2D Hybrid/Satellite Tiles**, red bounding boxes for Step 5A semantic search matches, and green dashed bounding boxes for Step 5C Opportunity Finder matches.
-7. **Step 7 — Optional Resource Cleanup**: Undeploys or deletes (`endpoint.delete(force=True)`) any live Vertex AI GPU endpoint created during the session.
+7. **Step 7 — Optional Resource Cleanup**: Undeploys or deletes (`endpoint.delete(force=True)`) any live GPU endpoint created during the session.

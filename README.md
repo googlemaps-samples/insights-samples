@@ -24,13 +24,13 @@ You can learn more about the products on the [product page](https://mapsplatform
 
 [Docs](https://developers.google.com/maps/documentation/custom-satellite-embeddings)
 
-### Earth AI Remote Sensing
+### Aerial and Satellite Models
 
-[Model Garden](https://console.cloud.google.com/vertex-ai/model-garden/google/earth-ai/) | [Demo](https://rsfm-arena-api-staging-eje2qipbaq-uc.a.run.app/)
+[Agent Platform Model Garden](https://console.cloud.google.com/vertex-ai/model-garden/google/earth-ai/) | [Demo](https://rsfm-arena-api-staging-eje2qipbaq-uc.a.run.app/)
 
 ## Available Recipe Collections
 
-*   [`earth_ai_remote_sensing/`](earth_ai_remote_sensing/): Samples for indexing aerial/satellite orthoimagery with Earth AI Remote Sensing Foundation Models and running regional vector search in BigQuery.
+*   [`earth_ai_remote_sensing/`](earth_ai_remote_sensing/): Samples for indexing aerial and satellite orthoimagery with Google Maps Platform Aerial and Satellite Models (`RS-SigLIP2`, part of the Google Earth AI Remote Sensing Foundation Models effort) on Agent Platform Model Garden and running regional vector search in BigQuery.
     *   [`notebooks/region_search_bigquery/`](earth_ai_remote_sensing/notebooks/region_search_bigquery/): End-to-end Google Colab Enterprise / BigQuery Studio notebook demonstrating `512×512` public-domain USDA/USGS NAIP tile embedding (`1152-D`), `Text → Image` and `Image → Image` `VECTOR_SEARCH`, and Opportunity Finder (`A − B`) vector algebra.
 *   [`places_insights/`](places_insights/): Samples for analyzing the Places Insights BigQuery dataset.
     *   [`notebooks/`](places_insights/notebooks/): Example Google Colab notebooks for querying the dataset and visualizing the results.
