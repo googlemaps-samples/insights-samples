@@ -10,8 +10,8 @@ Historically, updating an RMI SelectedRoute required deleting the route and crea
 
 With native **`PATCH` / `UpdateSelectedRoute`**:
 
-* **In-Place Mutation**: Directly modify `displayName`, `routeAttributes`, and/or `dynamicRoute` (waypoints) without deleting the route entity.
-* **Granular FieldMasks**: Specify exactly which fields to overwrite via the `updateMask` query parameter.
+* **In-Place Mutation**: Directly modify `displayName`, `routeAttributes`, `dynamicRouting`, and/or `dynamicRoute` (waypoints) without deleting the route entity.
+* **Granular FieldMasks**: Specify exactly which fields to overwrite via the `updateMask` query parameter (`google-fieldmask`).
 * **Zero Telemetry Interruption**: Preserves the route's creation timestamp and continuous monitoring state.
 
 ---
@@ -21,9 +21,10 @@ With native **`PATCH` / `UpdateSelectedRoute`**:
 * **HTTP Method**: `PATCH`
 * **URL**: `https://roads.googleapis.com/selection/v1/projects/{project}/selectedRoutes/{selectedRouteId}?updateMask={fieldPaths}`
 * **Updatable Fields**:
-  * `displayName`: Route human-readable label (max 100 characters).
-  * `routeAttributes`: Key-value string map (max 25 pairs).
-  * `dynamicRoute`: Geometry including `origin`, `destination`, and `intermediates`.
+  * `displayName` (`display_name`): Route human-readable label (max 100 Unicode code points).
+  * `routeAttributes` (`route_attributes`): Key-value string map (max 25 pairs, non-empty strings 1–100 Unicode code points).
+  * `dynamicRouting` (`dynamic_routing`): Boolean (`false` fixes the route to traffic-unaware geometry; `true` enables live-traffic rerouting).
+  * `dynamicRoute` (`dynamic_route`): Geometry including `origin`, `destination`, and `intermediates`.
   * `*`: Full replacement of all updatable fields.
 
 > [!NOTE]
@@ -189,11 +190,152 @@ export { patchSelectedRoute, type SelectedRoutePatchRequest, type SelectedRouteR
 
 ---
 
+### E. Go (`net/http` / Reference Client)
+
+```go
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+)
+
+type SelectedRoutePatch struct {
+	DisplayName     string            `json:"displayName,omitempty"`
+	DynamicRouting  *bool             `json:"dynamicRouting,omitempty"`
+	RouteAttributes map[string]string `json:"routeAttributes,omitempty"`
+}
+
+func patchSelectedRoute(ctx context.Context, projectID, routeID, token, updateMask string, patch SelectedRoutePatch) ([]byte, error) {
+	bodyBytes, err := json.Marshal(patch)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf(
+		"https://roads.googleapis.com/selection/v1/projects/%s/selectedRoutes/%s?updateMask=%s",
+		url.PathEscape(projectID),
+		url.PathEscape(routeID),
+		url.QueryEscape(updateMask),
+	)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, endpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Goog-User-Project", projectID)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("PATCH failed [%d]: %s", resp.StatusCode, string(raw))
+	}
+	return raw, nil
+}
+
+func main() {
+	liveRerouting := false
+	res, err := patchSelectedRoute(
+		context.Background(),
+		"my-roads-project",
+		"corridor-market-st",
+		os.Getenv("GOOGLE_OAUTH_ACCESS_TOKEN"),
+		"displayName,dynamicRouting,routeAttributes",
+		SelectedRoutePatch{
+			DisplayName:    "Market Street Transit Priority Corridor",
+			DynamicRouting: &liveRerouting,
+			RouteAttributes: map[string]string{
+				"corridor": "market-st",
+				"priority": "HIGH",
+				"status":   "OPTIMIZED",
+			},
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Patched SelectedRoute:", string(res))
+}
+```
+
+---
+
+### F. Rust (`RoadsSelectionClient` / REST)
+
+```rust
+use std::process::Command;
+
+pub fn patch_selected_route(
+    project_id: &str,
+    route_id: &str,
+    token: &str,
+    update_mask: &str,
+    json_payload: &str,
+) -> Result<String, String> {
+    let url = format!(
+        "https://roads.googleapis.com/selection/v1/projects/{}/selectedRoutes/{}?updateMask={}",
+        project_id, route_id, update_mask
+    );
+    let out = Command::new("curl")
+        .args(["-sS", "-X", "PATCH"])
+        .arg("-H")
+        .arg(format!("Authorization: Bearer {}", token))
+        .arg("-H")
+        .arg(format!("X-Goog-User-Project: {}", project_id))
+        .args(["-H", "Content-Type: application/json", "--data-raw", json_payload])
+        .arg(&url)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).into_owned());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+fn main() -> Result<(), String> {
+    let token = std::env::var("GOOGLE_OAUTH_ACCESS_TOKEN").unwrap_or_default();
+    let payload = r#"{
+      "displayName": "Market Street Transit Priority Corridor",
+      "dynamicRouting": false,
+      "routeAttributes": {
+        "corridor": "market-st",
+        "priority": "HIGH",
+        "status": "OPTIMIZED"
+      }
+    }"#;
+    let res = patch_selected_route(
+        "my-roads-project",
+        "corridor-market-st",
+        &token,
+        "displayName,dynamicRouting,routeAttributes",
+        payload,
+    )?;
+    println!("Patched Route: {}", res);
+    Ok(())
+}
+```
+
+---
+
 ## 4. Expected API Response
 
 ```json
 {
-  "name": "projects/35571336328/selectedRoutes/corridor-market-st",
+  "name": "projects/123456789012/selectedRoutes/corridor-market-st",
   "displayName": "Market Street Transit Priority Corridor",
   "dynamicRoute": {
     "origin": {

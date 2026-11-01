@@ -15,7 +15,7 @@
         "name": "speed_reading_intervals",
         "type": "RECORD",
         "mode": "REPEATED",
-        "description": "Intervals representing the road density across the route. Query using LEFT JOIN UNNEST to avoid row dropping.",
+        "description": "Legacy intervals representing road density across the route. Deprecated in favor of speed_reading_offsets; may stop being populated on or after Jan 13, 2027.",
         "fields": [
             {
                 "name": "interval_coordinates",
@@ -49,7 +49,7 @@
         "name": "travel_duration",
         "type": "RECORD",
         "mode": "NULLABLE",
-        "description": "Travel time information message block.",
+        "description": "Legacy travel time information message block. Deprecated in favor of top-level duration_in_seconds and static_duration_in_seconds; may stop being populated on or after Jan 13, 2027.",
         "fields": [
             {
                 "name": "duration_in_seconds",
@@ -69,7 +69,7 @@
         "name": "retrieval_time",
         "type": "RECORD",
         "mode": "NULLABLE",
-        "description": "The time the road data was collected, represented as a custom Timestamp.",
+        "description": "Legacy time the road data was collected, represented as custom Timestamp (seconds/nanos). Deprecated in favor of retrieval_timestamp; may stop being populated on or after Jan 13, 2027.",
         "fields": [
             {
                 "name": "seconds",
@@ -96,6 +96,56 @@
         "type": "STRING",
         "mode": "REPEATED",
         "description": "Place IDs along the route in topological order indicating connected road segments."
+    },
+    {
+        "name": "speed_reading_offsets",
+        "type": "RECORD",
+        "mode": "REPEATED",
+        "description": "Speed reading intervals defined by linear distance offsets along the route polyline. Omitted when has_road_closure is true.",
+        "fields": [
+            {
+                "name": "start_offset",
+                "type": "INTEGER",
+                "mode": "NULLABLE",
+                "description": "Starting offset in meters from the beginning of the route (inclusive)."
+            },
+            {
+                "name": "end_offset",
+                "type": "INTEGER",
+                "mode": "NULLABLE",
+                "description": "Ending offset in meters from the beginning of the route (exclusive; equals start_offset of subsequent interval)."
+            },
+            {
+                "name": "speed",
+                "type": "STRING",
+                "mode": "NULLABLE",
+                "description": "Categorized traffic speed condition. Possible values: NORMAL, SLOW, TRAFFIC_JAM, TRAFFIC_JAM_HEAVY."
+            }
+        ]
+    },
+    {
+        "name": "duration_in_seconds",
+        "type": "FLOAT",
+        "mode": "NULLABLE",
+        "description": "The duration of travel through the route based on current road conditions in seconds. Omitted when has_road_closure is true."
+    },
+    {
+        "name": "static_duration_in_seconds",
+        "type": "FLOAT",
+        "mode": "NULLABLE",
+        "description": "The duration of travel through the route without taking road conditions into consideration in seconds (free-flow baseline)."
+    },
+    {
+        "name": "retrieval_timestamp",
+        "type": "TIMESTAMP",
+        "mode": "NULLABLE",
+        "description": "RFC 3339 formatted UTC timestamp string indicating when the road data was retrieved (e.g. 2026-10-08T15:04:05+00:00)."
+    },
+    {
+        "name": "has_road_closure",
+        "type": "BOOLEAN",
+        "mode": "NULLABLE",
+        "description": "Indicates whether the route is currently subject to a full road closure. When true, duration_in_seconds and speed_reading_offsets are omitted."
     },
     {
         "name": "subscription_name",

@@ -15,8 +15,30 @@ All RMI foundation analysis relies on two primary tables. The exact columns, dat
 
 * **Table A: `routes_status`** — Static definitions, real-time lifecycle states, and custom administrative grouping metadata for all selected routes.
   * *Schema Source of Truth:* [routes_status.json](references/tables/routes_status.json)
+  * *Fields (12 total)*:
+    * `selected_route_id` (`STRING`): Unique identifier for the selected route.
+    * `display_name` (`STRING`): Human-readable route label.
+    * `status` (`STRING`): Operational lifecycle state (`STATUS_RUNNING`, `STATUS_INVALID`, `STATUS_EXPIRED`).
+    * `validation_error` (`STRING`): Descriptive error message if route configuration fails validation.
+    * `low_road_usage_start_time` (`TIMESTAMP`): Timestamp when low road usage / probe shortage was first detected.
+    * `route_attributes` (`STRING`): Custom serialized JSON string containing user-defined metadata (e.g., tier, region, corridor type).
+    * `dynamic_routing` (`BOOLEAN`): Indicates whether the route is dynamic (`true`) or fixed (`false`).
+    * `origin` (`GEOGRAPHY`): Origin waypoint coordinate of the route.
+    * `destination` (`GEOGRAPHY`): Destination waypoint coordinate of the route.
+    * `intermediates` (`REPEATED GEOGRAPHY`): Repeated array of intermediate waypoint coordinates.
+    * `static_route_geometry` (`GEOGRAPHY`): Polyline geometry of the static route calculated without live traffic from the waypoints.
+    * `road_segment_ids` (`REPEATED STRING`): Sequence of Place IDs representing topological road segments along the static route calculated without live traffic. For fixed routes (`dynamic_routing: false`), Place IDs automatically update to reflect Google road network changes; for dynamic routes (`dynamic_routing: true`), they are not updated.
 * **Table B: `historical_travel_time`** — Long-term historical records of traffic-aware and static duration observations computed periodically.
   * *Schema Source of Truth:* [historical_travel_time.json](references/tables/historical_travel_time.json)
+  * *Fields (8 total)*:
+    * `selected_route_id` (`STRING`): Unique identifier for the route (first clustering column).
+    * `display_name` (`STRING`): Human-readable route label.
+    * `record_time` (`TIMESTAMP`): UTC timestamp when the routing calculation was performed (daily partition column).
+    * `duration_in_seconds` (`FLOAT`): Traffic-aware travel duration in seconds. **Omitted (`NULL`) when `has_road_closure = true`** because the corridor is impassable.
+    * `static_duration_in_seconds` (`FLOAT`): Free-flow baseline travel duration without live traffic.
+    * `route_geometry` (`GEOGRAPHY`): Polyline geometry of the route taken at `record_time`.
+    * `road_segment_ids` (`REPEATED STRING`): Repeated array of Google Place IDs representing traversed road segments at `record_time`. Available for records on or after June 19, 2026 (`record_time >= '2026-06-19'`).
+    * `has_road_closure` (`BOOLEAN`): Indicates whether there is a full road closure on the route (consistent with Google Maps full road closure status).
   * *Partitioning*: Partitioned by **`DAY`** on the `record_time` column. Default partitions hold up to 10 years of history.
   * *Clustering*: Clustered on the **`selected_route_id`** column (first position) and `record_time` (second position).
 
@@ -53,15 +75,38 @@ WHERE
   JSON_EXTRACT_SCALAR(route_attributes, '$.region') = 'North-West';
 ```
 
+### Efficient Route Discovery vs. Roads Selection API
+
+Historically, discovering registered routes or extracting specific corridors required calling the Roads Selection REST API (`selectedRoutes.list`), which imposed REST API quota limits, pagination latency, and rate throttling. Because `routes_status` has been expanded to include full routing definitions (`origin`, `destination`, `intermediates`, `static_route_geometry`, `road_segment_ids`, `dynamic_routing`, and `route_attributes`), **`routes_status` in BigQuery now serves as the authoritative, ultra-efficient route extraction and discovery engine**.
+
+Querying `routes_status` directly in BigQuery is vastly preferred over calling the Roads Selection API:
+
+* **Zero REST API Quota & Latency**: Eliminates repetitive REST API requests, client-side pagination overhead, and rate limits when querying thousands of monitored corridors.
+* **Native BigQuery GIS Spatial Indexing**: Enables high-performance geospatial operations (`ST_INTERSECTS`, `ST_DWITHIN`, `ST_CONTAINS`, `ST_LENGTH`) directly on `static_route_geometry`, `origin`, and `destination` using BigQuery's spatial indexing.
+* **Instant Multi-Criteria Slicing**: Combines route ID or display name prefixes (`display_name LIKE 'corridor-boston-%'`), custom JSON attributes (`JSON_EXTRACT_SCALAR(route_attributes, '$.corridor_type') = 'arterial'`), route dynamism (`dynamic_routing = FALSE`), and traversed road segment Place IDs (`EXISTS (SELECT 1 FROM UNNEST(road_segment_ids) AS seg WHERE seg = 'ChIJ...')`) in a single query.
+* **Direct Analytical Joins**: Extracted route sets can be directly joined with `historical_travel_time` or `recent_roads_data` without intermediate client-side buffering.
+
+### Detecting Route Deviations and Detours by Comparing Road Segment Sequences (routes_status vs historical_travel_time)
+
+Because `routes_status.road_segment_ids` records the static baseline sequence of Google Place IDs and `historical_travel_time.road_segment_ids` captures the actual traffic-aware sequence observed at each `record_time` (starting from the June 19, 2026 cutoff), comparing the two arrays reveals whether a dynamic route has detoured or deviated around incidents or heavy congestion:
+
+* **Nominal Route (`has_deviated = FALSE`)**: The observed segment sequence matches the static baseline identically.
+* **Route Deviation (`has_deviated = TRUE`)**: Real-time traffic rerouted vehicles onto alternative streets, resulting in mismatched Place ID sequences or extra detour segments (`detour_segment_count > 0`).
+* **Root-Cause Correlation with `has_road_closure`**: Whenever a deviation is detected (`has_deviated = TRUE`), **always correlate with `historical_travel_time.has_road_closure`**:
+  * **`has_road_closure IS TRUE`** (`DEVIATION_FULL_ROAD_CLOSURE`): The deviation was triggered by a full, impassable road closure on the corridor. In this state, `duration_in_seconds` is omitted (`NULL`) per the RMI nullability contract.
+  * **`COALESCE(has_road_closure, FALSE) = FALSE`** (`DEVIATION_CONGESTION_REROUTE`): The deviation was triggered by dynamic routing avoiding peak congestion or minor delays (`dynamic_routing = TRUE`), and `duration_in_seconds` is populated with the alternative path duration.
+
 ### Mapping Key Performance Indices (KPIs)
 
 When analyzing traffic-aware speeds and corridor efficiency, translate technical attributes to standard transportation metrics:
 
-* **Travel Time Index (TTI)**: Represents the ratio of travel time in peak traffic to ideal travel time.
-    $$\text{TTI} = \frac{\text{duration\_in\_seconds}}{\text{static\_duration\_in\_seconds}}$$
-    *BigQuery Implementation*: `SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds)`
+* **Travel Time Index (TTI)**: Represents the ratio of travel time in peak traffic to ideal travel time:
+    `SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds)`
 * **Congestion Delay**: Total seconds wasted due to traffic:
     `duration_in_seconds - static_duration_in_seconds` (Clamped to a minimum of 0 using `GREATEST(0, ...)`).
+
+> [!NOTE]
+> **Road Closures and Duration Nullability**: `duration_in_seconds` is omitted (`NULL`) when `has_road_closure = true` because the route is impassable. When aggregating travel times, computing average delays, or calculating TTI, filter out closed routes using `WHERE has_road_closure IS NOT TRUE` (or `WHERE COALESCE(has_road_closure, FALSE) = FALSE`), or explicitly account for closures in conditional KPI calculations.
 
 ---
 
@@ -74,6 +119,7 @@ When analyzing traffic-aware speeds and corridor efficiency, translate technical
 | **Empty join results with `routes_status`** | Using `display_name` as the join condition. | Never join on `display_name`. **Always** join on `selected_route_id`. |
 | **`NULL` values for custom attributes** | Using `JSON_EXTRACT` instead of `JSON_EXTRACT_SCALAR`. | `JSON_EXTRACT` retains enclosing double-quotes. Use `JSON_EXTRACT_SCALAR` to retrieve clean string literals. |
 | **Routing path gaps or loops** | `route_geometry` contains multi-geometries or invalid paths. | Filter with `WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString'` to ensure simple, connected paths. |
+| **`duration_in_seconds` is NULL unexpectedly** | A full road closure is active on the route (`has_road_closure = true`). | Check `has_road_closure`. Filter with `WHERE has_road_closure IS NOT TRUE` or handle closures explicitly in KPIs. |
 
 ---
 
@@ -177,4 +223,84 @@ WHERE
   AND t.selected_route_id = "route-boston-logan-93"
 ORDER BY 
   t.record_time DESC;
+```
+
+### Example 4: Multi-Criteria Route Discovery and Spatial Extraction
+
+Extract active, fixed arterial routes intersecting a target metropolitan bounding polygon, matching a display name prefix, having a specific priority tag in `route_attributes`, and traversing a specific road segment Place ID:
+
+```sql
+SELECT 
+  selected_route_id,
+  display_name,
+  dynamic_routing,
+  JSON_EXTRACT_SCALAR(route_attributes, '$.priority') AS priority,
+  JSON_EXTRACT_SCALAR(route_attributes, '$.corridor_type') AS corridor_type,
+  ST_LENGTH(static_route_geometry) AS corridor_length_meters,
+  ARRAY_LENGTH(road_segment_ids) AS traversed_segment_count,
+  static_route_geometry
+FROM 
+  `my_project.rmi_foundation.routes_status`
+WHERE 
+  status = 'STATUS_RUNNING'
+  -- 1. Route dynamism: Filter for fixed baseline corridors
+  AND dynamic_routing = FALSE
+  -- 2. Name prefix filtering
+  AND display_name LIKE 'Route-%'
+  -- 3. JSON attribute filtering
+  AND JSON_EXTRACT_SCALAR(route_attributes, '$.priority') = 'tier-1'
+  -- 4. Spatial boundary filter: Corridor intersects metropolitan bounding polygon
+  AND ST_INTERSECTS(
+    static_route_geometry,
+    ST_GEOGFROMTEXT('POLYGON((-71.12 42.32, -71.02 42.32, -71.02 42.40, -71.12 42.40, -71.12 42.32))')
+  )
+  -- 5. Traversed road segment lookup: Corridor traverses target highway segment Place ID
+  AND EXISTS (
+    SELECT 1 
+    FROM UNNEST(road_segment_ids) AS segment_id 
+    WHERE segment_id = 'ChIJ25e1g4hw44kR5UfM8pY61-E'
+  )
+ORDER BY 
+  corridor_length_meters DESC;
+```
+
+### Example 5: Detecting Route Deviations and Detours with Road Closure Correlation
+
+Compare static baseline Place IDs in `routes_status` against observed Place IDs in `historical_travel_time`, calculate detour segment counts, and classify the deviation root cause using `has_road_closure`:
+
+```sql
+SELECT 
+  h.selected_route_id,
+  h.record_time,
+  s.display_name,
+  s.dynamic_routing,
+  h.duration_in_seconds,
+  h.has_road_closure,
+  -- Compare baseline vs actual observed road segment sequences
+  TO_JSON_STRING(s.road_segment_ids) != TO_JSON_STRING(h.road_segment_ids) AS has_deviated,
+  (
+    SELECT COUNT(1) 
+    FROM UNNEST(h.road_segment_ids) AS obs_seg 
+    WHERE obs_seg NOT IN (SELECT base_seg FROM UNNEST(s.road_segment_ids) AS base_seg)
+  ) AS detour_segment_count,
+  -- Correlate route deviation with road closure state
+  CASE 
+    WHEN TO_JSON_STRING(s.road_segment_ids) != TO_JSON_STRING(h.road_segment_ids) AND h.has_road_closure IS TRUE 
+      THEN 'DEVIATION_FULL_ROAD_CLOSURE'
+    WHEN TO_JSON_STRING(s.road_segment_ids) != TO_JSON_STRING(h.road_segment_ids) AND COALESCE(h.has_road_closure, FALSE) = FALSE 
+      THEN 'DEVIATION_CONGESTION_REROUTE'
+    ELSE 'NOMINAL_BASELINE'
+  END AS deviation_cause
+FROM 
+  `my_project.rmi_foundation.historical_travel_time` AS h
+INNER JOIN 
+  `my_project.rmi_foundation.routes_status` AS s
+  ON h.selected_route_id = s.selected_route_id
+WHERE 
+  -- Temporal constraint: road_segment_ids populated on/after June 19, 2026
+  h.record_time >= '2026-06-19'
+  AND h.record_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
+ORDER BY 
+  h.record_time DESC, 
+  detour_segment_count DESC;
 ```

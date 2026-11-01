@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_bqa6_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_bqa6_YYYYMMDDHHMMSS
 -- Persona: bigquery_admin
 -- Purpose: RMI BigQuery Analytical Query (bqa6)
 
@@ -17,14 +17,13 @@
 -- limitations under the License.
 
 -- Q6: Data Characteristics and Complexity Audit
--- Business Question: What is the average spatial complexity (vertex count) and metadata size (routeAttributes) of my actual records?
+-- Business Question: What is the average spatial complexity (vertex count, length, binary size) and metadata size (routeAttributes) across telemetry and static status tables?
 -- Product Stage: GA
 -- Estimated Bytes Processed: ~450 MB (Full scan of geometry and attributes)
 
 /*
-  This query performs a deep audit of the data payload. 
-  It is useful for understanding the impact of route precision and 
-  custom attributes on storage and processing costs.
+  This query performs a deep audit of the data payload across all 3 primary tables.
+  In routes_status, spatial metrics are computed directly from static_route_geometry.
 */
 
 -- Historical Spatial Complexity
@@ -53,12 +52,13 @@ WHERE record_time BETWEEN '2026-07-01' AND '2026-07-30'
 
 UNION ALL
 
--- Status Metadata Complexity
+-- Status Metadata & Static Route Complexity
 SELECT
   'routes_status' as table_name,
   COUNT(DISTINCT selected_route_id) as unique_routes,
-  SAFE_CAST(NULL AS FLOAT64) as avg_geom_bytes,
-  SAFE_CAST(NULL AS FLOAT64) as avg_route_length_km,
-  SAFE_CAST(NULL AS FLOAT64) as avg_num_points,
+  AVG(BYTE_LENGTH(ST_ASBINARY(static_route_geometry))) as avg_geom_bytes,
+  AVG(ST_LENGTH(static_route_geometry) / 1000) as avg_route_length_km,
+  AVG(ST_NUMPOINTS(static_route_geometry)) as avg_num_points,
   AVG(BYTE_LENGTH(route_attributes)) as avg_attr_bytes
-FROM `LINKED_DATASET_NAME.routes_status`;
+FROM `LINKED_DATASET_NAME.routes_status`
+WHERE ST_GEOMETRYTYPE(static_route_geometry) = 'ST_LineString';

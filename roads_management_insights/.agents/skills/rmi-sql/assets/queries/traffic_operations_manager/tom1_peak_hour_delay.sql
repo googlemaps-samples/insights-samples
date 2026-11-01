@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_tom1_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_tom1_YYYYMMDDHHMMSS
 -- Persona: traffic_operations_manager
 -- Purpose: RMI BigQuery Analytical Query (tom1)
 
@@ -17,22 +17,24 @@
 -- limitations under the License.
 
 -- Traffic Operations Manager Query 1: Peak Hour Delay Analysis
--- Business Question: What is the average travel time delay during the morning peak (7-9 AM) for the top 10 most congested routes?
--- Use Case: Identifies critical morning commute bottlenecks to inform operational decisions or public messaging.
+-- Business Question: What is the average travel time delay during the morning peak (7-9 AM) for the top 10 most congested routes, explicitly accounting for road closures?
+-- Use Case: Identifies critical morning commute bottlenecks and closure incidents to inform operational decisions or public messaging.
 -- Product Stage: GA
 -- Estimated Bytes Processed: ~151 MB (Requires JOIN with routes_status)
 
 /*
-  ANALYTICAL PATTERN: Temporal Filtering
+  ANALYTICAL PATTERN: Temporal Filtering & Closure Safety
   This query uses EXTRACT(HOUR...) on a converted DATETIME to focus on local 
-  Boston peak windows. It filters for active routes and applies a quality 
-  check to ensure the geometry is a single ST_LineString.
+  peak windows. It joins routes_status on s.status = 'STATUS_RUNNING' and
+  explicitly tracks has_road_closure rather than silently dropping closures
+  with a naive duration_in_seconds IS NOT NULL filter.
 */
 
 WITH peak_hour_data AS (
   SELECT
     h.selected_route_id,
     h.display_name,
+    h.has_road_closure,
     -- delay_ratio > 1.0 indicates travel time is slower than free-flow (static)
     SAFE_DIVIDE(h.duration_in_seconds, h.static_duration_in_seconds) AS delay_ratio
   FROM `LINKED_DATASET_NAME.historical_travel_time` AS h
@@ -44,16 +46,19 @@ WITH peak_hour_data AS (
     AND EXTRACT(HOUR FROM DATETIME(h.record_time, 'America/New_York')) BETWEEN 7 AND 8
     -- Geometry Integrity: Only process continuous, healthy paths (ST_LineString)
     AND ST_GEOMETRYTYPE(h.route_geometry) = 'ST_LineString'
-    AND h.duration_in_seconds IS NOT NULL
-    AND h.static_duration_in_seconds > 0
+    AND (h.static_duration_in_seconds > 0 OR h.has_road_closure IS TRUE)
 )
 SELECT
   display_name,
-  ROUND(AVG(delay_ratio), 3) AS avg_delay_ratio,
-  COUNT(*) AS sample_count
+  -- Compute average delay ratio on passable periods
+  ROUND(AVG(CASE WHEN COALESCE(has_road_closure, FALSE) IS FALSE THEN delay_ratio END), 3) AS avg_delay_ratio,
+  COUNT(*) AS total_observations,
+  -- Explicitly audit road closure incidents rather than silently dropping them
+  COUNTIF(has_road_closure IS TRUE) AS road_closure_incidents,
+  COUNTIF(COALESCE(has_road_closure, FALSE) IS FALSE AND delay_ratio IS NOT NULL) AS valid_delay_samples
 FROM peak_hour_data
 GROUP BY 1
--- Threshold: Filter for routes that are at least marginally slower than free-flow
-HAVING avg_delay_ratio > 1.0
-ORDER BY avg_delay_ratio DESC
+-- Threshold: Filter for routes that are slower than free-flow or experienced road closures
+HAVING avg_delay_ratio > 1.0 OR road_closure_incidents > 0
+ORDER BY road_closure_incidents DESC, avg_delay_ratio DESC
 LIMIT 10;

@@ -46,6 +46,13 @@ stateDiagram-v2
   * *Cause*: The requested corridor has insufficient aggregate vehicle volume to satisfy Google Maps privacy thresholds.
   * *Remediation*: Re-align route onto primary arterial or highway corridors.
 
+### Synchronous Registration Failure (`HTTP 400 INVALID_ARGUMENT`) vs. Asynchronous `STATE_INVALID`
+
+* **Asynchronous `STATE_INVALID`**: The route payload was accepted (`HTTP 200 OK`, initially `STATE_VALIDATING`), and background validation later flagged `ROUTE_OUTSIDE_JURISDICTION` or `LOW_ROAD_USAGE`.
+* **Synchronous `HTTP 400 INVALID_ARGUMENT` (`"Request contains an invalid argument."`)**:
+  * In addition to schema syntax errors, `CreateSelectedRoute` fails synchronously with `400 INVALID_ARGUMENT` when waypoints snap to the wrong carriageway of a divided highway (or a directionally closed segment) and generate cumulative turnaround loops exceeding ~150–180 km total routed distance.
+  * **Pre-Flight Check**: Always verify candidate `[origin, ...intermediates, destination]` arrays against `POST https://routes.googleapis.com/directions/v2:computeRoutes` (`X-Goog-FieldMask: routes.distanceMeters,routes.legs.distanceMeters,routes.legs.steps.navigationInstruction.instructions`) to confirm total routed distance is within `1.0x–1.3x` of expected corridor length before calling `CreateSelectedRoute`.
+
 ---
 
 ## 3. Implementation Examples
@@ -219,11 +226,179 @@ export { waitForRouteRunning, RouteState, ValidationError, type RouteInspectionR
 
 ---
 
+### D. Direct REST Call (`curl`)
+
+```bash
+PROJECT_ID="my-roads-project"
+ROUTE_ID="corridor-test-101"
+ACCESS_TOKEN=$(gcloud auth application-default print-access-token)
+
+curl -s -X GET \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  -H "X-Goog-User-Project: ${PROJECT_ID}" \
+  "https://roads.googleapis.com/selection/v1/projects/${PROJECT_ID}/selectedRoutes/${ROUTE_ID}" \
+  | jq '{name, state, validationError}'
+```
+
+---
+
+### E. Go (`net/http` / Lifecycle Poller & Error Diagnostics)
+
+```go
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"time"
+)
+
+type RouteStatus struct {
+	Name            string `json:"name"`
+	State           string `json:"state"`
+	ValidationError string `json:"validationError,omitempty"`
+}
+
+func waitForRouteRunning(ctx context.Context, projectID, routeID, token string) (*RouteStatus, error) {
+	endpoint := fmt.Sprintf(
+		"https://roads.googleapis.com/selection/v1/projects/%s/selectedRoutes/%s",
+		url.PathEscape(projectID),
+		url.PathEscape(routeID),
+	)
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("X-Goog-User-Project", projectID)
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		raw, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil, fmt.Errorf("GET failed [%d]: %s", resp.StatusCode, string(raw))
+		}
+
+		var status RouteStatus
+		if err := json.Unmarshal(raw, &status); err != nil {
+			return nil, err
+		}
+		if status.State == "STATE_RUNNING" {
+			return &status, nil
+		}
+		if status.State == "STATE_INVALID" {
+			return &status, fmt.Errorf("route entered STATE_INVALID (validationError=%s)", status.ValidationError)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(3 * time.Second):
+		}
+	}
+}
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	status, err := waitForRouteRunning(ctx, "my-roads-project", "corridor-test-101", os.Getenv("GOOGLE_OAUTH_ACCESS_TOKEN"))
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Route is active:", status.Name, status.State)
+}
+```
+
+---
+
+### F. Rust (`RoadsSelectionClient` / Lifecycle Poller & Error Diagnostics)
+
+```rust
+use std::process::Command;
+use std::thread;
+use std::time::{Duration, Instant};
+
+pub fn wait_for_route_running(
+    project_id: &str,
+    route_id: &str,
+    token: &str,
+    timeout: Duration,
+) -> Result<String, String> {
+    let url = format!(
+        "https://roads.googleapis.com/selection/v1/projects/{}/selectedRoutes/{}",
+        project_id, route_id
+    );
+    let start = Instant::now();
+
+    loop {
+        let out = Command::new("curl")
+            .args(["-sS", "-X", "GET"])
+            .arg("-H")
+            .arg(format!("Authorization: Bearer {}", token))
+            .arg("-H")
+            .arg(format!("X-Goog-User-Project: {}", project_id))
+            .arg(&url)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if !out.status.success() {
+            return Err(String::from_utf8_lossy(&out.stderr).into_owned());
+        }
+        let body = String::from_utf8_lossy(&out.stdout).into_owned();
+
+        if body.contains("\"STATE_RUNNING\"") {
+            return Ok(body);
+        }
+        if body.contains("\"STATE_INVALID\"") {
+            let reason = if body.contains("VALIDATION_ERROR_ROUTE_OUTSIDE_JURISDICTION") {
+                "VALIDATION_ERROR_ROUTE_OUTSIDE_JURISDICTION"
+            } else if body.contains("VALIDATION_ERROR_LOW_ROAD_USAGE") {
+                "VALIDATION_ERROR_LOW_ROAD_USAGE"
+            } else {
+                "VALIDATION_ERROR_UNSPECIFIED"
+            };
+            return Err(format!("Route entered STATE_INVALID: {}", reason));
+        }
+        if start.elapsed() >= timeout {
+            return Err(format!("Timed out waiting for {} to reach STATE_RUNNING", route_id));
+        }
+        thread::sleep(Duration::from_secs(3));
+    }
+}
+
+fn main() -> Result<(), String> {
+    let token = std::env::var("GOOGLE_OAUTH_ACCESS_TOKEN").unwrap_or_default();
+    let res = wait_for_route_running(
+        "my-roads-project",
+        "corridor-test-101",
+        &token,
+        Duration::from_secs(60),
+    )?;
+    println!("Active Route: {}", res);
+    Ok(())
+}
+```
+
+---
+
 ## 4. Expected Diagnostic Response (State: `STATE_INVALID`)
 
 ```json
 {
-  "name": "projects/35571336328/selectedRoutes/invalid-rural-route",
+  "name": "projects/123456789012/selectedRoutes/invalid-rural-route",
   "displayName": "Low Density Rural Path",
   "dynamicRoute": {
     "origin": { "latitude": 42.1000, "longitude": -73.1000 },

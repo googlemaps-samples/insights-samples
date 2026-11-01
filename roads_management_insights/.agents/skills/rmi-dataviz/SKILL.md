@@ -457,6 +457,28 @@ overlay.setMap(map);
 
 In older deck.gl versions, interleaving could cause stencil, blend, or depth-testing state contamination (e.g. flickering, "Hung Labeler" errors, or broken label rendering). In **deck.gl v9**, the WebGL state save-and-restore hygiene is extremely robust, making `interleaved: true` safe and highly recommended for production vector overlays.
 
+### C. Preventing 3D Vector Building Occlusion (`depthCompare` & Cloud-Based Map Styling)
+
+When rendering road networks or corridor overlays on a Vector Google Map (`mapId` with 3D buildings enabled), extruded 3D building meshes write to the shared WebGL2 depth buffer and occlude `GoogleMapsOverlay` polylines wherever buildings lean across street centerlines.
+
+1. **The `depthTest: false` Deck.gl v9 Trap**:
+   - In deck.gl v9 (`@luma.gl/core` WebGPU-aligned parameter vocabulary), the legacy v8 parameter `parameters: { depthTest: false }` is silently ignored.
+   - **Correct Deck.gl v9 Configuration**: Pass `parameters: { depthCompare: 'always', depthWriteEnabled: false }` on every road `GeoJsonLayer` or `PathLayer` so overlay strokes always pass the depth test above 3D building geometry:
+
+     ```javascript
+     new deck.GeoJsonLayer({
+       id: 'road-network-layer',
+       data: geojsonData,
+       parameters: {
+         depthCompare: 'always',
+         depthWriteEnabled: false
+       }
+     });
+     ```
+
+2. **Companion Cloud-Based Map Style (35% Building Opacity)**:
+   - Pair the WebGL depth override with a Cloud-based Map Style (`api-mapmanagement` v2beta `StyleConfig` + `MapContextConfig`) that dims `pointOfInterest.other.building` to `35%` opacity (`fillOpacity: 0.35, strokeOpacity: 0.35`). This keeps 3D building footprints softly visible for urban context without competing visually with road overlays.
+
 ---
 
 ## 🎨 12. Meters-Scale Styling & Default Layer Opacities
@@ -733,6 +755,14 @@ All generated snapshots and presentation slides must strictly adhere to a standa
 * **`<timestamp>`**: Export timestamp `YYYYMMDD_HHMMSS` (prevents browser download overwrite).
 
 ---
+
+## 📍 25. AdvancedMarkerElement Anchor Offset & Key-Safe Static Viz Builds
+* **Anchor offset:** `google.maps.marker.AdvancedMarkerElement` anchors its `content` at the **bottom-centre**. A dot or circle marker therefore renders consistently offset (above) its true position. Centre it with `content.style.transform = 'translateY(50%)'`.
+* **Key-safe static builds:** for static single-file Google Maps visualizations, generate two outputs from one builder:
+  * a shareable `*.html` with **no API key**: it reads the key from `?key=&mapId=`, `localStorage`, or a prompt;
+  * a `*.local.html` with the key embedded from `.env`, added to `.gitignore` (`*.local.html`).
+  * Verify that the public file contains no `AIza` string before committing.
+* **Reviewing route segmentation visually:** draw sections coloured by driving order, mark section ends with markers, and show joining/leaving roads (local/terminal in grey). Users confirmed or rejected splitting rules visually this way, faster than with tables.
 
 ## Guidelines
 

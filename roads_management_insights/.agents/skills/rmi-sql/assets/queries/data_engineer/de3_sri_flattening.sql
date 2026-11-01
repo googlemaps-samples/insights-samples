@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_de3_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_de3_YYYYMMDDHHMMSS
 -- Persona: data_engineer
 -- Purpose: RMI BigQuery Analytical Query (de3)
 
@@ -16,27 +16,22 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
--- Data Engineer Query 3: SRI Flattening (Scripted Version)
--- Business Question: Create an optimized script to transform the latest 30 minutes of nested SRI data into a flattened format with spatial progress metrics and quality filters.
+-- Data Engineer Query 3: SRI Flattening with Modern Offsets
+-- Business Question: Transform the latest 30 minutes of nested SRI offset data into a flattened format with spatial progress metrics and quality filters using native integer arithmetic.
 -- Product Stage: GA
--- Estimated Bytes Processed: ~10 MB (Optimized via Scripting and Static Partition Pruning)
+-- Estimated Bytes Processed: ~8 MB (Optimized via Scripting, Static Partition Pruning, and speed_reading_offsets)
 
 /*
-  BIGQUERY OPTIMIZATION PATTERN: Static vs. Dynamic Partition Pruning
+  BIGQUERY OPTIMIZATION PATTERN: Native Integer Offsets vs. Windowing
   
-  This query uses BigQuery Scripting (DECLARE/SET) to force "Static Pruning".
+  Modern RMI datasets provide speed_reading_offsets (start_offset, end_offset, speed).
+  This eliminates complex ST_MAKELINE spatial polyline assembly and window function sums:
   
-  1. Static Pruning (This Pattern): By resolving 'target_time' into a variable BEFORE 
-     the main SELECT, BigQuery treats it as a constant. This allows the optimizer 
-     to immediately discard irrelevant partitions.
-     
-  2. Geometry Integrity Check: To ensure high-quality analysis, this query:
-     a) Calculates 'length_deviation_ratio' against pre-computed attributes.
-     b) Excludes 'MultiLineString' geometries to ensure we only process single, 
-        continuous paths (ST_LineString).
-        
-  3. Noise Reduction: Final results exclude 'NORMAL' speed states and filter out 
-     extremely short intervals (< 5 meters) that often represent GPS noise.
+  1. Static Pruning: Resolves 'latest_timestamp' to prune partitions ahead of the main SELECT.
+  2. Native Offsets: Computes interval lengths directly via (end_offset - start_offset).
+  3. Progress Ratios: Derives start_position_ratio and end_position_ratio directly from 
+     start_offset and end_offset without LAG() or rolling SUM() window calculations.
+  4. Multi-Tier Congestion: Accurately classifies SLOW, TRAFFIC_JAM, and TRAFFIC_JAM_HEAVY.
 */
 
 -- Step 1: Define the static anchor date to narrow down partitions
@@ -50,75 +45,51 @@ SET latest_timestamp = (
   WHERE record_time >= TIMESTAMP(anchor_date)
 );
 
--- Step 3: Execute the flattening logic for the latest 30-minute window
+-- Step 3: Execute flattening logic using native integer offsets
 WITH base_intervals AS (
   SELECT
     r.selected_route_id,
     r.record_time,
-    segment_offset as interval_index,
-    sri.speed as interval_speed_state,
-    -- Reconstruct the interval polyline from the array of interval points
-    ST_MAKELINE(sri.interval_coordinates) as interval_geometry,
-    -- Core metrics for integrity check
-    ST_LENGTH(r.route_geometry) as actual_route_length_meters,
-    SAFE_CAST(COALESCE(JSON_VALUE(s.route_attributes, '$.route_length_meters'), JSON_VALUE(s.route_attributes, '$.route_length')) AS FLOAT64) as intended_route_length_meters
-  FROM `LINKED_DATASET_NAME.recent_roads_data` r
-  JOIN `LINKED_DATASET_NAME.routes_status` s USING(selected_route_id),
-  UNNEST(speed_reading_intervals) AS sri WITH OFFSET AS segment_offset
+    segment_offset AS interval_index,
+    sro.speed AS interval_speed_state,
+    sro.start_offset,
+    sro.end_offset,
+    -- Physical interval length in meters via integer subtraction
+    (sro.end_offset - sro.start_offset) AS interval_length_meters,
+    ST_LENGTH(r.route_geometry) AS actual_route_length_meters,
+    SAFE_CAST(COALESCE(JSON_VALUE(s.route_attributes, '$.route_length_meters'), JSON_VALUE(s.route_attributes, '$.route_length')) AS FLOAT64) AS intended_route_length_meters
+  FROM `LINKED_DATASET_NAME.recent_roads_data` AS r
+  JOIN `LINKED_DATASET_NAME.routes_status` AS s USING (selected_route_id)
+  LEFT JOIN UNNEST(r.speed_reading_offsets) AS sro WITH OFFSET AS segment_offset
   WHERE r.record_time >= TIMESTAMP(anchor_date)
-    -- Capture only records from the last 30 minutes
     AND r.record_time > TIMESTAMP_SUB(latest_timestamp, INTERVAL 30 MINUTE)
-    -- Quality filter: Only process single, continuous paths
+    AND s.status = 'STATUS_RUNNING'
+    AND (r.has_road_closure IS FALSE OR r.has_road_closure IS NULL)
     AND ST_GEOMETRYTYPE(r.route_geometry) = 'ST_LineString'
 ),
 quality_filtered_intervals AS (
   SELECT
     *,
     -- Deviation between intended and actual geometry length
-    SAFE_DIVIDE(ABS(actual_route_length_meters - intended_route_length_meters), intended_route_length_meters) as length_deviation_ratio
+    SAFE_DIVIDE(ABS(actual_route_length_meters - intended_route_length_meters), intended_route_length_meters) AS length_deviation_ratio
   FROM base_intervals
-  -- Filter for high-integrity geometries (e.g., < 5% deviation)
+  -- Filter for high-integrity geometries (< 5% length deviation)
   WHERE SAFE_DIVIDE(ABS(actual_route_length_meters - intended_route_length_meters), intended_route_length_meters) < 0.05
-),
-metrics_calculation AS (
-  SELECT
-    *,
-    ST_LENGTH(interval_geometry) as interval_length_meters,
-    -- Roll-up sum of interval lengths to find cumulative distance from origin
-    SUM(ST_LENGTH(interval_geometry)) OVER (
-      PARTITION BY selected_route_id, record_time 
-      ORDER BY interval_index
-    ) as cumulative_length_meters,
-    -- Count total intervals in the route for context
-    COUNT(*) OVER (
-      PARTITION BY selected_route_id, record_time
-    ) as total_intervals
-  FROM quality_filtered_intervals
-),
-position_ratios AS (
-  SELECT
-    *,
-    -- The end of the previous interval is the start of the current interval
-    COALESCE(LAG(cumulative_length_meters) OVER (
-      PARTITION BY selected_route_id, record_time 
-      ORDER BY interval_index
-    ), 0.0) as start_length_meters
-  FROM metrics_calculation
 )
 SELECT
   selected_route_id,
   record_time,
   interval_index,
-  total_intervals,
   interval_speed_state,
+  start_offset,
+  end_offset,
   interval_length_meters,
-  -- Rounded relative positions (0.000 to 1.000) within the trip
-  ROUND(SAFE_DIVIDE(start_length_meters, actual_route_length_meters), 3) as start_position_ratio,
-  ROUND(SAFE_DIVIDE(cumulative_length_meters, actual_route_length_meters), 3) as end_position_ratio,
-  length_deviation_ratio,
-  interval_geometry
-FROM position_ratios
--- Filter for congested intervals and exclude noise (short intervals)
-WHERE interval_speed_state != 'NORMAL'
+  -- Rounded relative positions (0.000 to 1.000) within the trip computed directly from offsets
+  ROUND(SAFE_DIVIDE(start_offset, actual_route_length_meters), 3) AS start_position_ratio,
+  ROUND(SAFE_DIVIDE(end_offset, actual_route_length_meters), 3) AS end_position_ratio,
+  length_deviation_ratio
+FROM quality_filtered_intervals
+-- Filter for congested intervals (including TRAFFIC_JAM_HEAVY) and exclude short GPS noise
+WHERE interval_speed_state IN ('SLOW', 'TRAFFIC_JAM', 'TRAFFIC_JAM_HEAVY')
   AND interval_length_meters >= 5
 ORDER BY selected_route_id, record_time, interval_index;

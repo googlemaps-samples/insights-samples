@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_ds9_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_ds9_YYYYMMDDHHMMSS
 -- Persona: data_scientist
 -- Purpose: RMI BigQuery Analytical Query (ds9)
 

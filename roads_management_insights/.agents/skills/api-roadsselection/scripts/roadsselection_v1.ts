@@ -71,12 +71,14 @@ export interface DynamicRoute {
  * Full SelectedRoute resource representation returned by the Roads Selection API.
  */
 export interface SelectedRoute {
-  /** Canonical resource name ('projects/{project}/selectedRoutes/{id}'). */
+  /** Identifier. Resource name ('projects/{project}/selectedRoutes/{selected_route}'). */
   name: string;
-  /** Human-readable display label (max 100 characters). */
+  /** Optional human-readable display label (max 100 Unicode code points). */
   displayName?: string;
   /** Dynamic waypoint geometry defining the corridor. */
   dynamicRoute?: DynamicRoute;
+  /** Optional boolean: true enables live-traffic dynamic rerouting; false (default) fixes traffic-unaware geometry. */
+  dynamicRouting?: boolean;
   /** Key-value metadata pairs used for BigQuery clustering and stream filtering (max 25). */
   routeAttributes?: Record<string, string>;
   /** Output-only lifecycle state (e.g. 'STATE_RUNNING', 'STATE_VALIDATING', 'STATE_INVALID'). */
@@ -85,8 +87,6 @@ export interface SelectedRoute {
   validationError?: string;
   /** Output-only creation timestamp (RFC 3339 format). */
   createTime?: string;
-  /** Output-only last modification timestamp (RFC 3339 format). */
-  updateTime?: string;
 }
 
 /**
@@ -119,9 +119,9 @@ export interface BatchUpdateResponse {
  * Input parameters for creating a new SelectedRoute.
  */
 export interface CreateRouteInput {
-  /** Unique route ID (4-63 characters, [a-zA-Z0-9-], no underscores). */
-  routeId: string;
-  /** Human-readable label (max 100 characters). */
+  /** Optional unique route ID (4-63 characters, [a-zA-Z0-9_-]; auto-UUID if omitted). */
+  routeId?: string;
+  /** Human-readable label (max 100 Unicode code points). */
   displayName: string;
   /** Starting coordinate. */
   origin: LatLng;
@@ -129,7 +129,9 @@ export interface CreateRouteInput {
   destination: LatLng;
   /** Optional intermediate waypoints (max 25). */
   intermediates?: LatLng[];
-  /** Optional metadata tags (max 25 pairs, keys must not start with 'goog'). */
+  /** Optional boolean controlling dynamic routing (false by default for fixed route). */
+  dynamicRouting?: boolean;
+  /** Optional metadata tags (max 25 pairs, non-empty strings 1-100 chars, keys must not start with 'goog'). */
   attributes?: Record<string, string>;
 }
 
@@ -143,6 +145,8 @@ export interface UpdateRouteInput {
   displayName?: string;
   /** Updated dynamic geometry definition. */
   dynamicRoute?: DynamicRoute;
+  /** Updated dynamicRouting boolean flag. */
+  dynamicRouting?: boolean;
   /** Updated metadata attributes map. */
   attributes?: Record<string, string>;
   /** Optional explicit FieldMask string (e.g. 'displayName,routeAttributes'). */
@@ -163,12 +167,41 @@ export interface RoadsSelectionClientOptions {
   quotaProjectId?: string;
 }
 
+const SELECTED_ROUTE_ID_REGEX = /^[a-zA-Z0-9_-]{4,63}$/;
+
 /**
- * Validates routeAttributes dictionary according to the proto specification.
+ * Counts Unicode code points in a string (matching Discovery Document 20261101 character length semantics).
+ */
+function codePointLength(value: string): number {
+  return Array.from(value).length;
+}
+
+/**
+ * Validates selectedRouteId according to Discovery Document 20261101.
+ *
+ * @param routeId Optional client-chosen route identifier.
+ * @throws {Error} If non-empty routeId violates length (4-63) or character ([a-zA-Z0-9_-]) rules.
+ */
+export function validateSelectedRouteId(routeId?: string): void {
+  if (routeId === undefined || routeId === '') {
+    return;
+  }
+  if (routeId.length < 4 || routeId.length > 63) {
+    throw new Error(`selectedRouteId '${routeId}' must be 4-63 characters (got ${routeId.length})`);
+  }
+  if (!SELECTED_ROUTE_ID_REGEX.test(routeId)) {
+    throw new Error(
+      `selectedRouteId '${routeId}' contains invalid characters; valid characters are 'a-z', 'A-Z', '0-9', '-', or '_'`
+    );
+  }
+}
+
+/**
+ * Validates routeAttributes dictionary according to Discovery Document 20261101.
  *
  * @param attributes Key-value string map representing route metadata.
  * @throws {TypeError} If attributes is not an object or contains non-string values.
- * @throws {Error} If key count exceeds 25, byte lengths exceed 100 bytes UTF-8, or key starts with 'goog'.
+ * @throws {Error} If key count exceeds 25, lengths are outside 1-100 Unicode code points, or key starts with 'goog'.
  */
 export function validateRouteAttributes(attributes: Record<string, string>): void {
   if (typeof attributes !== 'object' || attributes === null) {
@@ -183,13 +216,13 @@ export function validateRouteAttributes(attributes: Record<string, string>): voi
     if (typeof k !== 'string' || typeof v !== 'string') {
       throw new TypeError(`Attribute key/value must be strings: ${k}=${v}`);
     }
-    const kBytes = Buffer.byteLength(k, 'utf8');
-    const vBytes = Buffer.byteLength(v, 'utf8');
-    if (kBytes < 1 || kBytes > 100) {
-      throw new Error(`Attribute key '${k}' must be 1-100 bytes UTF-8 (got ${kBytes} bytes)`);
+    const kLen = codePointLength(k);
+    const vLen = codePointLength(v);
+    if (kLen < 1 || kLen > 100) {
+      throw new Error(`Attribute key '${k}' must be 1-100 characters (got ${kLen})`);
     }
-    if (vBytes > 100) {
-      throw new Error(`Attribute value for '${k}' exceeds 100 bytes UTF-8 (got ${vBytes} bytes)`);
+    if (vLen < 1 || vLen > 100) {
+      throw new Error(`Attribute value for '${k}' must be a non-empty string of 1-100 characters (got ${vLen})`);
     }
     if (k.startsWith('goog')) {
       throw new Error(`Attribute key '${k}' cannot start with reserved prefix 'goog'`);
@@ -270,8 +303,9 @@ export class RoadsSelectionClient {
    * @throws {Error} If creation fails or parameters violate proto limits.
    */
   async createSelectedRoute(input: CreateRouteInput): Promise<SelectedRoute> {
-    if (input.displayName && Buffer.byteLength(input.displayName, 'utf8') > 100) {
-      throw new Error(`displayName exceeds 100 bytes UTF-8 limit (got ${Buffer.byteLength(input.displayName, 'utf8')} bytes)`);
+    validateSelectedRouteId(input.routeId);
+    if (input.displayName && codePointLength(input.displayName) > 100) {
+      throw new Error(`displayName exceeds 100 characters limit (got ${codePointLength(input.displayName)})`);
     }
     if (input.attributes) {
       validateRouteAttributes(input.attributes);
@@ -291,12 +325,16 @@ export class RoadsSelectionClient {
       displayName: input.displayName,
       dynamicRoute,
     };
+    if (input.dynamicRouting !== undefined) {
+      payload.dynamicRouting = input.dynamicRouting;
+    }
     if (input.attributes) {
       payload.routeAttributes = input.attributes;
     }
 
     const headers = await this.getAuthHeaders();
-    const url = `${this.baseUrl}/projects/${this.projectId}/selectedRoutes?selectedRouteId=${encodeURIComponent(input.routeId)}`;
+    const query = input.routeId ? `?selectedRouteId=${encodeURIComponent(input.routeId)}` : '';
+    const url = `${this.baseUrl}/projects/${this.projectId}/selectedRoutes${query}`;
 
     const res = await fetch(url, {
       method: 'POST',
@@ -421,12 +459,19 @@ export class RoadsSelectionClient {
     const computedMaskFields: string[] = [];
 
     if (input.displayName !== undefined) {
+      if (codePointLength(input.displayName) > 100) {
+        throw new Error(`displayName exceeds 100 characters limit (got ${codePointLength(input.displayName)})`);
+      }
       payload.displayName = input.displayName;
       computedMaskFields.push('displayName');
     }
     if (input.dynamicRoute !== undefined) {
       payload.dynamicRoute = input.dynamicRoute;
       computedMaskFields.push('dynamicRoute');
+    }
+    if (input.dynamicRouting !== undefined) {
+      payload.dynamicRouting = input.dynamicRouting;
+      computedMaskFields.push('dynamicRouting');
     }
     if (input.attributes !== undefined) {
       validateRouteAttributes(input.attributes);
@@ -473,22 +518,42 @@ export class RoadsSelectionClient {
     }
 
     const requestsPayload = items.map((item) => {
+      validateSelectedRouteId(item.routeId);
+      if (item.displayName && codePointLength(item.displayName) > 100) {
+        throw new Error(`displayName exceeds 100 characters limit (got ${codePointLength(item.displayName)})`);
+      }
       if (item.attributes) validateRouteAttributes(item.attributes);
-      return {
-        parent: `projects/${this.projectId}`,
-        selectedRouteId: item.routeId,
-        selectedRoute: {
-          displayName: item.displayName,
-          dynamicRoute: { origin: item.origin, destination: item.destination },
-          routeAttributes: item.attributes || {},
-        },
+      const dynamicRoute: DynamicRoute = {
+        origin: item.origin,
+        destination: item.destination,
       };
+      if (item.intermediates) {
+        if (item.intermediates.length > 25) {
+          throw new Error('intermediates cannot exceed 25 waypoints');
+        }
+        dynamicRoute.intermediates = item.intermediates;
+      }
+      const selectedRoute: Partial<SelectedRoute> = {
+        displayName: item.displayName,
+        dynamicRoute,
+        routeAttributes: item.attributes || {},
+      };
+      if (item.dynamicRouting !== undefined) {
+        selectedRoute.dynamicRouting = item.dynamicRouting;
+      }
+      const req: Record<string, any> = {
+        parent: `projects/${this.projectId}`,
+        selectedRoute,
+      };
+      if (item.routeId) {
+        req.selectedRouteId = item.routeId;
+      }
+      return req;
     });
 
     const headers = await this.getAuthHeaders();
     const url = `${this.baseUrl}/projects/${this.projectId}/selectedRoutes:batchCreate`;
     const payload = {
-      parent: `projects/${this.projectId}`,
       requests: requestsPayload,
     };
 
@@ -510,9 +575,9 @@ export class RoadsSelectionClient {
    * RPC: BatchUpdateSelectedRoutes (POST /selection/v1/projects/{project}/selectedRoutes:batchUpdate)
    *
    * @param updates Array of route updates (maximum 1,000).
-   * @param defaultUpdateMask Optional top-level FieldMask applied across all updates.
+   * @param defaultUpdateMask Optional top-level FieldMask applied across child requests omitting their own updateMask.
    * @returns BatchUpdateResponse containing array of modified routes.
-   * @throws {Error} If update count exceeds 1,000 or batch update fails.
+   * @throws {Error} If update count exceeds 1,000, masks conflict, or batch update fails.
    */
   async batchUpdateSelectedRoutes(
     updates: UpdateRouteInput[],
@@ -527,21 +592,44 @@ export class RoadsSelectionClient {
       const sr: Partial<SelectedRoute> = {
         name: `projects/${this.projectId}/selectedRoutes/${rid}`,
       };
-      if (item.displayName !== undefined) sr.displayName = item.displayName;
+      const itemFields: string[] = [];
+      if (item.displayName !== undefined) {
+        if (codePointLength(item.displayName) > 100) {
+          throw new Error(`displayName exceeds 100 characters limit (got ${codePointLength(item.displayName)})`);
+        }
+        sr.displayName = item.displayName;
+        itemFields.push('displayName');
+      }
+      if (item.dynamicRoute !== undefined) {
+        sr.dynamicRoute = item.dynamicRoute;
+        itemFields.push('dynamicRoute');
+      }
+      if (item.dynamicRouting !== undefined) {
+        sr.dynamicRouting = item.dynamicRouting;
+        itemFields.push('dynamicRouting');
+      }
       if (item.attributes !== undefined) {
         validateRouteAttributes(item.attributes);
         sr.routeAttributes = item.attributes;
+        itemFields.push('routeAttributes');
       }
-      return {
-        selectedRoute: sr,
-        updateMask: item.updateMask || defaultUpdateMask || 'displayName,routeAttributes',
-      };
+      if (defaultUpdateMask && item.updateMask && item.updateMask !== defaultUpdateMask) {
+        throw new Error(
+          `Child updateMask '${item.updateMask}' must match batch updateMask '${defaultUpdateMask}' when both are set`
+        );
+      }
+      const req: Record<string, any> = { selectedRoute: sr };
+      if (item.updateMask) {
+        req.updateMask = item.updateMask;
+      } else if (!defaultUpdateMask) {
+        req.updateMask = itemFields.length > 0 ? itemFields.join(',') : 'displayName,routeAttributes';
+      }
+      return req;
     });
 
     const headers = await this.getAuthHeaders();
     const url = `${this.baseUrl}/projects/${this.projectId}/selectedRoutes:batchUpdate`;
-    const payload: any = {
-      parent: `projects/${this.projectId}`,
+    const payload: Record<string, any> = {
       requests: requestsPayload,
     };
     if (defaultUpdateMask) {
@@ -579,7 +667,6 @@ export class RoadsSelectionClient {
     const headers = await this.getAuthHeaders();
     const url = `${this.baseUrl}/projects/${this.projectId}/selectedRoutes:batchDelete`;
     const payload = {
-      parent: `projects/${this.projectId}`,
       names: fullNames,
     };
 

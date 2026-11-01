@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_de7_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_de7_YYYYMMDDHHMMSS
 -- Persona: data_engineer
 -- Purpose: RMI BigQuery Analytical Query (de7)
 
@@ -17,7 +17,7 @@
 -- limitations under the License.
 
 -- Q7: Automate Daily Snapshot of Routes Status (Scheduled Query)
--- Business Question: How can I automate the historical tracking of my SelectedRoutes' status changes?
+-- Business Question: How can I automate the historical tracking of my SelectedRoutes' status changes and routing configurations across all 12 metadata columns?
 -- Product Stage: GA
 -- Estimated Bytes Processed: < 1 MB
 -- Metadata: Inherits column descriptions from routes_status and adds snapshot metadata.
@@ -38,7 +38,7 @@
     }'
 */
 
--- STEP 1: Initialize the partitioned history table with inherited metadata
+-- STEP 1: Initialize the partitioned history table with all 12 inherited metadata columns
 CREATE TABLE IF NOT EXISTS `your-project.your-dataset.routes_status_history` (
   snapshot_time TIMESTAMP OPTIONS(description="The UTC timestamp when this daily snapshot was captured."),
   selected_route_id STRING OPTIONS(description="Unique identifier for the SelectedRoute resource. Primary correlation key across RMI telemetry datasets."),
@@ -46,12 +46,18 @@ CREATE TABLE IF NOT EXISTS `your-project.your-dataset.routes_status_history` (
   status STRING OPTIONS(description="Current operational lifecycle state of the route at snapshot time (e.g., STATUS_RUNNING, STATUS_INVALID)."),
   validation_error STRING OPTIONS(description="Detailed error code explaining why the route is in STATUS_INVALID at snapshot time (NULL for valid running routes)."),
   low_road_usage_start_time TIMESTAMP OPTIONS(description="The UTC timestamp when low road usage was first detected during periodic re-validation."),
-  route_attributes STRING OPTIONS(description="JSON-formatted flat string of custom key-value metadata attributes (e.g., region, tier, priority, route_length).")
+  route_attributes STRING OPTIONS(description="JSON-formatted flat string of custom key-value metadata attributes (up to 25 key-value pairs)."),
+  dynamic_routing BOOLEAN OPTIONS(description="Indicates whether the route is configured for dynamic traffic rerouting (true) or fixed routing (false)."),
+  origin GEOGRAPHY OPTIONS(description="Origin waypoint coordinate of the route as a GEOGRAPHY point."),
+  destination GEOGRAPHY OPTIONS(description="Destination waypoint coordinate of the route as a GEOGRAPHY point."),
+  intermediates ARRAY<GEOGRAPHY> OPTIONS(description="Repeated array of intermediate waypoint coordinates along the route."),
+  static_route_geometry GEOGRAPHY OPTIONS(description="Polyline geometry of the static route calculated without live traffic from waypoints."),
+  road_segment_ids ARRAY<STRING> OPTIONS(description="Sequence of Place IDs representing topological road segments along the static route.")
 )
 PARTITION BY DATE(snapshot_time)
 CLUSTER BY selected_route_id
 OPTIONS (
-  description="Daily historical snapshots of SelectedRoutes status and metadata, inheriting canonical column descriptions from routes_status."
+  description="Daily historical snapshots of SelectedRoutes status, routing geometry, and metadata across all 12 canonical routes_status columns."
 );
 
 -- STEP 2: The Periodic Append Logic (Manually executable version)
@@ -64,5 +70,11 @@ SELECT
   status,
   validation_error,
   low_road_usage_start_time,
-  route_attributes
+  route_attributes,
+  dynamic_routing,
+  origin,
+  destination,
+  intermediates,
+  static_route_geometry,
+  road_segment_ids
 FROM `LINKED_DATASET_NAME.routes_status`;

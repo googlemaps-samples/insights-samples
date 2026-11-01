@@ -21,7 +21,7 @@
         "name": "duration_in_seconds",
         "type": "FLOAT",
         "mode": "NULLABLE",
-        "description": "The near real-time traffic-aware duration of the route in seconds, estimating travel time considering current real-time traffic conditions at 'record_time'. Bounded >= 0."
+        "description": "The near real-time traffic-aware duration of the route in seconds, estimating travel time considering current real-time traffic conditions at 'record_time'. Bounded >= 0. Omitted (NULL) when has_road_closure is true because the route is impassable."
     },
     {
         "name": "static_duration_in_seconds",
@@ -45,20 +45,52 @@
         "name": "speed_reading_intervals",
         "type": "RECORD",
         "mode": "REPEATED",
-        "description": "Repeated RECORD containing intervals representing traffic density segments across the route. This field breaks down the route into sub-segments based on traffic speed categories. To query these fields in SQL, use 'LEFT JOIN UNNEST(speed_reading_intervals)' to avoid discarding rows if the array is empty.",
+        "description": "Legacy coordinate-based speed reading intervals. May stop being populated on or after January 13, 2027. Use speed_reading_offsets instead. To query these fields in SQL, use 'LEFT JOIN UNNEST(speed_reading_intervals)' to avoid discarding rows if the array is empty.",
         "fields": [
             {
                 "name": "interval_coordinates",
                 "type": "GEOGRAPHY",
                 "mode": "REPEATED",
-                "description": "The GEOGRAPHY representation of the specific road segment for this speed interval. Part of the repeated speed_reading_intervals record. EPSG:4326 projection."
+                "description": "Legacy. May stop being populated on or after January 13, 2027. Use speed_reading_offsets instead. The geometry for this interval as an array of GEOGRAPHY coordinates. EPSG:4326 projection."
             },
             {
                 "name": "speed",
                 "type": "STRING",
                 "mode": "NULLABLE",
-                "description": "The categorical classification of speed for this interval. Possible values: 'NORMAL' (Traffic is flowing smoothly, speed > 85% of free-flow speed), 'SLOW' (Slowdown detected, speed is between 50% and 85% of free-flow speed), 'TRAFFIC_JAM' (Significant traffic delays detected, speed < 50% of free-flow speed)."
+                "description": "Legacy. May stop being populated on or after January 13, 2027. Use speed_reading_offsets instead. The classification of the speed for this interval. Possible values: 'NORMAL', 'SLOW', 'TRAFFIC_JAM'. In this legacy field, heavy traffic jams (dark red) are also reported as 'TRAFFIC_JAM'; 'TRAFFIC_JAM_HEAVY' is never used."
             }
         ]
+    },
+    {
+        "name": "speed_reading_offsets",
+        "type": "RECORD",
+        "mode": "REPEATED",
+        "description": "Offset-based speed reading intervals representing traffic density across the route; each interval is demarcated by the distance offset from the start of the route in meters. Available as of October 8, 2026. Omitted when has_road_closure is true.",
+        "fields": [
+            {
+                "name": "start_offset",
+                "type": "INTEGER",
+                "mode": "NULLABLE",
+                "description": "The distance offset from the start of the route in meters for the start of the interval (inclusive)."
+            },
+            {
+                "name": "end_offset",
+                "type": "INTEGER",
+                "mode": "NULLABLE",
+                "description": "The distance offset from the start of the route in meters for the end of the interval (exclusive; equals the start_offset of the subsequent interval)."
+            },
+            {
+                "name": "speed",
+                "type": "STRING",
+                "mode": "NULLABLE",
+                "description": "The classification of the speed for this interval, aligned with the colors in the Google Maps traffic layer. Possible values: 'NORMAL' (green), 'SLOW' (yellow), 'TRAFFIC_JAM' (red), 'TRAFFIC_JAM_HEAVY' (dark red, available as of October 8, 2026)."
+            }
+        ]
+    },
+    {
+        "name": "has_road_closure",
+        "type": "BOOLEAN",
+        "mode": "NULLABLE",
+        "description": "Whether there is a full road closure on the route. When true, duration_in_seconds and speed_reading_offsets are omitted because the route is impassable. A NULL value indicates that road closure information is undetermined. Consistent with Google Maps full road closure status."
     }
 ]

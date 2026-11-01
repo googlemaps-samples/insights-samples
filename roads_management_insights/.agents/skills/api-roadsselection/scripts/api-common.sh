@@ -19,8 +19,13 @@ set -euo pipefail
 # This script is for internal use by the generated API clients.
 # It is not meant to be used directly.
 
+if [[ -n "${_ROADSSELECTION_API_COMMON_LOADED:-}" ]]; then
+  return 0
+fi
+_ROADSSELECTION_API_COMMON_LOADED=1
+
 # Cache the access token to avoid calling gcloud repeatedly.
-_GAC_ACCESS_TOKEN=""
+_GAC_ACCESS_TOKEN="${_GAC_ACCESS_TOKEN:-}"
 
 # _get_access_token ensures we only call gcloud once per script execution.
 _get_access_token() {

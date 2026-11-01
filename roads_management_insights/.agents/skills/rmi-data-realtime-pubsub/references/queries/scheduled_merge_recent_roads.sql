@@ -4,8 +4,8 @@
 -- Description:
 --   Transforms raw landing payloads from 'roads_information_landing' into the
 --   production-optimized 'recent_roads_data' table on a periodic schedule.
---   Performs in-flight timestamp reconstruction, GeoJSON coordinate sequence parsing
---   into native GEOGRAPHY polylines, and inline deduplication.
+--   Performs in-flight timestamp reconstruction via COALESCE, GeoJSON coordinate sequence
+--   parsing into native GEOGRAPHY polylines, linear speed offset ingestion, and inline deduplication.
 --
 -- Setup & Configuration Guide (Google Cloud Console / bq CLI):
 --   1. Destination Table: Select "None" (the MERGE statement handles target insertion/updating).
@@ -21,17 +21,22 @@ USING (
     SELECT
       selected_route_id,
       display_name,
-      -- Reconstruct UTC timestamp with microsecond precision from custom Timestamp nested fields
-      TIMESTAMP_ADD(TIMESTAMP_SECONDS(retrieval_time.seconds), INTERVAL DIV(retrieval_time.nanos, 1000) MICROSECOND) AS record_time,
-      travel_duration.duration_in_seconds AS duration_in_seconds,
-      travel_duration.static_duration_in_seconds AS static_duration_in_seconds,
+      -- Reconstruct UTC timestamp with microsecond precision from retrieval_timestamp or legacy retrieval_time
+      COALESCE(
+        retrieval_timestamp,
+        TIMESTAMP_ADD(TIMESTAMP_SECONDS(retrieval_time.seconds), INTERVAL DIV(retrieval_time.nanos, 1000) MICROSECOND)
+      ) AS record_time,
+      COALESCE(duration_in_seconds, travel_duration.duration_in_seconds) AS duration_in_seconds,
+      COALESCE(static_duration_in_seconds, travel_duration.static_duration_in_seconds) AS static_duration_in_seconds,
+      COALESCE(has_road_closure, FALSE) AS has_road_closure,
       SAFE.ST_GEOGFROMGEOJSON(route_geometry) AS route_geometry,
       road_segment_ids,
+      speed_reading_offsets,
       speed_reading_intervals,
       publish_time,
       -- Deduplicate within the batch (keeps only the most recent Pub/Sub message in case of duplicates)
       ROW_NUMBER() OVER (
-        PARTITION BY selected_route_id, retrieval_time.seconds 
+        PARTITION BY selected_route_id, COALESCE(retrieval_timestamp, TIMESTAMP_SECONDS(retrieval_time.seconds))
         ORDER BY publish_time DESC
       ) AS rn
     FROM
@@ -47,8 +52,10 @@ USING (
     record_time,
     duration_in_seconds,
     static_duration_in_seconds,
+    has_road_closure,
     route_geometry,
     road_segment_ids,
+    speed_reading_offsets,
     ARRAY(
       SELECT AS STRUCT
         -- Construct a single Linestring polyline from the array of point coordinates
@@ -64,5 +71,27 @@ USING (
 ) S
 ON T.selected_route_id = S.selected_route_id AND T.record_time = S.record_time
 WHEN NOT MATCHED THEN
-  INSERT (selected_route_id, display_name, record_time, duration_in_seconds, static_duration_in_seconds, route_geometry, road_segment_ids, speed_reading_intervals)
-  VALUES (selected_route_id, display_name, record_time, duration_in_seconds, static_duration_in_seconds, route_geometry, road_segment_ids, speed_reading_intervals);
+  INSERT (
+    selected_route_id,
+    display_name,
+    record_time,
+    duration_in_seconds,
+    static_duration_in_seconds,
+    has_road_closure,
+    route_geometry,
+    road_segment_ids,
+    speed_reading_offsets,
+    speed_reading_intervals
+  )
+  VALUES (
+    selected_route_id,
+    display_name,
+    record_time,
+    duration_in_seconds,
+    static_duration_in_seconds,
+    has_road_closure,
+    route_geometry,
+    road_segment_ids,
+    speed_reading_offsets,
+    speed_reading_intervals
+  );

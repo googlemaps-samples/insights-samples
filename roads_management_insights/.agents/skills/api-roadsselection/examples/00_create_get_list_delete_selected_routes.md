@@ -17,8 +17,9 @@ This guide demonstrates the foundational CRUD operations for **`SelectedRoute`**
 
 ## 2. API Contract & Constraints
 
-* **`selectedRouteId`**: Optional in Create; 4-63 alphanumeric/hyphen characters (`[a-zA-Z0-9-]*`). No underscores (`_`).
-* **`pageSize`**: Optional in List; default 100, maximum 5,000.
+* **`selectedRouteId`**: Optional in Create; 4–63 characters (`[a-zA-Z0-9_-]*` — alphanumeric, hyphens `-`, and underscores `_` are valid). If omitted or empty, a UUID is generated automatically.
+* **`dynamicRouting`**: Optional boolean on `SelectedRoute`; defaults to `false` (fixed traffic-unaware route computed at creation time) or `true` (live-traffic dynamic rerouting across waypoints).
+* **`pageSize`**: Optional in List; default 100 (`0` defaults to 100), maximum 5,000 (values above 5,000 are clamped to 5,000).
 * **`pageToken`**: Opaque pagination continuation token returned by the server.
 
 ---
@@ -312,16 +313,203 @@ export {
 
 ---
 
+### E. Go (`net/http` / Reference Client)
+
+```go
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+)
+
+type LatLng struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
+type DynamicRoute struct {
+	Origin      LatLng   `json:"origin"`
+	Destination LatLng   `json:"destination"`
+	Intermediates []LatLng `json:"intermediates,omitempty"`
+}
+
+type SelectedRoute struct {
+	Name           string            `json:"name,omitempty"`
+	DisplayName    string            `json:"displayName,omitempty"`
+	DynamicRoute   *DynamicRoute     `json:"dynamicRoute,omitempty"`
+	DynamicRouting *bool             `json:"dynamicRouting,omitempty"`
+	RouteAttributes map[string]string `json:"routeAttributes,omitempty"`
+	State          string            `json:"state,omitempty"`
+}
+
+func doRequest(ctx context.Context, method, endpoint, projectID, token string, body any) ([]byte, error) {
+	var reader io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+		reader = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, reader)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Goog-User-Project", projectID)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("%s %s failed [%d]: %s", method, endpoint, resp.StatusCode, string(raw))
+	}
+	return raw, nil
+}
+
+func main() {
+	ctx := context.Background()
+	projectID := "my-roads-project"
+	routeID := "corridor_market_st"
+	token := os.Getenv("GOOGLE_OAUTH_ACCESS_TOKEN")
+	baseURL := "https://roads.googleapis.com/selection/v1"
+	fixedRouting := false
+
+	// 1. CreateSelectedRoute (omit selectedRouteId query param to auto-generate a server UUID)
+	createURL := fmt.Sprintf("%s/projects/%s/selectedRoutes?selectedRouteId=%s",
+		baseURL, url.PathEscape(projectID), url.QueryEscape(routeID))
+	payload := SelectedRoute{
+		DisplayName:    "Market Street Corridor",
+		DynamicRouting: &fixedRouting,
+		DynamicRoute: &DynamicRoute{
+			Origin:      LatLng{Latitude: 37.7749, Longitude: -122.4194},
+			Destination: LatLng{Latitude: 37.7833, Longitude: -122.4067},
+		},
+	}
+	createdBytes, err := doRequest(ctx, http.MethodPost, createURL, projectID, token, payload)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Created:", string(createdBytes))
+
+	// 2. GetSelectedRoute
+	itemURL := fmt.Sprintf("%s/projects/%s/selectedRoutes/%s", baseURL, url.PathEscape(projectID), url.PathEscape(routeID))
+	fetchedBytes, err := doRequest(ctx, http.MethodGet, itemURL, projectID, token, nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Fetched:", string(fetchedBytes))
+
+	// 3. ListSelectedRoutes
+	listURL := fmt.Sprintf("%s/projects/%s/selectedRoutes?pageSize=100", baseURL, url.PathEscape(projectID))
+	listedBytes, err := doRequest(ctx, http.MethodGet, listURL, projectID, token, nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Listed:", string(listedBytes))
+
+	// 4. DeleteSelectedRoute
+	if _, err := doRequest(ctx, http.MethodDelete, itemURL, projectID, token, nil); err != nil {
+		panic(err)
+	}
+	fmt.Println("Deleted successfully.")
+}
+```
+
+---
+
+### F. Rust (`RoadsSelectionClient` / REST)
+
+```rust
+use std::collections::BTreeMap;
+use std::process::Command;
+
+fn curl_rest(method: &str, url: &str, project_id: &str, token: &str, body: Option<&str>) -> Result<String, String> {
+    let mut cmd = Command::new("curl");
+    cmd.args(["-sS", "-X", method])
+        .arg("-H")
+        .arg(format!("Authorization: Bearer {}", token))
+        .arg("-H")
+        .arg(format!("X-Goog-User-Project: {}", project_id));
+    if let Some(json_body) = body {
+        cmd.args(["-H", "Content-Type: application/json", "--data-raw", json_body]);
+    }
+    cmd.arg(url);
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).into_owned());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+fn main() -> Result<(), String> {
+    let project_id = "my-roads-project";
+    let route_id = "corridor_market_st";
+    let token = std::env::var("GOOGLE_OAUTH_ACCESS_TOKEN").unwrap_or_default();
+    let base = "https://roads.googleapis.com/selection/v1";
+
+    let mut attrs = BTreeMap::new();
+    attrs.insert("corridor", "market_st");
+
+    // 1. CreateSelectedRoute (POST)
+    let create_url = format!("{}/projects/{}/selectedRoutes?selectedRouteId={}", base, project_id, route_id);
+    let create_body = r#"{
+      "displayName": "Market Street Corridor",
+      "dynamicRouting": false,
+      "dynamicRoute": {
+        "origin": { "latitude": 37.7749, "longitude": -122.4194 },
+        "destination": { "latitude": 37.7833, "longitude": -122.4067 }
+      },
+      "routeAttributes": { "corridor": "market_st" }
+    }"#;
+    let created = curl_rest("POST", &create_url, project_id, &token, Some(create_body))?;
+    println!("Created: {}", created);
+
+    // 2. GetSelectedRoute (GET)
+    let item_url = format!("{}/projects/{}/selectedRoutes/{}", base, project_id, route_id);
+    let fetched = curl_rest("GET", &item_url, project_id, &token, None)?;
+    println!("Fetched: {}", fetched);
+
+    // 3. ListSelectedRoutes (GET)
+    let list_url = format!("{}/projects/{}/selectedRoutes?pageSize=100", base, project_id);
+    let listed = curl_rest("GET", &list_url, project_id, &token, None)?;
+    println!("Listed: {}", listed);
+
+    // 4. DeleteSelectedRoute (DELETE)
+    curl_rest("DELETE", &item_url, project_id, &token, None)?;
+    println!("Deleted successfully (attributes count: {}).", attrs.len());
+    Ok(())
+}
+```
+
+---
+
 ## 4. Expected API Response (Create / Get)
 
 ```json
 {
-  "name": "projects/35571336328/selectedRoutes/corridor-market-st",
+  "name": "projects/123456789012/selectedRoutes/corridor-market-st",
   "displayName": "Market Street Corridor",
   "dynamicRoute": {
     "origin": { "latitude": 37.7749, "longitude": -122.4194 },
     "destination": { "latitude": 37.7833, "longitude": -122.4067 }
   },
+  "dynamicRouting": false,
   "createTime": "2026-09-01T00:00:00.000000Z",
   "state": "STATE_VALIDATING"
 }

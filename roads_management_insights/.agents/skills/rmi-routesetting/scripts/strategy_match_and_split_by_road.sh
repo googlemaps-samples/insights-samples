@@ -44,7 +44,7 @@ route_geojson=$(echo "$route_json" | jq -c '.routes[0].polyline.geoJsonLinestrin
 # 2. Road Snapping & Segment Clustering (Roads API v1 - GA)
 echo "2/3 Snapping coordinates via Roads API v1 (snapToRoads)..." >&2
 source "${ROADS_SCRIPTS}/roads_v1.sh"
-points_param=$(echo "$route_geojson" | jq -r '.coordinates | map(.[1]|tostring + "," + (.[0]|tostring)) | join("|")')
+points_param=$(echo "$route_geojson" | jq -r '.coordinates | map("\(.[1]),\(.[0])") | join("|")')
 snapped_resp=$(roads_v1_snapToRoads "$points_param" "true" "$PROJECT_ID")
 
 # 3. Extract Road Segment Midpoint Vertices & Assemble SelectedRoute
@@ -98,6 +98,7 @@ jq -n \
   --arg total_segs "$total_segments" \
   '{
     displayName: ($prefix + " Road-Segment Guided Route"),
+    dynamicRouting: false,
     dynamicRoute: {
       origin: { latitude: ($olat|tonumber), longitude: ($olng|tonumber) },
       destination: { latitude: ($dlat|tonumber), longitude: ($dlng|tonumber) },

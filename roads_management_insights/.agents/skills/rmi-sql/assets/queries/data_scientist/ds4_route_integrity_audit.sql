@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_ds4_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_ds4_YYYYMMDDHHMMSS
 -- Persona: data_scientist
 -- Purpose: RMI BigQuery Analytical Query (ds4)
 
@@ -16,28 +16,22 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
--- Data Scientist Query 4: Route Integrity Audit (Time-Windowed)
--- Business Question: When and for how long did specific routes experience extreme geometry deviations?
--- Use Case: Identifies persistent "integrity incidents" rather than transient noise. By grouping consecutive failed records into windows, engineers can correlate failures with specific infrastructure changes, GPS outages, or registration updates.
+-- Data Scientist Query 4: Route Integrity Audit (Fixed Routes Only)
+-- Business Question: When and for how long did fixed routes experience persistent geometry deviations, excluding dynamic reroutes?
+-- Use Case: Identifies persistent "integrity incidents" on static/fixed routes (s.dynamic_routing = FALSE). Prevents false positive alerts on dynamic corridors that naturally reroute around traffic.
 -- Product Stage: GA
 -- Estimated Bytes Processed: ~151 MB (Requires JOIN with routes_status)
 
 /*
-  DEFINITION: Route Integrity
+  DEFINITION: Route Integrity on Fixed Corridors
   In RMI, 'Route Integrity' measures the spatial consistency between a route's 
   registered definition and its actual data collection performance.
   
+  - Fixed Routes Only: Enforces s.dynamic_routing = FALSE. Dynamic routes naturally 
+    take alternative streets during peak congestion; flagging them creates false positives.
   - The Baseline: 'intended_length' (meters) provided as a custom attribute during registration.
   - The Signal: 'actual_length' (meters) calculated from the captured ST_LineString.
-  - High Integrity: A ratio near 1.0 (actual length matches intended definition).
-  - Low Integrity: Significant deviations (> 10%) indicate detours, missing road 
-    segments, or incorrect metadata registration.
-*/
-
-/*
-  ANALYTICAL PATTERN: Islands and Gaps
-  This query groups consecutive records that exceed a 10% length deviation threshold 
-  into discrete failure windows.
+  - Failure Windows: Groups consecutive records exceeding a 10% length deviation threshold.
 */
 
 WITH base_comparison AS (
@@ -50,6 +44,8 @@ WITH base_comparison AS (
   FROM `LINKED_DATASET_NAME.historical_travel_time` h
   JOIN `LINKED_DATASET_NAME.routes_status` s USING (selected_route_id)
   WHERE s.status = 'STATUS_RUNNING'
+    -- Exclude dynamic routes to prevent false positive integrity failures
+    AND s.dynamic_routing IS FALSE
     AND h.record_time BETWEEN '2026-07-01' AND '2026-07-30'
     -- Quality filter: Exclude non-continuous geometries
     AND ST_GEOMETRYTYPE(h.route_geometry) = 'ST_LineString'

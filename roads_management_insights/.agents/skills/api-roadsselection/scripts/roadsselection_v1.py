@@ -50,12 +50,43 @@ except ImportError:
     pass
 
 
+SELECTED_ROUTE_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{4,63}$")
+
+
+def validate_selected_route_id(route_id: Optional[str]) -> None:
+    """Validates selectedRouteId according to Discovery Document 20261101.
+
+    Constraints enforced when route_id is provided and non-empty:
+      - Length must be between 4 and 63 characters.
+      - Valid characters are 'a-z', 'A-Z', '0-9', '-', or '_'.
+      - If None or empty string '', server auto-generates a UUID upon creation.
+
+    Args:
+        route_id: Optional client-chosen route identifier.
+
+    Raises:
+        TypeError: If route_id is neither None nor a string.
+        ValueError: If length or character constraints are violated.
+    """
+    if route_id is None or route_id == "":
+        return
+    if not isinstance(route_id, str):
+        raise TypeError(f"route_id must be a string or None, got {type(route_id).__name__}")
+    if len(route_id) < 4 or len(route_id) > 63:
+        raise ValueError(f"route_id '{route_id}' must be 4-63 characters (got {len(route_id)})")
+    if not SELECTED_ROUTE_ID_PATTERN.match(route_id):
+        raise ValueError(
+            f"route_id '{route_id}' contains invalid characters; valid characters are 'a-z', 'A-Z', '0-9', '-', or '_'"
+        )
+
+
 def validate_route_attributes(attributes: Dict[str, str]) -> None:
-    """Validates routeAttributes dictionary according to the proto specification.
+    """Validates routeAttributes dictionary according to Discovery Document 20261101.
 
     Constraints enforced:
       - Maximum 25 key-value pairs (len <= 25).
-      - Keys and values must be strings between 1 and 100 bytes (UTF-8 encoded).
+      - Keys and values must be non-empty strings between 1 and 100 characters
+        (counted in Unicode code points).
       - Keys must not start with the reserved prefix 'goog' (case-sensitive).
 
     Args:
@@ -63,7 +94,7 @@ def validate_route_attributes(attributes: Dict[str, str]) -> None:
 
     Raises:
         TypeError: If attributes is not a dict or if any key/value is not a string.
-        ValueError: If constraints on byte length or reserved prefixes are violated.
+        ValueError: If constraints on length, count, or reserved prefixes are violated.
     """
     if not isinstance(attributes, dict):
         raise TypeError(f"route_attributes must be a dictionary, got {type(attributes).__name__}")
@@ -72,12 +103,10 @@ def validate_route_attributes(attributes: Dict[str, str]) -> None:
     for k, v in attributes.items():
         if not isinstance(k, str) or not isinstance(v, str):
             raise TypeError(f"Attribute key and value must be strings: {k!r}={v!r}")
-        k_bytes = len(k.encode("utf-8"))
-        v_bytes = len(v.encode("utf-8"))
-        if k_bytes < 1 or k_bytes > 100:
-            raise ValueError(f"Attribute key '{k}' must be 1-100 bytes UTF-8 (byte length: {k_bytes})")
-        if v_bytes > 100:
-            raise ValueError(f"Attribute value for key '{k}' exceeds 100 bytes UTF-8 (byte length: {v_bytes})")
+        if len(k) < 1 or len(k) > 100:
+            raise ValueError(f"Attribute key '{k}' must be 1-100 characters (got {len(k)})")
+        if len(v) < 1 or len(v) > 100:
+            raise ValueError(f"Attribute value for key '{k}' must be a non-empty string of 1-100 characters (got {len(v)})")
         if k.startswith("goog"):
             raise ValueError(f"Attribute key '{k}' cannot start with reserved prefix 'goog'")
 
@@ -147,36 +176,41 @@ class RoadsSelectionClient:
 
     def create_selected_route(
         self,
-        route_id: str,
+        route_id: Optional[str],
         display_name: str,
         origin: Tuple[float, float],
         destination: Tuple[float, float],
         intermediates: Optional[List[Tuple[float, float]]] = None,
         route_attributes: Optional[Dict[str, str]] = None,
+        dynamic_routing: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """Creates a single SelectedRoute resource.
 
         RPC: CreateSelectedRoute (POST /selection/v1/projects/{project}/selectedRoutes)
 
         Args:
-            route_id: Unique route ID (4-63 chars, [a-zA-Z0-9-], no underscores).
-            display_name: Human-readable route label (max 100 bytes UTF-8).
+            route_id: Optional unique route ID (4-63 chars, [a-zA-Z0-9_-]). If None or empty,
+                      the API generates a UUID automatically.
+            display_name: Human-readable route label (max 100 Unicode code points).
             origin: (latitude, longitude) tuple for the corridor starting point.
             destination: (latitude, longitude) tuple for the corridor ending point.
             intermediates: Optional list of up to 25 (latitude, longitude) waypoint tuples.
             route_attributes: Optional dictionary of up to 25 metadata key-value pairs.
+            dynamic_routing: Optional boolean controlling dynamic routing (False by default for
+                             fixed traffic-unaware geometry; True for live-traffic rerouting).
 
         Returns:
             Dictionary representing the created SelectedRoute resource from Google Cloud.
 
         Raises:
-            ValueError: If intermediate count exceeds 25, displayName exceeds 100 bytes, or attribute validation fails.
+            ValueError: If route_id, intermediate count, displayName, or attributes violate limits.
             requests.HTTPError: If the server returns a non-2xx status code.
         """
-        if len(display_name.encode("utf-8")) > 100:
-            raise ValueError(f"displayName UTF-8 byte length ({len(display_name.encode('utf-8'))}) exceeds 100 bytes limit")
+        validate_selected_route_id(route_id)
+        if display_name and len(display_name) > 100:
+            raise ValueError(f"displayName length ({len(display_name)}) exceeds 100 characters limit")
 
-        if route_attributes:
+        if route_attributes is not None:
             validate_route_attributes(route_attributes)
 
         dynamic_route: Dict[str, Any] = {
@@ -194,11 +228,13 @@ class RoadsSelectionClient:
             "displayName": display_name,
             "dynamicRoute": dynamic_route,
         }
+        if dynamic_routing is not None:
+            payload["dynamicRouting"] = bool(dynamic_routing)
         if route_attributes:
             payload["routeAttributes"] = route_attributes
 
         url = f"{self.base_url}/projects/{self.project_id}/selectedRoutes"
-        params = {"selectedRouteId": route_id}
+        params: Optional[Dict[str, str]] = {"selectedRouteId": route_id} if route_id else None
         headers = self._ensure_auth()
 
         res = requests.post(url, params=params, headers=headers, json=payload)
@@ -307,6 +343,7 @@ class RoadsSelectionClient:
         update_mask: Optional[str] = None,
         display_name: Optional[str] = None,
         dynamic_route: Optional[Dict[str, Any]] = None,
+        dynamic_routing: Optional[bool] = None,
         route_attributes: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """Natively updates specified route fields in-place using PATCH and FieldMask.
@@ -319,6 +356,7 @@ class RoadsSelectionClient:
                          If omitted, computed automatically from the non-None kwargs provided.
             display_name: Optional updated display name.
             dynamic_route: Optional updated dynamicRoute geometry object.
+            dynamic_routing: Optional boolean flag controlling dynamic routing (False pins exact path).
             route_attributes: Optional updated custom metadata attributes dictionary.
 
         Returns:
@@ -335,11 +373,16 @@ class RoadsSelectionClient:
         computed_mask_fields = []
 
         if display_name is not None:
+            if len(display_name) > 100:
+                raise ValueError(f"displayName length ({len(display_name)}) exceeds 100 characters limit")
             payload["displayName"] = display_name
             computed_mask_fields.append("displayName")
         if dynamic_route is not None:
             payload["dynamicRoute"] = dynamic_route
             computed_mask_fields.append("dynamicRoute")
+        if dynamic_routing is not None:
+            payload["dynamicRouting"] = bool(dynamic_routing)
+            computed_mask_fields.append("dynamicRouting")
         if route_attributes is not None:
             validate_route_attributes(route_attributes)
             payload["routeAttributes"] = route_attributes
@@ -370,17 +413,19 @@ class RoadsSelectionClient:
 
         Args:
             routes: List of route dictionaries, each containing:
-                    - 'route_id' or 'selectedRouteId': Custom 4-63 char route ID.
-                    - 'display_name': Route label.
+                    - 'route_id' or 'selectedRouteId': Optional 4-63 char ID ([a-zA-Z0-9_-]; auto-UUID if omitted).
+                    - 'display_name': Optional route label (<= 100 Unicode code points).
                     - 'origin': (latitude, longitude) tuple.
                     - 'destination': (latitude, longitude) tuple.
+                    - 'intermediates': Optional list of up to 25 (lat, lng) tuples.
+                    - 'dynamic_routing' or 'dynamicRouting': Optional boolean.
                     - 'attributes' or 'routeAttributes': Optional metadata dictionary.
 
         Returns:
             Dictionary containing 'selectedRoutes' array of created resources.
 
         Raises:
-            ValueError: If route count exceeds 1,000.
+            ValueError: If route count exceeds 1,000 or route constraints fail.
             requests.HTTPError: If batch provisioning fails.
         """
         if len(routes) > 1000:
@@ -389,25 +434,42 @@ class RoadsSelectionClient:
         requests_payload = []
         for item in routes:
             rid = item.get("route_id") or item.get("selectedRouteId")
+            validate_selected_route_id(rid)
             sr = item.get("selectedRoute", {})
             if not sr:
-                sr = {
-                    "displayName": item.get("display_name", ""),
-                    "dynamicRoute": {
-                        "origin": {
-                            "latitude": item["origin"][0],
-                            "longitude": item["origin"][1],
-                        },
-                        "destination": {
-                            "latitude": item["destination"][0],
-                            "longitude": item["destination"][1],
-                        },
+                dname = item.get("display_name", item.get("displayName", ""))
+                if dname and len(dname) > 100:
+                    raise ValueError(f"displayName length ({len(dname)}) exceeds 100 characters limit")
+                dyn_route: Dict[str, Any] = {
+                    "origin": {
+                        "latitude": item["origin"][0],
+                        "longitude": item["origin"][1],
+                    },
+                    "destination": {
+                        "latitude": item["destination"][0],
+                        "longitude": item["destination"][1],
                     },
                 }
+                if item.get("intermediates"):
+                    ints = item["intermediates"]
+                    if len(ints) > 25:
+                        raise ValueError(f"intermediates cannot exceed 25 waypoints (got {len(ints)})")
+                    dyn_route["intermediates"] = [
+                        {"latitude": pt[0], "longitude": pt[1]} for pt in ints
+                    ]
+                sr = {
+                    "displayName": dname,
+                    "dynamicRoute": dyn_route,
+                }
+                if "dynamic_routing" in item or "dynamicRouting" in item:
+                    dyn_flag = item["dynamic_routing"] if "dynamic_routing" in item else item["dynamicRouting"]
+                    if dyn_flag is not None:
+                        sr["dynamicRouting"] = bool(dyn_flag)
                 if "attributes" in item or "routeAttributes" in item:
-                    attrs = item.get("attributes") or item.get("routeAttributes", {})
-                    validate_route_attributes(attrs)
-                    sr["routeAttributes"] = attrs
+                    attrs = item["attributes"] if "attributes" in item else item["routeAttributes"]
+                    if attrs is not None:
+                        validate_route_attributes(attrs)
+                        sr["routeAttributes"] = attrs
 
             req: Dict[str, Any] = {
                 "parent": f"projects/{self.project_id}",
@@ -418,8 +480,7 @@ class RoadsSelectionClient:
             requests_payload.append(req)
 
         url = f"{self.base_url}/projects/{self.project_id}/selectedRoutes:batchCreate"
-        payload = {
-            "parent": f"projects/{self.project_id}",
+        payload: Dict[str, Any] = {
             "requests": requests_payload,
         }
         headers = self._ensure_auth()
@@ -440,16 +501,19 @@ class RoadsSelectionClient:
         Args:
             updates: List of update dictionaries, each containing:
                      - 'route_id' or 'name': Identifier of the route to modify.
-                     - 'display_name': Optional updated label.
-                     - 'attributes': Optional updated metadata dictionary.
-                     - 'update_mask': Optional per-item FieldMask string.
-            update_mask: Optional default top-level FieldMask applied across all items.
+                     - 'display_name' or 'displayName': Optional updated label.
+                     - 'dynamic_route' or 'dynamicRoute': Optional updated geometry dict.
+                     - 'dynamic_routing' or 'dynamicRouting': Optional boolean flag.
+                     - 'attributes' or 'routeAttributes': Optional updated metadata dictionary.
+                     - 'update_mask' or 'updateMask': Optional per-item FieldMask string.
+            update_mask: Optional shared top-level FieldMask applied across child requests
+                         that omit their own updateMask (if both are set, they must match).
 
         Returns:
             Dictionary containing 'selectedRoutes' array of updated resources.
 
         Raises:
-            ValueError: If update count exceeds 1,000.
+            ValueError: If update count exceeds 1,000 or batch/child masks conflict.
             requests.HTTPError: If batch update fails.
         """
         if len(updates) > 1000:
@@ -461,25 +525,46 @@ class RoadsSelectionClient:
             sr: Dict[str, Any] = {
                 "name": f"projects/{self.project_id}/selectedRoutes/{rid}"
             }
-            if "display_name" in item:
-                sr["displayName"] = item["display_name"]
-            elif "displayName" in item:
-                sr["displayName"] = item["displayName"]
+            item_fields: List[str] = []
+            if "display_name" in item or "displayName" in item:
+                dname = item["display_name"] if "display_name" in item else item["displayName"]
+                if dname is not None and len(dname) > 100:
+                    raise ValueError(f"displayName length ({len(dname)}) exceeds 100 characters limit")
+                sr["displayName"] = dname
+                item_fields.append("displayName")
+
+            if "dynamic_route" in item or "dynamicRoute" in item:
+                sr["dynamicRoute"] = item["dynamic_route"] if "dynamic_route" in item else item["dynamicRoute"]
+                item_fields.append("dynamicRoute")
+
+            if "dynamic_routing" in item or "dynamicRouting" in item:
+                dyn_flag = item["dynamic_routing"] if "dynamic_routing" in item else item["dynamicRouting"]
+                if dyn_flag is not None:
+                    sr["dynamicRouting"] = bool(dyn_flag)
+                    item_fields.append("dynamicRouting")
 
             if "attributes" in item or "routeAttributes" in item:
-                attrs = item.get("attributes") or item.get("routeAttributes", {})
-                validate_route_attributes(attrs)
-                sr["routeAttributes"] = attrs
+                attrs = item["attributes"] if "attributes" in item else item["routeAttributes"]
+                if attrs is not None:
+                    validate_route_attributes(attrs)
+                    sr["routeAttributes"] = attrs
+                    item_fields.append("routeAttributes")
 
-            req = {
-                "selectedRoute": sr,
-                "updateMask": item.get("update_mask") or item.get("updateMask", update_mask or "displayName,routeAttributes"),
-            }
+            child_mask = item.get("update_mask") or item.get("updateMask")
+            if update_mask and child_mask and child_mask != update_mask:
+                raise ValueError(
+                    f"Child updateMask '{child_mask}' must match batch updateMask '{update_mask}' when both are set"
+                )
+
+            req: Dict[str, Any] = {"selectedRoute": sr}
+            if child_mask:
+                req["updateMask"] = child_mask
+            elif not update_mask:
+                req["updateMask"] = ",".join(item_fields) if item_fields else "displayName,routeAttributes"
             requests_payload.append(req)
 
         url = f"{self.base_url}/projects/{self.project_id}/selectedRoutes:batchUpdate"
-        payload = {
-            "parent": f"projects/{self.project_id}",
+        payload: Dict[str, Any] = {
             "requests": requests_payload,
         }
         if update_mask:
@@ -513,8 +598,7 @@ class RoadsSelectionClient:
             for r in route_ids
         ]
         url = f"{self.base_url}/projects/{self.project_id}/selectedRoutes:batchDelete"
-        payload = {
-            "parent": f"projects/{self.project_id}",
+        payload: Dict[str, Any] = {
             "names": full_names,
         }
         headers = self._ensure_auth()

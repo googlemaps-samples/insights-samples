@@ -20,10 +20,10 @@ When managing large fleets of monitored corridors (e.g. 5,000+ regional roads ac
 
 * **HTTP Method**: `POST`
 * **URL**: `https://roads.googleapis.com/selection/v1/projects/{project}/selectedRoutes:batchUpdate`
+* **URL Path Parameter**: `parent` (`projects/{project}`) — child `selectedRoute.name` resources must belong to this project.
 * **Request Body (`BatchUpdateSelectedRoutesRequest`)**:
-  * `parent`: `projects/{project}` (must match child resource parents).
   * `requests`: Array of `UpdateSelectedRouteRequest` objects (max 1,000).
-  * `updateMask`: (Optional) Shared field mask applied to all items in the batch.
+  * `updateMask`: (Optional, `google-fieldmask`) Shared field mask applied to child requests that omit their own `updateMask`. Updatable fields: `display_name`, `route_attributes`, `dynamic_routing`, and `dynamic_route` (or `*` for full replacement). If both batch and child `updateMask` fields are set, they must match.
 
 ---
 
@@ -60,7 +60,7 @@ REQ2=$(roadsselection_v1_selectedroute_update_request_json \
 # 2. Build BatchUpdateSelectedRoutesRequest
 BATCH_REQUEST=$(roadsselection_v1_selectedroute_batchupdate_request_json \
   "[${REQ1}, ${REQ2}]" \
-  "projects/${PROJECT_ID}")
+  "displayName,routeAttributes")
 
 # 3. Execute batchUpdate
 echo "Submitting batch update for 2 routes..."
@@ -84,7 +84,6 @@ curl -s -X POST \
   -H "Content-Type: application/json" \
   "https://roads.googleapis.com/selection/v1/projects/${PROJECT_ID}/selectedRoutes:batchUpdate" \
   -d '{
-    "parent": "projects/'"${PROJECT_ID}"'",
     "updateMask": "displayName,routeAttributes",
     "requests": [
       {
@@ -144,7 +143,6 @@ def batch_update_routes(project_id: str, updates: list) -> dict:
         })
 
     payload = {
-        "parent": f"projects/{project_id}",
         "updateMask": "displayName,routeAttributes",
         "requests": requests_payload
     }
@@ -207,7 +205,6 @@ async function batchUpdateSelectedRoutes(
   const url = `https://roads.googleapis.com/selection/v1/projects/${projectId}/selectedRoutes:batchUpdate`;
 
   const payload = {
-    parent: `projects/${projectId}`,
     updateMask,
     requests: updates.map((item) => ({
       selectedRoute: {
@@ -241,13 +238,174 @@ export { batchUpdateSelectedRoutes, type RouteUpdateItem, type BatchUpdateRespon
 
 ---
 
+### E. Go (`net/http` / Reference Client)
+
+```go
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+)
+
+type SelectedRouteUpdate struct {
+	Name            string            `json:"name"`
+	DisplayName     string            `json:"displayName,omitempty"`
+	RouteAttributes map[string]string `json:"routeAttributes,omitempty"`
+}
+
+type UpdateSelectedRouteRequest struct {
+	SelectedRoute SelectedRouteUpdate `json:"selectedRoute"`
+	UpdateMask    string              `json:"updateMask,omitempty"`
+}
+
+// BatchUpdateSelectedRoutesRequest omits top-level parent per Discovery 20261101.
+type BatchUpdateSelectedRoutesRequest struct {
+	UpdateMask string                       `json:"updateMask,omitempty"`
+	Requests   []UpdateSelectedRouteRequest `json:"requests"`
+}
+
+func batchUpdateSelectedRoutes(ctx context.Context, projectID, token string, reqBody BatchUpdateSelectedRoutesRequest) ([]byte, error) {
+	encoded, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf("https://roads.googleapis.com/selection/v1/projects/%s/selectedRoutes:batchUpdate", url.PathEscape(projectID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(encoded))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Goog-User-Project", projectID)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("batchUpdate failed [%d]: %s", resp.StatusCode, string(raw))
+	}
+	return raw, nil
+}
+
+func main() {
+	projectID := "my-roads-project"
+	payload := BatchUpdateSelectedRoutesRequest{
+		UpdateMask: "displayName,routeAttributes",
+		Requests: []UpdateSelectedRouteRequest{
+			{
+				SelectedRoute: SelectedRouteUpdate{
+					Name:            fmt.Sprintf("projects/%s/selectedRoutes/corridor-101-north", projectID),
+					DisplayName:     "US-101 North Express",
+					RouteAttributes: map[string]string{"corridor": "US-101", "tier": "TIER_1"},
+				},
+			},
+			{
+				SelectedRoute: SelectedRouteUpdate{
+					Name:            fmt.Sprintf("projects/%s/selectedRoutes/corridor-280-south", projectID),
+					DisplayName:     "I-280 South Scenic",
+					RouteAttributes: map[string]string{"corridor": "I-280", "tier": "TIER_1"},
+				},
+			},
+		},
+	}
+	res, err := batchUpdateSelectedRoutes(context.Background(), projectID, os.Getenv("GOOGLE_OAUTH_ACCESS_TOKEN"), payload)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Batch Updated:", string(res))
+}
+```
+
+---
+
+### F. Rust (`RoadsSelectionClient` / REST)
+
+```rust
+use std::process::Command;
+
+pub fn batch_update_routes(
+    project_id: &str,
+    token: &str,
+    update_mask: &str,
+    items: &[(&str, &str, &str)],
+) -> Result<String, String> {
+    let url = format!(
+        "https://roads.googleapis.com/selection/v1/projects/{}/selectedRoutes:batchUpdate",
+        project_id
+    );
+    let entries: Vec<String> = items
+        .iter()
+        .map(|(route_id, display_name, corridor)| {
+            format!(
+                r#"{{"selectedRoute":{{"name":"projects/{}/selectedRoutes/{}","displayName":"{}","routeAttributes":{{"corridor":"{}","tier":"TIER_1"}}}}}}"#,
+                project_id, route_id, display_name, corridor
+            )
+        })
+        .collect();
+
+    // Per Discovery 20261101, omit top-level parent from BatchUpdateSelectedRoutesRequest.
+    let body = format!(
+        r#"{{"updateMask":"{}","requests":[{}]}}"#,
+        update_mask,
+        entries.join(",")
+    );
+
+    let out = Command::new("curl")
+        .args(["-sS", "-X", "POST"])
+        .arg("-H")
+        .arg(format!("Authorization: Bearer {}", token))
+        .arg("-H")
+        .arg(format!("X-Goog-User-Project: {}", project_id))
+        .args(["-H", "Content-Type: application/json", "--data-raw", &body])
+        .arg(&url)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).into_owned());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+fn main() -> Result<(), String> {
+    let token = std::env::var("GOOGLE_OAUTH_ACCESS_TOKEN").unwrap_or_default();
+    let updates = [
+        ("corridor-101-north", "US-101 North Express", "US-101"),
+        ("corridor-280-south", "I-280 South Scenic", "I-280"),
+    ];
+    let res = batch_update_routes(
+        "my-roads-project",
+        &token,
+        "displayName,routeAttributes",
+        &updates,
+    )?;
+    println!("Batch Updated Routes: {}", res);
+    Ok(())
+}
+```
+
+---
+
 ## 4. Expected API Response
 
 ```json
 {
   "selectedRoutes": [
     {
-      "name": "projects/35571336328/selectedRoutes/corridor-101-north",
+      "name": "projects/123456789012/selectedRoutes/corridor-101-north",
       "displayName": "US-101 North Express",
       "createTime": "2026-08-25T02:11:25.998215Z",
       "state": "STATE_RUNNING",
@@ -257,7 +415,7 @@ export { batchUpdateSelectedRoutes, type RouteUpdateItem, type BatchUpdateRespon
       }
     },
     {
-      "name": "projects/35571336328/selectedRoutes/corridor-280-south",
+      "name": "projects/123456789012/selectedRoutes/corridor-280-south",
       "displayName": "I-280 South Scenic",
       "createTime": "2026-08-25T02:11:25.998215Z",
       "state": "STATE_RUNNING",

@@ -17,7 +17,7 @@
 set -euo pipefail
 #
 # Client for the Roads Selection API v1.
-# Implements all 8 RPC methods defined in roads_selection_service.proto.
+# Implements all 8 RPC methods defined in generated_road_selection_v1.json (revision 20261101).
 #
 # Endpoint: https://roads.googleapis.com/selection/v1
 #
@@ -36,7 +36,7 @@ ROADSSELECTION_BASE_URL="${ROADSSELECTION_BASE_URL:-https://roads.googleapis.com
 #
 # @param string project_id Required. The Google Cloud project ID.
 # @param string request_body Required. JSON string (SelectedRoute).
-# @param string selected_route_id Optional. The ID for the route (4-63 chars).
+# @param string selected_route_id Optional. The ID for the route (4-63 chars: a-z, A-Z, 0-9, '-', '_'). Auto-UUID if omitted.
 roadsselection_v1_selectedroute_create() {
   local pid="$1"
   local request_body="$2"
@@ -51,7 +51,7 @@ roadsselection_v1_selectedroute_create() {
 # Creates multiple SelectedRoute resources in batch (up to 1,000 routes).
 #
 # @param string project_id Required. The Google Cloud project ID.
-# @param string request_body Required. JSON string (BatchCreateSelectedRoutesRequest).
+# @param string request_body Required. JSON string (BatchCreateSelectedRoutesRequest: {"requests": [...]}).
 roadsselection_v1_selectedroute_batchcreate() {
   local pid="$1"
   local request_body="$2"
@@ -78,7 +78,7 @@ roadsselection_v1_selectedroute_get() {
 #
 # @param string name Required. Resource name (projects/{project}/selectedRoutes/{selected_route}).
 # @param string request_body Required. JSON string (SelectedRoute).
-# @param string update_mask Optional. Comma-separated field paths (e.g. 'display_name,route_attributes').
+# @param string update_mask Optional. Comma-separated field paths (e.g. 'display_name,route_attributes,dynamic_routing,dynamic_route' or '*').
 # @param string project_id Optional. Project ID for quota/billing.
 roadsselection_v1_selectedroute_patch() {
   local name="$1"
@@ -98,7 +98,7 @@ roadsselection_v1_selectedroute_patch() {
 # Updates multiple SelectedRoute resources in batch (up to 1,000 routes).
 #
 # @param string project_id Required. The Google Cloud project ID.
-# @param string request_body Required. JSON string (BatchUpdateSelectedRoutesRequest).
+# @param string request_body Required. JSON string (BatchUpdateSelectedRoutesRequest: {"requests": [...], "updateMask": "..."}).
 roadsselection_v1_selectedroute_batchupdate() {
   local pid="$1"
   local request_body="$2"
@@ -109,7 +109,7 @@ roadsselection_v1_selectedroute_batchupdate() {
 # Lists all SelectedRoute resources for the specified project with pagination.
 #
 # @param string project_id Required. The Google Cloud project ID.
-# @param integer page_size Optional. Number of results to return (max 5000, default 100).
+# @param integer page_size Optional. Number of results to return (default 100; 0 -> 100; >5000 clamped to 5000).
 # @param string page_token Optional. A page token from previous call.
 roadsselection_v1_selectedroute_list() {
   local pid="$1"
@@ -143,10 +143,34 @@ roadsselection_v1_selectedroute_delete() {
 # Deletes multiple SelectedRoute resources for the specified project in batch (up to 1,000 routes).
 #
 # @param string project_id Required. The Google Cloud project ID.
-# @param string request_body Required. JSON string (BatchDeleteSelectedRoutesRequest).
+# @param string request_body Required. JSON string (BatchDeleteSelectedRoutesRequest: {"names": [...]}).
 roadsselection_v1_selectedroute_batchdelete() {
   local pid="$1"
   local request_body="$2"
   local url="${ROADSSELECTION_BASE_URL}/projects/${pid}/selectedRoutes:batchDelete"
   _call_api "POST" "${url}" "${request_body}" "${pid}"
 }
+
+# -----------------------------------------------------------------------------
+# Backward-compatibility client aliases (legacy roads_selection_v1_* prefix)
+# -----------------------------------------------------------------------------
+roads_selection_v1_selectedroute_create() { roadsselection_v1_selectedroute_create "$@"; }
+roads_selection_v1_selectedroute_batchcreate() { roadsselection_v1_selectedroute_batchcreate "$@"; }
+roads_selection_v1_selectedroute_get() {
+  if [[ $# -ge 2 && "$1" != projects/* ]]; then
+    roadsselection_v1_selectedroute_get "projects/$1/selectedRoutes/$2" "$1"
+  else
+    roadsselection_v1_selectedroute_get "$@"
+  fi
+}
+roads_selection_v1_selectedroute_patch() { roadsselection_v1_selectedroute_patch "$@"; }
+roads_selection_v1_selectedroute_batchupdate() { roadsselection_v1_selectedroute_batchupdate "$@"; }
+roads_selection_v1_selectedroute_list() { roadsselection_v1_selectedroute_list "$@"; }
+roads_selection_v1_selectedroute_delete() {
+  if [[ $# -ge 2 && "$1" != projects/* ]]; then
+    roadsselection_v1_selectedroute_delete "projects/$1/selectedRoutes/$2" "$1"
+  else
+    roadsselection_v1_selectedroute_delete "$@"
+  fi
+}
+roads_selection_v1_selectedroute_batchdelete() { roadsselection_v1_selectedroute_batchdelete "$@"; }
