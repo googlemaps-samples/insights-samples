@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_de6_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_de6_YYYYMMDDHHMMSS
 -- Persona: data_engineer
 -- Purpose: RMI BigQuery Analytical Query (de6 - Hourly Array Pre-Aggregation Pattern)
 
@@ -27,20 +27,26 @@ WITH hourly_stage AS (
     r.selected_route_id,
     s.display_name,
     EXTRACT(HOUR FROM r.record_time) AS hour_of_day,
-    -- Pre-aggregate 2-minute interval records into the worst-case traffic state per hour
+    -- Pre-aggregate interval records into the worst-case traffic state per hour
+    -- Evaluating modern 4-tier congestion: TRAFFIC_JAM_HEAVY -> TRAFFIC_JAM -> SLOW -> NORMAL
     CASE 
-      WHEN LOGICAL_OR(sri.speed = 'TRAFFIC_JAM') THEN 'TRAFFIC_JAM'
-      WHEN LOGICAL_OR(sri.speed = 'SLOW') THEN 'SLOW'
+      WHEN LOGICAL_OR(sro.speed = 'TRAFFIC_JAM_HEAVY') THEN 'TRAFFIC_JAM_HEAVY'
+      WHEN LOGICAL_OR(sro.speed = 'TRAFFIC_JAM') THEN 'TRAFFIC_JAM'
+      WHEN LOGICAL_OR(sro.speed = 'SLOW') THEN 'SLOW'
       ELSE 'NORMAL'
-    END AS worst_hourly_speed
-  FROM `LINKED_DATASET_NAME.recent_roads_data` r
-  JOIN `LINKED_DATASET_NAME.routes_status` s USING(selected_route_id),
-  UNNEST(speed_reading_intervals) AS sri
+    END AS worst_hourly_speed,
+    -- Handle road closures safely: audit whether any closure was observed in this hour
+    LOGICAL_OR(r.has_road_closure IS TRUE) AS had_hourly_closure
+  FROM `LINKED_DATASET_NAME.recent_roads_data` AS r
+  JOIN `LINKED_DATASET_NAME.routes_status` AS s USING (selected_route_id)
+  LEFT JOIN UNNEST(r.speed_reading_offsets) AS sro
   -- PAYLOAD OPTIMIZATION NOTE:
   -- Stage 1 consolidates 2-minute interval records into hourly worst-case states via LOGICAL_OR.
   -- Stage 2 executes ARRAY_AGG, capping array length at exactly <= 24 elements per route/day,
   -- reducing downstream network transport and visualization client memory by over 95%.
   WHERE ST_GEOMETRYTYPE(r.route_geometry) = 'ST_LineString'
+    AND s.status = 'STATUS_RUNNING'
+    AND (r.has_road_closure IS FALSE OR r.has_road_closure IS NULL)
     AND r.record_time >= '2026-07-15 00:00:00' AND r.record_time < '2026-07-16 00:00:00'
   GROUP BY r.selected_route_id, s.display_name, hour_of_day
 )

@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_tom4_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_tom4_YYYYMMDDHHMMSS
 -- Persona: traffic_operations_manager
 -- Purpose: RMI BigQuery Analytical Query (tom4)
 

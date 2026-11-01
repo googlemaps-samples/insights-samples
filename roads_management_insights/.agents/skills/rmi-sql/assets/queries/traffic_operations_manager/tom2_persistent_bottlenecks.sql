@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_tom2_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_tom2_YYYYMMDDHHMMSS
 -- Persona: traffic_operations_manager
 -- Purpose: RMI BigQuery Analytical Query (tom2)
 
@@ -16,37 +16,50 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
--- Traffic Operations Manager Query 2: Persistent Bottlenecks (Segment-Level)
--- Business Question: Which road segments (SRIs) have been in a 'TRAFFIC_JAM' state most frequently?
--- Use Case: Locates recurring local bottlenecks within routes, enabling targeted infrastructure investigation or signal timing adjustments.
+-- Traffic Operations Manager Query 2: Persistent Bottlenecks (Segment-Level Offsets)
+-- Business Question: Which routes and segments suffer from persistent traffic jams (TRAFFIC_JAM / TRAFFIC_JAM_HEAVY), and what is the physical distance (meters/km) in congestion?
+-- Use Case: Locates recurring local bottlenecks within monitored corridors, quantifying both standstill gridlock and standard congestion mileage to guide operational intervention.
 -- Product Stage: GA
--- Estimated Bytes Processed: ~250 MB (Requires UNNEST of speed_reading_intervals)
+-- Estimated Bytes Processed: ~120 MB (Optimized via speed_reading_offsets integer arithmetic)
 
 /*
-  ANALYTICAL PATTERN: SRI Unnesting
-  RMI routes store segment-level traffic states (SRI) in a nested array. 
-  This query 'explodes' that array using UNNEST to audit the frequency of 
-  severe congestion across the entire network.
+  ANALYTICAL PATTERN: SRI Unnesting with Modern Offsets
+  RMI routes store segment-level traffic states in speed_reading_offsets.
+  This query unpacks that array to audit the frequency and physical length
+  of severe congestion (TRAFFIC_JAM and TRAFFIC_JAM_HEAVY) using pure integer arithmetic.
 */
 
-WITH exploded_sris AS (
+WITH congested_offsets AS (
   SELECT
-    selected_route_id,
-    display_name,
-    -- 'speed' represents the RMI traffic state for that specific interval
-    sri.speed
-  FROM `LINKED_DATASET_NAME.recent_roads_data`,
-  UNNEST(speed_reading_intervals) AS sri
-  WHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
+    r.selected_route_id,
+    s.display_name,
+    r.record_time,
+    sro.speed,
+    -- Compute physical interval length in meters via integer offset subtraction
+    (sro.end_offset - sro.start_offset) AS interval_length_meters
+  FROM `LINKED_DATASET_NAME.recent_roads_data` AS r
+  JOIN `LINKED_DATASET_NAME.routes_status` AS s USING (selected_route_id)
+  LEFT JOIN UNNEST(r.speed_reading_offsets) AS sro
+  WHERE r.record_time BETWEEN '2026-07-01' AND '2026-07-30'
+    AND s.status = 'STATUS_RUNNING'
+    AND (r.has_road_closure IS FALSE OR r.has_road_closure IS NULL)
+    AND ST_GEOMETRYTYPE(r.route_geometry) = 'ST_LineString'
+    -- Focus exclusively on severe and standard traffic congestion tiers
+    AND sro.speed IN ('TRAFFIC_JAM', 'TRAFFIC_JAM_HEAVY')
 )
 SELECT
   selected_route_id,
   display_name,
-  -- We count every occurrence of an interval being in a 'TRAFFIC_JAM'
-  COUNT(*) AS traffic_jam_count
-FROM exploded_sris
--- Filter exclusively for the most severe RMI congestion state
-WHERE speed = 'TRAFFIC_JAM'
+  -- Count total congestion interval occurrences
+  COUNT(*) AS total_congested_intervals,
+  -- Break out counts by congestion severity
+  COUNTIF(speed = 'TRAFFIC_JAM_HEAVY') AS heavy_jam_occurrences,
+  COUNTIF(speed = 'TRAFFIC_JAM') AS standard_jam_occurrences,
+  -- Aggregate physical distance in congestion (km)
+  ROUND(SUM(interval_length_meters) / 1000.0, 2) AS total_congested_km,
+  ROUND(SUM(CASE WHEN speed = 'TRAFFIC_JAM_HEAVY' THEN interval_length_meters ELSE 0 END) / 1000.0, 2) AS heavy_jam_km,
+  ROUND(AVG(interval_length_meters), 1) AS avg_congested_interval_meters
+FROM congested_offsets
 GROUP BY 1, 2
-ORDER BY traffic_jam_count DESC
+ORDER BY heavy_jam_km DESC, total_congested_km DESC
 LIMIT 10;

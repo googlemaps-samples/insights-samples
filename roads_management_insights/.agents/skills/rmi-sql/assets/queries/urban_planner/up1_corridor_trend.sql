@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_up1_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_up1_YYYYMMDDHHMMSS
 -- Persona: urban_planner
 -- Purpose: RMI BigQuery Analytical Query (up1)
 

@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_bqa2_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_bqa2_YYYYMMDDHHMMSS
 -- Persona: bigquery_admin
 -- Purpose: RMI BigQuery Analytical Query (bqa2)
 
@@ -17,13 +17,13 @@
 -- limitations under the License.
 
 -- BigQuery Admin Query 2: Cost Attribution Audit (Missing Prefixes)
--- Business Question: Identify any BigQuery jobs missing the mandatory 'rmisqlfactory_' prefix in their job IDs.
+-- Business Question: Identify any BigQuery jobs missing the mandatory 'rmisamplesql_' prefix in their job IDs.
 -- Use Case: Ensures compliance with project governance standards. Consistent job ID prefixing is required for accurate cost attribution and auditing of RMI-related analysis.
 -- Product Stage: GA (Uses BigQuery INFORMATION_SCHEMA)
 -- Estimated Bytes Processed: N/A (Metadata Query)
 
 /*
-  NOTE: 'rmisqlfactory_' is the mandatory job ID prefix for this workspace.
+  NOTE: 'rmisamplesql_' is the mandatory job ID prefix for this workspace.
   This allows administrators to filter billing logs and correlate spend 
   with specific personas or tools.
   
@@ -42,7 +42,7 @@ FROM `region-us`.INFORMATION_SCHEMA.JOBS
 WHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
   AND job_type = 'QUERY'
   -- Filter for jobs that missed the mandatory prefix
-  AND NOT STARTS_WITH(job_id, 'rmisqlfactory_')
+  AND NOT STARTS_WITH(job_id, 'rmisamplesql_')
   -- Only audit jobs that were targeting RMI core tables
   AND (
     query LIKE '%historical_travel_time%' 

@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_up5_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_up5_YYYYMMDDHHMMSS
 -- Persona: urban_planner
 -- Purpose: RMI BigQuery Analytical Query (up5)
 
@@ -17,17 +17,17 @@
 -- limitations under the License.
 
 -- Urban Planner Query 5: Geofenced Congestion
--- Business Question: Within a specific downtown polygon, which routes are currently seeing travel times more than 50% above their static baseline?
+-- Business Question: Within a specific downtown polygon, which routes are currently seeing travel times more than 50% above their static baseline, and how many closure incidents occurred?
 -- Use Case: Enables targeted traffic management and demand-response strategies within high-density zones or during special events.
 -- Product Stage: GA
 -- Estimated Bytes Processed: ~150 MB
 
 /*
-  ANALYTICAL PATTERN: Spatial Geofencing
+  ANALYTICAL PATTERN: Spatial Geofencing with Closure Awareness
   This query uses a DECLARE statement for the downtown polygon to ensure 
   BigQuery treats the study area as a constant, enabling efficient spatial 
-  indexing during the ST_INTERSECTS join. It identifies routes that are 
-  physically impacted by a specific urban zone.
+  indexing during the ST_INTERSECTS join. It joins routes_status on s.status = 'STATUS_RUNNING'
+  and tracks road closures rather than dropping them.
 */
 
 -- Study Area: Downtown Boston Geofence
@@ -35,27 +35,30 @@ DECLARE downtown_zone GEOGRAPHY DEFAULT ST_GEOGFROMTEXT('POLYGON((-71.066 42.358
 
 WITH intersecting_routes AS (
   SELECT
-    selected_route_id,
-    display_name,
-    SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds) AS delay_ratio
-  FROM `LINKED_DATASET_NAME.historical_travel_time`
+    h.selected_route_id,
+    h.display_name,
+    h.has_road_closure,
+    SAFE_DIVIDE(h.duration_in_seconds, h.static_duration_in_seconds) AS delay_ratio
+  FROM `LINKED_DATASET_NAME.historical_travel_time` AS h
+  JOIN `LINKED_DATASET_NAME.routes_status` AS s USING (selected_route_id)
   -- S2 SPATIAL INDEXING NOTE:
   -- BigQuery leverages native S2 cell spatial indexing for ST_INTERSECTS, performing
   -- sub-second bounding box pruning across millions of polyline records.
-  WHERE ST_INTERSECTS(route_geometry, downtown_zone)
-    AND record_time BETWEEN '2026-07-01' AND '2026-07-30'
+  WHERE ST_INTERSECTS(h.route_geometry, downtown_zone)
+    AND s.status = 'STATUS_RUNNING'
+    AND h.record_time BETWEEN '2026-07-01' AND '2026-07-30'
     -- Quality filter: Exclude non-continuous geometries
-    AND ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString'
-    AND duration_in_seconds IS NOT NULL
-    AND static_duration_in_seconds > 0
+    AND ST_GEOMETRYTYPE(h.route_geometry) = 'ST_LineString'
+    AND (h.static_duration_in_seconds > 0 OR h.has_road_closure IS TRUE)
 )
 SELECT
   selected_route_id,
   display_name,
-  ROUND(AVG(delay_ratio), 3) AS avg_delay_ratio,
+  ROUND(AVG(CASE WHEN COALESCE(has_road_closure, FALSE) IS FALSE THEN delay_ratio END), 3) AS avg_delay_ratio,
+  COUNTIF(has_road_closure IS TRUE) AS closure_count,
   COUNT(*) as sample_count
 FROM intersecting_routes
 GROUP BY 1, 2
--- Threshold: Filter for routes that are at least 1.5x slower than free-flow
-HAVING avg_delay_ratio > 1.5
-ORDER BY avg_delay_ratio DESC;
+-- Threshold: Filter for routes that are at least 1.5x slower than free-flow or experienced closures
+HAVING avg_delay_ratio > 1.5 OR closure_count > 0
+ORDER BY closure_count DESC, avg_delay_ratio DESC;

@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_de5_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_de5_YYYYMMDDHHMMSS
 -- Persona: data_engineer
 -- Purpose: RMI BigQuery Analytical Query (de5)
 

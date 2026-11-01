@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_bqa1_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_bqa1_YYYYMMDDHHMMSS
 -- Persona: bigquery_admin
 -- Purpose: RMI BigQuery Analytical Query (bqa1)
 

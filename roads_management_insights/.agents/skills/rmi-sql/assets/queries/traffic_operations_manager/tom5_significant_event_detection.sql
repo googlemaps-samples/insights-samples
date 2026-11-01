@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_tom5_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_tom5_YYYYMMDDHHMMSS
 -- Persona: traffic_operations_manager
 -- Purpose: RMI BigQuery Analytical Query (tom5)
 
@@ -16,39 +16,41 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
--- Traffic Operations Manager Query 5: Significant Event Detection
--- Business Question: Which routes experienced a travel time more than double their static baseline in the last 24 hours?
--- Use Case: Automates the detection of extreme traffic events (accidents, severe weather, gridlock) that require immediate operational intervention.
+-- Traffic Operations Manager Query 5: Significant Event Detection (Closures & Severe Congestion)
+-- Business Question: Which routes experienced a significant event (full road closure OR travel time more than double static baseline) in the last 24-72 hours?
+-- Use Case: Automates the detection of extreme traffic events (accidents, road closures, severe gridlock) requiring immediate operational intervention.
 -- Product Stage: GA
 -- Estimated Bytes Processed: ~151 MB (Requires JOIN with routes_status)
 
 /*
-  ANALYTICAL PATTERN: Threshold-Based Alerting
-  This query identifies major traffic incidents by flagging records where the 
-  actual travel time is at least 2x the free-flow baseline (static_duration). 
-  It applies quality filters to ensure alerts are only triggered for single, 
-  continuous paths.
+  ANALYTICAL PATTERN: Threshold-Based Alerting with Road Closure Branch
+  This query identifies major disruptions by flagging:
+  1. Full road closures (has_road_closure = true, duration_in_seconds IS NULL).
+  2. Severe congestion events where actual travel time is at least 2x the free-flow baseline.
 */
 
 SELECT
   h.display_name,
   h.selected_route_id,
   h.record_time,
+  h.has_road_closure,
   h.duration_in_seconds,
   h.static_duration_in_seconds,
-  -- Delay ratio > 2.0 means travel time is 2x slower than ideal
+  -- Classify the event type
+  CASE
+    WHEN h.has_road_closure IS TRUE THEN 'FULL_ROAD_CLOSURE'
+    WHEN SAFE_DIVIDE(h.duration_in_seconds, h.static_duration_in_seconds) > 2.0 THEN 'SEVERE_CONGESTION'
+    ELSE 'NOMINAL'
+  END AS event_type,
+  -- Delay ratio > 2.0 means travel time is 2x slower than ideal (NULL for full closures)
   ROUND(SAFE_DIVIDE(h.duration_in_seconds, h.static_duration_in_seconds), 2) AS delay_ratio
 FROM `LINKED_DATASET_NAME.historical_travel_time` AS h
-JOIN `LINKED_DATASET_NAME.routes_status` AS s USING(selected_route_id)
--- Filter for the final days of the sample dataset
+JOIN `LINKED_DATASET_NAME.routes_status` AS s USING (selected_route_id)
 WHERE h.record_time BETWEEN '2026-07-27' AND '2026-07-30'
-  -- Focus on active monitoring fleet
   AND s.status = 'STATUS_RUNNING'
-  -- Filter for \"Significant\" events
-  AND SAFE_DIVIDE(h.duration_in_seconds, h.static_duration_in_seconds) > 2.0
+  -- Trigger alert if road is completely closed OR travel time exceeds 2x baseline
+  AND (h.has_road_closure IS TRUE OR SAFE_DIVIDE(h.duration_in_seconds, h.static_duration_in_seconds) > 2.0)
   -- Quality filter: Exclude non-continuous geometries
   AND ST_GEOMETRYTYPE(h.route_geometry) = 'ST_LineString'
-  AND h.duration_in_seconds IS NOT NULL
-  AND h.static_duration_in_seconds > 0
-  ORDER BY delay_ratio DESC;
-
+  AND (h.static_duration_in_seconds > 0 OR h.has_road_closure IS TRUE)
+ORDER BY h.has_road_closure DESC, delay_ratio DESC;

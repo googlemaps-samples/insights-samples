@@ -1,4 +1,4 @@
--- Job ID: rmisqlfactory_rmip1_YYYYMMDDHHMMSS
+-- Job ID: rmisamplesql_rmip1_YYYYMMDDHHMMSS
 -- Persona: rmi_planner
 -- Purpose: RMI BigQuery Analytical Query (rmip1)
 
