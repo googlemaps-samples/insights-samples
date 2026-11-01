@@ -76,6 +76,7 @@ jq -n \
   --arg creator "$CREATOR" \
   '{
     displayName: ($prefix + " Uniform Route"),
+    dynamicRouting: false,
     dynamicRoute: {
       origin: { latitude: ($olat|tonumber), longitude: ($olng|tonumber) },
       destination: { latitude: ($dlat|tonumber), longitude: ($dlng|tonumber) },

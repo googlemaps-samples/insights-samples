@@ -5,8 +5,8 @@
 #
 # ORCHESTRATION LOGIC:
 # 1. BASELINE METRICS: Calls Routes API v2 (ComputeRoutes) to capture current travel duration and distance.
-#    Note: Uses TRAFFIC_AWARE_OPTIMAL to get current context for metadata enrichment.
-# 2. REGISTRATION: Constructs a dynamic SelectedRoute JSON object (origin/destination only).
+#    Note: Uses TRAFFIC_UNAWARE to get un-congested baseline context.
+# 2. REGISTRATION: Constructs a dynamic SelectedRoute JSON object (origin/destination only, dynamicRouting: true).
 #    This allows the RMI engine to monitor path and travel time variations over time.
 
 set -euo pipefail
@@ -48,6 +48,7 @@ jq -n \
   --arg creator "$CREATOR" \
   '{
     displayName: ($prefix + " Dynamic Route"),
+    dynamicRouting: true,
     dynamicRoute: {
       origin: { latitude: ($olat|tonumber), longitude: ($olng|tonumber) },
       destination: { latitude: ($dlat|tonumber), longitude: ($dlng|tonumber) }
