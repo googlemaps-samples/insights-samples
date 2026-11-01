@@ -225,6 +225,79 @@ When creating derived tables, views, or snapshots from upstream RMI datasets:
 - **Inherited Core Metadata**: Columns originating directly from RMI base tables (`selected_route_id`, `display_name`, `record_time`, `duration_in_seconds`, `static_duration_in_seconds`, `route_geometry`, `status`, `validation_error`, `route_attributes`) must inherit canonical descriptions via inline `column_name OPTIONS(description = "...")` declarations.
 - **Detailed Dictionary Reference**: See the canonical glossary in **[`COLUMN_DESCRIPTIONS.md`](references/standards/COLUMN_DESCRIPTIONS.md)** for standardized definitions across all base and derived fields.
 
+## 10. Road Network on BigQuery (`road_network`) Topology & Jurisdiction Patterns
+
+### 10.1 Undirected Physical Arm Counting at Endpoints (`LEAST(seg_id, opp_id)`)
+
+- **The Mid-Block Attribute Split Pitfall**: In `road_network`, road segments are directed half-edges paired via `opposite_direction_road_segment_id` and split whenever road attributes (names, lane counts, speed limits, surface) change. At a mid-block attribute split on an undivided two-way street, 2 incoming directed half-edges and 2 outgoing directed half-edges meet at the split coordinate (`in_degree = 2, out_degree = 2, total_directed_edges = 4`).
+- **Why Naive Degree Counting Fails**: Classifying intersections via `in_degree + out_degree > 2` misclassifies **100% of mid-block two-way attribute splits (`~40.35%` of all network endpoint nodes)** as 4-way intersections.
+- **Canonical Undirected Physical Arm Formula**: Collapse each bidirectional half-edge pair into a single canonical undirected physical arm using `LEAST(road_segment_id, COALESCE(opposite_direction_road_segment_id, road_segment_id))` before counting distinct arms meeting at an endpoint node (`ST_ASTEXT(endpoint)`):
+
+  ```sql
+  WITH endpoint_arms AS (
+    SELECT
+      ST_ASTEXT(ST_STARTPOINT(geometry)) AS node_wkt,
+      ST_STARTPOINT(geometry) AS node_geom,
+      LEAST(road_segment_id, COALESCE(opposite_direction_road_segment_id, road_segment_id)) AS undirected_arm_id,
+      'OUTGOING' AS direction
+    FROM `my_project.road_network.road_segments_latest`
+    UNION ALL
+    SELECT
+      ST_ASTEXT(ST_ENDPOINT(geometry)) AS node_wkt,
+      ST_ENDPOINT(geometry) AS node_geom,
+      LEAST(road_segment_id, COALESCE(opposite_direction_road_segment_id, road_segment_id)) AS undirected_arm_id,
+      'INCOMING' AS direction
+    FROM `my_project.road_network.road_segments_latest`
+  )
+  SELECT
+    node_wkt,
+    ANY_VALUE(node_geom) AS intersection_geom,
+    COUNT(DISTINCT undirected_arm_id) AS physical_arm_count
+  FROM endpoint_arms
+  GROUP BY node_wkt
+  HAVING COUNT(DISTINCT undirected_arm_id) >= 3; -- True 3+ way physical intersections
+  ```
+
+### 10.2 Two-Way Centerline Coincidence & Reversed Vertex Invariant
+
+- For `100%` of undivided two-way segment pairs (`Seg A ↔ Seg B` linked via `opposite_direction_road_segment_id`), both directions share the exact same physical centerline (`ST_EQUALS(a.geometry, b.geometry) = TRUE`, Hausdorff distance `0.0m`) with **reversed vertex ordering**:
+  `ST_EQUALS(ST_STARTPOINT(a.geometry), ST_ENDPOINT(b.geometry)) = TRUE`.
+- When rendering two-way corridors or deduplicating centerlines for spatial buffering, filter to canonical undirected representatives (`WHERE opposite_direction_road_segment_id IS NULL OR road_segment_id < opposite_direction_road_segment_id`) to avoid double-counting road length or rendering overlapping directional strokes.
+
+### 10.3 Highway Shield Naming Convention (`SEARCH(names, ...)` vs. Abbreviated Shields)
+
+- `road_network.names` stores spelled-out official route designations (`'Interstate 93'`, `'U.S. 101'`, `'State Route 99'`) rather than hyphenated shield abbreviations (`'I-93'`, `'US-101'`, `'SR-99'`).
+- Querying `SEARCH(names, '`I-93`')` returns minor local streets named *"I-93"* rather than the interstate highway. Always include full official names alongside local variants and filter by `priority IN ('PRIORITY_CONTROLLED_ACCESS', 'PRIORITY_PRIMARY_HIGHWAY')`.
+
+### 10.4 Spatial Jurisdiction Auditing of RMI Datasets (`routes_status` / `recent_roads_data`)
+
+- When RMI datasets (`historical_roads_data_*`) do not expose an explicit country/jurisdiction metadata column, determine the geographic jurisdiction of registered `SelectedRoute` fleets by extracting `ST_CENTROID(route_geometry)` from recent partitions of `recent_roads_data` (or `routes_status`) and spatially joining against Overture Maps country polygons (`bigquery-public-data.overture_maps.division_area` where `subtype = 'country'`):
+
+  ```sql
+  WITH countries AS (
+    SELECT country AS iso_country, geometry
+    FROM `bigquery-public-data.overture_maps.division_area`
+    WHERE subtype = 'country'
+  ),
+  route_centroids AS (
+    SELECT
+      selected_route_id,
+      ST_CENTROID(ANY_VALUE(route_geometry)) AS centroid_geom
+    FROM `my_project.rmi_dataset.recent_roads_data`
+    WHERE record_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
+      AND route_geometry IS NOT NULL
+    GROUP BY selected_route_id
+  )
+  SELECT
+    c.iso_country,
+    COUNT(DISTINCT r.selected_route_id) AS route_count
+  FROM route_centroids r
+  JOIN countries c
+    ON ST_INTERSECTS(r.centroid_geom, c.geometry)
+  GROUP BY c.iso_country
+  ORDER BY route_count DESC;
+  ```
+
 ## References
 
 - [METRICS.md](references/standards/METRICS.md): Definitions of duration ratios and reliability.

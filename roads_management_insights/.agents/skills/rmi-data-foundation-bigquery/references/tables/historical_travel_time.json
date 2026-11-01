@@ -20,7 +20,7 @@
     {
         "name": "duration_in_seconds",
         "type": "FLOAT",
-        "description": "The traffic-aware duration of the route in seconds. This value represents the estimated travel time considering current real-time traffic conditions at the 'record_time'. Bounded >= 0. Used to calculate Travel Time Index (TTI) or delay against static_duration_in_seconds.",
+        "description": "The traffic-aware duration of the route in seconds. This value represents the estimated travel time considering current real-time traffic conditions at the 'record_time'. Bounded >= 0. Omitted (NULL) when has_road_closure is true because the route is impassable. Used to calculate Travel Time Index (TTI) or delay against static_duration_in_seconds.",
         "mode": "NULLABLE"
     },
     {
@@ -40,5 +40,11 @@
         "type": "STRING",
         "mode": "REPEATED",
         "description": "Place IDs along the route in topological order indicating connected road segments. Added recently; older historical records will contain empty or NULL arrays."
+    },
+    {
+        "name": "has_road_closure",
+        "type": "BOOLEAN",
+        "mode": "NULLABLE",
+        "description": "Whether there is a full road closure on the route. When true, duration_in_seconds is omitted (NULL) because the route is impassable. A NULL value indicates that road closure information is undetermined. Consistent with Google Maps full road closure status."
     }
 ]

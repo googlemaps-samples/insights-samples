@@ -30,7 +30,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/roadsselection_v1_helpers.sh"
 #
 # @param string name Required. Resource name (projects/{project}/selectedRoutes/{id}).
 # @param string updated_route_json Required. JSON SelectedRoute object.
-# @param string update_mask Optional. Comma-separated field mask (e.g. 'display_name,route_attributes').
+# @param string update_mask Optional. Comma-separated field mask (e.g. 'display_name,route_attributes,dynamic_routing,dynamic_route').
 roadsselection_v1_selectedroute_patch_util() {
   local name="$1"
   local json="$2"
@@ -58,7 +58,7 @@ roadsselection_v1_selectedroute_batch_delete_by_names() {
   local names_json
   names_json=$(printf '%s\n' "${names[@]}" | jq -R . | jq -s .)
   local req_json
-  req_json=$(roadsselection_v1_selectedroute_batchdelete_request_json "projects/${project_id}" "${names_json}")
+  req_json=$(roadsselection_v1_selectedroute_batchdelete_request_json "${names_json}")
   roadsselection_v1_selectedroute_batchdelete "${project_id}" "${req_json}"
 }
 
@@ -142,5 +142,92 @@ roadsselection_v1_selectedroute_list_all() {
 
   cat "$tmp_all"
   rm -f "$tmp_all"
+}
+
+# -----------------------------------------------------------------------------
+# Backward-compatibility utility wrappers for sibling skills
+# -----------------------------------------------------------------------------
+roads_selection_v1_util_list_all_routes() {
+  roadsselection_v1_selectedroute_list_all "$@"
+}
+
+# Builds a BatchCreateSelectedRoutesRequest JSON body from a JSONL file of route definitions.
+# Accepts lines in either CreateSelectedRouteRequest format or flat SelectedRoute JSONL format.
+#
+# @param string jsonl_path Required. Path to JSONL file.
+# @return string BatchCreateSelectedRoutesRequest JSON string ({"requests": [...]}).
+roads_selection_v1_util_build_batch_create_body() {
+  local jsonl_path="$1"
+  jq -c -s '
+    {
+      requests: map(
+        if has("selectedRoute") then
+          .
+        else
+          {
+            selectedRouteId: (.selectedRouteId // .selected_route_id // empty),
+            selectedRoute: (
+              {
+                displayName: (.displayName // .display_name // empty),
+                dynamicRoute: (.dynamicRoute // .dynamic_route),
+                dynamicRouting: (if has("dynamicRouting") then .dynamicRouting elif has("dynamic_routing") then .dynamic_routing else null end),
+                routeAttributes: (.routeAttributes // .route_attributes // {})
+              }
+              | if .displayName == "" then del(.displayName) else . end
+              | if .dynamicRouting == null then del(.dynamicRouting) else . end
+            )
+          }
+          | if .selectedRouteId == "" then del(.selectedRouteId) else . end
+        end
+      )
+    }
+  ' "${jsonl_path}"
+}
+
+# Submits a batchCreate chunk and falls back to individual create calls on batch error.
+#
+# @param string project_id Required. Google Cloud project ID.
+# @param string requests_json_array Required. JSON array of CreateSelectedRouteRequest objects.
+# @param string failure_log Optional. File path to append failed route JSON lines.
+roads_selection_v1_util_batch_create_robust() {
+  local project_id="$1"
+  local requests_json_array="$2"
+  local failure_log="${3:-}"
+
+  local batch_body
+  batch_body=$(roadsselection_v1_selectedroute_batchcreate_request_json "${requests_json_array}")
+  local resp
+  resp=$(roadsselection_v1_selectedroute_batchcreate "${project_id}" "${batch_body}" || true)
+
+  if echo "${resp}" | jq -e 'has("selectedRoutes")' >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local item
+  while IFS= read -r item; do
+    [[ -z "${item}" ]] && continue
+    local rid sroute single_resp
+    rid=$(echo "${item}" | jq -r '.selectedRouteId // empty')
+    sroute=$(echo "${item}" | jq -c '.selectedRoute')
+    single_resp=$(roadsselection_v1_selectedroute_create "${project_id}" "${sroute}" "${rid}" || true)
+    if ! echo "${single_resp}" | jq -e 'has("name")' >/dev/null 2>&1; then
+      if [[ -n "${failure_log}" ]]; then
+        jq -n -c --arg rid "${rid}" --argjson resp "${single_resp:-{}}" '{selectedRouteId: $rid, error: $resp}' >> "${failure_log}"
+      fi
+    fi
+  done < <(echo "${requests_json_array}" | jq -c '.[]')
+}
+
+# Alias for batch route registration (accepts either {"requests": [...]} or [...] JSON array).
+roads_selection_v1_register_routes() {
+  local project_id="$1"
+  local payload_json="$2"
+  if echo "${payload_json}" | jq -e 'type == "object" and has("requests")' >/dev/null 2>&1; then
+    roadsselection_v1_selectedroute_batchcreate "${project_id}" "${payload_json}"
+  else
+    local req_body
+    req_body=$(roadsselection_v1_selectedroute_batchcreate_request_json "${payload_json}")
+    roadsselection_v1_selectedroute_batchcreate "${project_id}" "${req_body}"
+  fi
 }
 

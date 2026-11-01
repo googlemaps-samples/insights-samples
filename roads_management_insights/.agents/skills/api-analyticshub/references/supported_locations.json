@@ -1,0 +1,26 @@
+{
+  "source": "https://docs.cloud.google.com/bigquery/docs/analytics-hub-introduction#supported-regions",
+  "retrieved": "2026-09-27",
+  "note": "Lowercase BigQuery location IDs where BigQuery sharing (Analytics Hub) is available. Omni regions (aws-*, azure-*) are intentionally excluded: this module provisions native BigQuery datasets, and replicas/multi-region listings are not supported in Omni.",
+  "multi_regions": ["us", "eu"],
+  "regions": {
+    "americas": [
+      "us-east5", "us-south1", "us-central1", "us-west4", "us-west2",
+      "northamerica-south1", "northamerica-northeast1", "us-east4", "us-central2",
+      "us-west1", "us-west3", "southamerica-east1", "southamerica-west1",
+      "us-east1", "northamerica-northeast2"
+    ],
+    "asia_pacific": [
+      "asia-south2", "asia-east2", "asia-southeast2", "australia-southeast2",
+      "asia-south1", "asia-northeast2", "asia-northeast3", "asia-southeast1",
+      "australia-southeast1", "asia-east1", "asia-northeast1"
+    ],
+    "europe": [
+      "europe-west1", "europe-west10", "europe-north1", "europe-west3",
+      "europe-west2", "europe-southwest1", "europe-west8", "europe-west4",
+      "europe-west9", "europe-west12", "europe-central2", "europe-west6"
+    ],
+    "middle_east": ["me-central2", "me-central1", "me-west1"],
+    "africa": ["africa-south1"]
+  }
+}

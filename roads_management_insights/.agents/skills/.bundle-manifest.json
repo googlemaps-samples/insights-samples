@@ -1,25 +1,44 @@
 {
   "bundle_id": "rmi-core",
-  "name": "Roads Management Insights (RMI) Agentic Skills Suite",
+  "name": "Roads Management Insights (RMI)",
   "version": "1.0.0",
   "description": "Curated suite of agentic skills for Roads Management Insights (RMI) development, APIs, data analytics, and operational runbooks.",
-  "published_at": "2026-09-14T10:29:28Z",
-  "skills": [
+  "format": "bundle",
+  "published_at": "2026-11-01T13:40:38Z",
+  "explicit_skills": [
     "api-analyticshub",
     "api-geminidataanalytics",
-    "api-roadsselection",
     "api-roads-v1",
+    "api-roadsselection",
     "api-routes",
     "bigquery-geospatial",
     "bigquery-practices",
-    "rmi-routesetting",
-    "rmi-sql",
-    "rmi-dataagent-helper",
     "rmi-data-foundation-bigquery",
     "rmi-data-realtime-bigquery",
     "rmi-data-realtime-pubsub",
+    "rmi-dataagent-helper",
+    "rmi-dataviz",
+    "rmi-routesetting",
     "rmi-sampledatasets",
-    "rmi-dataviz"
+    "rmi-sql"
+  ],
+  "auto_bundled_dependencies": [],
+  "skills": [
+    "api-analyticshub",
+    "api-geminidataanalytics",
+    "api-roads-v1",
+    "api-roadsselection",
+    "api-routes",
+    "bigquery-geospatial",
+    "bigquery-practices",
+    "rmi-data-foundation-bigquery",
+    "rmi-data-realtime-bigquery",
+    "rmi-data-realtime-pubsub",
+    "rmi-dataagent-helper",
+    "rmi-dataviz",
+    "rmi-routesetting",
+    "rmi-sampledatasets",
+    "rmi-sql"
   ],
   "agents": []
 }

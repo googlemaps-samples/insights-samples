@@ -252,6 +252,14 @@ GROUP BY
 
 ---
 
+### 4.1 Supported Locations (Validate Before Provisioning)
+- Analytics Hub (BigQuery sharing) is available only in a subset of BigQuery locations. The machine-readable snapshot is [references/supported_locations.json](references/supported_locations.json), with its source URL and retrieval date inside. The 2026-09-27 snapshot has 42 regions plus the multi-regions `us` and `eu`.
+- **Source of truth**: https://docs.cloud.google.com/bigquery/docs/analytics-hub-introduction#supported-regions. Refresh the JSON when the docs change; don't hardcode lists in code.
+- Match case-insensitively: BigQuery accepts `US` and `us`.
+- **Omni regions** (`aws-*`, `azure-*`) support sharing, but multi-region listings and dataset replicas are not supported there. Exclude them when provisioning native BigQuery datasets.
+- **Multi-region listings** are supported only for shared datasets and linked dataset replicas, not for Pub/Sub topics. So when a dataset has cross-region replicas meant to be shareable, validate the replica locations against the same list.
+- Terraform: load the JSON with `jsondecode(file("${path.module}/data/<file>.json"))` into a local, and check `contains(local.supported, lower(var.region))` in a `validation` block. This needs Terraform >= 1.9, because validation must reference a local. Bash: `jq -r '.multi_regions[], (.regions[]|.[])' supported_locations.json`.
+
 ## 5. Execution Strategy & Determinism Protocol
 
 ### Tier 1: Deterministic Client Scripts (Primary / Recommended)

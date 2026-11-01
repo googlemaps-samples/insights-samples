@@ -20,12 +20,12 @@ When setting up monitoring for large regional networks (e.g. hundreds of highway
 
 * **HTTP Method**: `POST`
 * **URL**: `https://roads.googleapis.com/selection/v1/projects/{project}/selectedRoutes:batchCreate`
+* **URL Path Parameter**: `parent` (`projects/{project}`)
 * **Request Body (`BatchCreateSelectedRoutesRequest`)**:
-  * `parent`: `projects/{project}`
   * `requests`: Array of `CreateSelectedRouteRequest` objects (max 1,000), each specifying:
-    * `parent`: `projects/{project}`
-    * `selectedRoute`: Full `SelectedRoute` object (`displayName`, `dynamicRoute`, `routeAttributes`).
-    * `selectedRouteId`: (Optional) Unique 4-63 character route identifier.
+    * `parent`: (Optional) `projects/{project}` — must either be empty or match the URL `parent`.
+    * `selectedRoute`: Full `SelectedRoute` object (`displayName`, `dynamicRoute`, optional `dynamicRouting`, optional `routeAttributes`).
+    * `selectedRouteId`: (Optional) Unique 4–63 character route identifier (`[a-zA-Z0-9_-]*`); auto-generates a UUID if omitted.
 
 ---
 
@@ -53,8 +53,7 @@ REQ2=$(roadsselection_v1_selectedroute_create_request_json "projects/${PROJECT_I
 
 # 2. Build BatchCreateSelectedRoutesRequest
 BATCH_REQ=$(roadsselection_v1_selectedroute_batchcreate_request_json \
-  "[${REQ1}, ${REQ2}]" \
-  "projects/${PROJECT_ID}")
+  "[${REQ1}, ${REQ2}]")
 
 # 3. Execute batchCreate
 echo "Batch creating 2 routes..."
@@ -77,7 +76,6 @@ curl -s -X POST \
   -H "Content-Type: application/json" \
   "https://roads.googleapis.com/selection/v1/projects/${PROJECT_ID}/selectedRoutes:batchCreate" \
   -d '{
-    "parent": "projects/'"${PROJECT_ID}"'",
     "requests": [
       {
         "parent": "projects/'"${PROJECT_ID}"'",
@@ -143,7 +141,6 @@ def batch_create_routes(project_id: str, routes_data: list) -> dict:
         })
 
     payload = {
-        "parent": f"projects/{project_id}",
         "requests": requests_payload
     }
 
@@ -210,7 +207,6 @@ async function batchCreateSelectedRoutes(
   const url = `https://roads.googleapis.com/selection/v1/projects/${projectId}/selectedRoutes:batchCreate`;
 
   const payload = {
-    parent: `projects/${projectId}`,
     requests: items.map((item) => ({
       parent: `projects/${projectId}`,
       selectedRouteId: item.routeId,
@@ -248,19 +244,193 @@ export { batchCreateSelectedRoutes, type RouteCreateItem, type BatchCreateRespon
 
 ---
 
+### E. Go (`net/http` / Reference Client)
+
+```go
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+)
+
+type LatLng struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
+type DynamicRoute struct {
+	Origin      LatLng `json:"origin"`
+	Destination LatLng `json:"destination"`
+}
+
+type SelectedRoute struct {
+	DisplayName     string            `json:"displayName"`
+	DynamicRoute    DynamicRoute      `json:"dynamicRoute"`
+	DynamicRouting  *bool             `json:"dynamicRouting,omitempty"`
+	RouteAttributes map[string]string `json:"routeAttributes,omitempty"`
+}
+
+type CreateSelectedRouteRequest struct {
+	Parent          string        `json:"parent,omitempty"`
+	SelectedRouteID string        `json:"selectedRouteId,omitempty"`
+	SelectedRoute   SelectedRoute `json:"selectedRoute"`
+}
+
+// BatchCreateSelectedRoutesRequest omits top-level parent per Discovery 20261101.
+type BatchCreateSelectedRoutesRequest struct {
+	Requests []CreateSelectedRouteRequest `json:"requests"`
+}
+
+func batchCreateSelectedRoutes(ctx context.Context, projectID, token string, reqBody BatchCreateSelectedRoutesRequest) ([]byte, error) {
+	encoded, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf("https://roads.googleapis.com/selection/v1/projects/%s/selectedRoutes:batchCreate", url.PathEscape(projectID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(encoded))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Goog-User-Project", projectID)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("batchCreate failed [%d]: %s", resp.StatusCode, string(raw))
+	}
+	return raw, nil
+}
+
+func main() {
+	projectID := "my-roads-project"
+	fixed := false
+	payload := BatchCreateSelectedRoutesRequest{
+		Requests: []CreateSelectedRouteRequest{
+			{
+				Parent:          "projects/" + projectID,
+				SelectedRouteID: "corridor_101_a",
+				SelectedRoute: SelectedRoute{
+					DisplayName:    "US-101 Segment A",
+					DynamicRouting: &fixed,
+					DynamicRoute: DynamicRoute{
+						Origin:      LatLng{Latitude: 37.7749, Longitude: -122.4194},
+						Destination: LatLng{Latitude: 37.7833, Longitude: -122.4067},
+					},
+					RouteAttributes: map[string]string{"corridor": "US-101"},
+				},
+			},
+			{
+				Parent:          "projects/" + projectID,
+				SelectedRouteID: "corridor_101_b",
+				SelectedRoute: SelectedRoute{
+					DisplayName:    "US-101 Segment B",
+					DynamicRouting: &fixed,
+					DynamicRoute: DynamicRoute{
+						Origin:      LatLng{Latitude: 37.7833, Longitude: -122.4067},
+						Destination: LatLng{Latitude: 37.7900, Longitude: -122.3950},
+					},
+					RouteAttributes: map[string]string{"corridor": "US-101"},
+				},
+			},
+		},
+	}
+	res, err := batchCreateSelectedRoutes(context.Background(), projectID, os.Getenv("GOOGLE_OAUTH_ACCESS_TOKEN"), payload)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Batch Created:", string(res))
+}
+```
+
+---
+
+### F. Rust (`RoadsSelectionClient` / REST)
+
+```rust
+use std::process::Command;
+
+pub fn batch_create_routes(
+    project_id: &str,
+    token: &str,
+    routes: &[(&str, &str, (f64, f64), (f64, f64))],
+) -> Result<String, String> {
+    let url = format!(
+        "https://roads.googleapis.com/selection/v1/projects/{}/selectedRoutes:batchCreate",
+        project_id
+    );
+    let items: Vec<String> = routes
+        .iter()
+        .map(|(route_id, display_name, origin, dest)| {
+            format!(
+                r#"{{"parent":"projects/{}","selectedRouteId":"{}","selectedRoute":{{"displayName":"{}","dynamicRouting":false,"dynamicRoute":{{"origin":{{"latitude":{},"longitude":{}}},"destination":{{"latitude":{},"longitude":{}}}}}}}}}"#,
+                project_id, route_id, display_name, origin.0, origin.1, dest.0, dest.1
+            )
+        })
+        .collect();
+
+    // Per Discovery 20261101, omit top-level parent from BatchCreateSelectedRoutesRequest.
+    let body = format!("{{\"requests\":[{}]}}", items.join(","));
+
+    let out = Command::new("curl")
+        .args(["-sS", "-X", "POST"])
+        .arg("-H")
+        .arg(format!("Authorization: Bearer {}", token))
+        .arg("-H")
+        .arg(format!("X-Goog-User-Project: {}", project_id))
+        .args(["-H", "Content-Type: application/json", "--data-raw", &body])
+        .arg(&url)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).into_owned());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+fn main() -> Result<(), String> {
+    let token = std::env::var("GOOGLE_OAUTH_ACCESS_TOKEN").unwrap_or_default();
+    let specs = [
+        ("corridor_101_a", "US-101 Segment A", (37.7749, -122.4194), (37.7833, -122.4067)),
+        ("corridor_101_b", "US-101 Segment B", (37.7833, -122.4067), (37.7900, -122.3950)),
+    ];
+    let res = batch_create_routes("my-roads-project", &token, &specs)?;
+    println!("Batch Created Routes: {}", res);
+    Ok(())
+}
+```
+
+---
+
 ## 4. Expected API Response
 
 ```json
 {
   "selectedRoutes": [
     {
-      "name": "projects/35571336328/selectedRoutes/corridor-101-a",
+      "name": "projects/123456789012/selectedRoutes/corridor-101-a",
       "displayName": "US-101 Segment A",
       "createTime": "2026-09-01T00:00:00.000000Z",
       "state": "STATE_VALIDATING"
     },
     {
-      "name": "projects/35571336328/selectedRoutes/corridor-101-b",
+      "name": "projects/123456789012/selectedRoutes/corridor-101-b",
       "displayName": "US-101 Segment B",
       "createTime": "2026-09-01T00:00:00.000000Z",
       "state": "STATE_VALIDATING"

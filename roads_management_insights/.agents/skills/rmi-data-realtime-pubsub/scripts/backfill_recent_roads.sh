@@ -3,16 +3,19 @@
 # Script: backfill_recent_roads.sh
 # Description:
 #   Performs a highly optimized, cost-controlled daily backfill to transform
-#   historical raw telemetry from 'rmi_realtime_json' into the production-optimized
+#   historical raw telemetry from 'roads_information_landing' into the production-optimized
 #   'recent_roads_data' table partition-by-partition.
 #
-#   Enforces partition pruning on 'partitioning_ts' to scan only one partition
+#   Updated for the October 8, 2026 schema evolution with COALESCE backward compatibility
+#   supporting linear speed_reading_offsets, has_road_closure, and RFC 3339 timestamps.
+#
+#   Enforces partition pruning on 'partitioning_ts' (or 'publish_time') to scan only one partition
 #   per day, keeping costs predictable and performance extremely fast.
 #
 # Usage:
 #   PROJECT_ID="your-project-id" \
-#   DATASET_ID="rmi" \
-#   SOURCE_TABLE_ID="rmi_realtime_json" \
+#   DATASET_ID="rmi_realtime" \
+#   SOURCE_TABLE_ID="roads_information_landing" \
 #   ./backfill_recent_roads.sh "2026-05-15" "2026-06-12"
 # ====================================================================================
 
@@ -26,12 +29,13 @@ TARGET_TABLE_ID="${TARGET_TABLE_ID:-recent_roads_data}"
 SOURCE_PROJECT_ID="${SOURCE_PROJECT_ID:-${PROJECT_ID}}"
 SOURCE_DATASET_ID="${SOURCE_DATASET_ID:-${DATASET_ID}}"
 SOURCE_TABLE_ID="${SOURCE_TABLE_ID:-roads_information_landing}"
+PARTITION_COLUMN="${PARTITION_COLUMN:-publish_time}"
 
 # --- Help Block & Arguments Check ---
 if [ "$#" -lt 2 ]; then
   echo "❌ Error: Missing required date arguments." >&2
   echo "Usage: $0 <START_DATE_YYYY_MM_DD> <END_DATE_YYYY_MM_DD>" >&2
-  echo "Example: PROJECT_ID=\"your-project-id\" DATASET_ID=\"historical_roads_data_derived\" SOURCE_DATASET_ID=\"rmi\" SOURCE_TABLE_ID=\"rmi_realtime_json\" $0 \"2026-05-15\" \"2026-06-12\"" >&2
+  echo "Example: PROJECT_ID=\"your-project-id\" DATASET_ID=\"rmi_realtime\" SOURCE_TABLE_ID=\"roads_information_landing\" $0 \"2026-05-15\" \"2026-06-12\"" >&2
   exit 1
 fi
 
@@ -51,7 +55,7 @@ echo "• Target Dataset:  ${DATASET_ID}"
 echo "• Target Table:    ${TARGET_TABLE_ID} (Partitioned on record_time)"
 echo "• Source Project:  ${SOURCE_PROJECT_ID}"
 echo "• Source Dataset:  ${SOURCE_DATASET_ID}"
-echo "• Source Table:    ${SOURCE_TABLE_ID} (Partitioned on partitioning_ts)"
+echo "• Source Table:    ${SOURCE_TABLE_ID} (Partitioned on ${PARTITION_COLUMN})"
 echo "• Start Date:      ${START_DATE}"
 echo "• End Date:        ${END_DATE}"
 echo "========================================================================"
@@ -61,18 +65,18 @@ echo "========================================================================"
 echo "Resolving date sequence..."
 DAYS=$(python3 -c "
 import datetime
+import sys
 try:
     start = datetime.date.fromisoformat('${START_DATE}')
     end = datetime.date.fromisoformat('${END_DATE}')
     if start > end:
         print('ERROR: Start date must be before or equal to End date.', file=sys.stderr)
-        exit(1)
+        sys.exit(1)
     curr = start
     while curr <= end:
         print(curr.isoformat())
         curr += datetime.timedelta(days=1)
 except ValueError as e:
-    import sys
     print(f'ERROR: Invalid ISO date format. {e}', file=sys.stderr)
     sys.exit(1)
 " 2>&1)
@@ -99,7 +103,7 @@ print((d + datetime.timedelta(days=1)).isoformat())
   TIMESTAMP=$(date +%Y%m%d_%H%M%S)
   JOB_ID="rmi_realtime_backfill_${DAY//-/_}_${TIMESTAMP}"
 
-  # SQL command to execute partition-pruned merge
+  # SQL command to execute partition-pruned merge with COALESCE logic
   SQL_QUERY="
   MERGE \`${PROJECT_ID}.${DATASET_ID}.${TARGET_TABLE_ID}\` T
   USING (
@@ -107,22 +111,28 @@ print((d + datetime.timedelta(days=1)).isoformat())
       SELECT
         selected_route_id,
         display_name,
-        TIMESTAMP_ADD(TIMESTAMP_SECONDS(retrieval_time.seconds), INTERVAL DIV(retrieval_time.nanos, 1000) MICROSECOND) AS record_time,
-        travel_duration.duration_in_seconds AS duration_in_seconds,
-        travel_duration.static_duration_in_seconds AS static_duration_in_seconds,
+        COALESCE(
+          retrieval_timestamp,
+          TIMESTAMP_ADD(TIMESTAMP_SECONDS(retrieval_time.seconds), INTERVAL DIV(retrieval_time.nanos, 1000) MICROSECOND)
+        ) AS record_time,
+        COALESCE(duration_in_seconds, travel_duration.duration_in_seconds) AS duration_in_seconds,
+        COALESCE(static_duration_in_seconds, travel_duration.static_duration_in_seconds) AS static_duration_in_seconds,
+        COALESCE(has_road_closure, FALSE) AS has_road_closure,
         SAFE.ST_GEOGFROMGEOJSON(route_geometry) AS route_geometry,
+        road_segment_ids,
+        speed_reading_offsets,
         speed_reading_intervals,
         publish_time,
         ROW_NUMBER() OVER (
-          PARTITION BY selected_route_id, retrieval_time.seconds 
+          PARTITION BY selected_route_id, COALESCE(retrieval_timestamp, TIMESTAMP_SECONDS(retrieval_time.seconds))
           ORDER BY publish_time DESC
         ) AS rn
       FROM
         \`${SOURCE_PROJECT_ID}.${SOURCE_DATASET_ID}.${SOURCE_TABLE_ID}\`
       WHERE
         -- Critical partition pruning: Restrict scan strictly to the targeted partition date
-        partitioning_ts >= TIMESTAMP('${DAY} 00:00:00')
-        AND partitioning_ts < TIMESTAMP('${NEXT_DAY} 00:00:00')
+        ${PARTITION_COLUMN} >= TIMESTAMP('${DAY} 00:00:00')
+        AND ${PARTITION_COLUMN} < TIMESTAMP('${NEXT_DAY} 00:00:00')
     )
     SELECT
       selected_route_id,
@@ -130,7 +140,10 @@ print((d + datetime.timedelta(days=1)).isoformat())
       record_time,
       duration_in_seconds,
       static_duration_in_seconds,
+      has_road_closure,
       route_geometry,
+      road_segment_ids,
+      speed_reading_offsets,
       ARRAY(
         SELECT AS STRUCT
           [ST_MAKELINE(ARRAY(
@@ -145,13 +158,35 @@ print((d + datetime.timedelta(days=1)).isoformat())
   ) S
   ON T.selected_route_id = S.selected_route_id AND T.record_time = S.record_time
   WHEN NOT MATCHED THEN
-    INSERT (selected_route_id, display_name, record_time, duration_in_seconds, static_duration_in_seconds, route_geometry, speed_reading_intervals)
-    VALUES (selected_route_id, display_name, record_time, duration_in_seconds, static_duration_in_seconds, route_geometry, speed_reading_intervals);
+    INSERT (
+      selected_route_id,
+      display_name,
+      record_time,
+      duration_in_seconds,
+      static_duration_in_seconds,
+      has_road_closure,
+      route_geometry,
+      road_segment_ids,
+      speed_reading_offsets,
+      speed_reading_intervals
+    )
+    VALUES (
+      selected_route_id,
+      display_name,
+      record_time,
+      duration_in_seconds,
+      static_duration_in_seconds,
+      has_road_closure,
+      route_geometry,
+      road_segment_ids,
+      speed_reading_offsets,
+      speed_reading_intervals
+    );
   "
 
   # Perform Dry Run first to let the user see the exact scanning size for this partition
   echo "Performing dry-run..."
-  DRY_RUN_OUT=$(bq query --dry_run --use_legacy_sql=false "${SQL_QUERY}" 2>&1)
+  DRY_RUN_OUT=$(bq query --dry_run --use_legacy_sql=false "${SQL_QUERY}" 2>&1 || true)
   BYTES_SCANNED=$(echo "${DRY_RUN_OUT}" | grep -o -E '[0-9]+ bytes' | head -n1 || echo "unknown")
   echo "💡 Dry-run prediction: Will scan ${BYTES_SCANNED}."
 

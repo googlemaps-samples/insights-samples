@@ -162,9 +162,12 @@ The end-to-end route creation workflow coordinates three GA-stage services:
 * **Implementation Steps**:
   1. **Source Data Feasibility Assessment**: Check spatial overlay against Google Maps road network. If divergent, pivot to Intent-Based Recreation.
   2. **Parse Vector GIS Layer**: Extract coordinate vertices from the source GIS LineString or WKT geometry.
-  3. **Coordinate Snapping & Road Alignment**: Send raw coordinates through `roads_v1_snapToRoads` (`interpolate=true`) to eliminate GIS digitizing offsets and snap to Google Maps road centerlines.
+  3. **Coordinate Snapping & Road Alignment**: Send raw coordinates through `roads_v1_snapToRoads` (`interpolate=true`) to eliminate GIS digitizing offsets and snap to Google Maps road centerlines. Never place intermediate waypoints inside tunnel bores or across split toll-plaza islands.
   4. **Vertex Decimation (25-Point Quota)**: Downsample the snapped coordinate chain to a maximum of 25 intermediate waypoints plus origin and destination.
-  5. **Assemble & Register**: Structure into standard `dynamicRoute` format and annotate optional `routeAttributes` with external asset IDs (`gis_layer`, `asset_id`, `source_crs`, `logic: "byo_gis_snapped"`).
+  5. **Mandatory Directional Routability Gate (`computeRoutes`)**: Because `snapToRoads` snaps purely by spatial proximity without checking directional routability, query `POST https://routes.googleapis.com/directions/v2:computeRoutes` (`X-Goog-FieldMask: routes.distanceMeters,routes.legs.distanceMeters,routes.legs.steps.navigationInstruction.instructions`) with the candidate `[origin, ...intermediates, destination]`:
+     * Verify `routes.distanceMeters` is within `1.0x–1.3x` of the source GIS segment length (cumulative detour loops >150–180 km will cause `CreateSelectedRoute` to fail synchronously with `400 INVALID_ARGUMENT`).
+     * Inspect `routes.legs[i].distanceMeters` and `navigationInstruction.instructions` to confirm no waypoint snapped to the opposing divided carriageway or diverted onto a parallel surface road.
+  6. **Assemble & Register**: Structure into standard `dynamicRoute` format and annotate optional `routeAttributes` with external asset IDs (`gis_layer`, `asset_id`, `source_crs`, `logic: "byo_gis_snapped"`).
 
 ---
 
@@ -213,3 +216,19 @@ GROUP BY
   to_stop,
   route_attributes;
 ```
+
+## 5. Topology-Only Route Segmentation from Road Network on BigQuery (Field-Validated)
+* **Chain by network topology only.** Names are labels only. Don't use angle thresholds and don't impose a length limit; splitting by length is a separate post-processing step (`split_stretched_route(max_length_m, max_segments)`).
+* **Rules:**
+  * Continue only to segments with the **same priority**, applied on healed data so data blips don't split routes.
+  * Require a **symmetric single continuation**: exactly 1 same-priority way out AND exactly 1 way in. Otherwise stop with `AMBIGUOUS_FORK` or `SAME_PRIORITY_MERGE_CONVERGENCE`.
+  * Exclude U-turns: 1-hop (heading reversal >= 150°) and **2-hop dual-carriageway crossovers** (A→X→B with X < 60 m, heading reversed >= 150°, ends < 40 m apart). Separate carriageway polylines defeat opposite-ID twin filters.
+* **`PRIORITY_AWARE_SPLIT` (user-approved default):**
+  * Controlled/limited-access highways split at **every ramp merge/diverge**, so each ramp-to-ramp section can be monitored.
+  * Other tiers ignore `LOCAL`/`TERMINAL` side roads and split wherever any other road meets them.
+* **Corridor identity boundary:** where expressway-to-expressway connectors carry a lower priority than the expressways, add a name-change stop on controlled-access roads only. Use it as a stop signal, never as a requirement to continue.
+* **Route IDs must be content-derived**, e.g. `'sr-<cc>-' || SUBSTR(TO_HEX(MD5(priority||'|'||first_seg||'|'||last_seg)),1,16)`.
+  * Rank-based IDs renumbered 99% of routes on rebuild; content IDs kept 99.3–99.7%.
+  * The Roads Selection API `selectedRouteId` allows only `[a-zA-Z0-9-]`, 4–63 characters. **No underscores.**
+* **Keep demo/prototype route tables as filters of the nationwide table.** Separate chaining logic drifts and overwrites results.
+* **Gaps to warn about when rebuilding a network from the dataset:** no turn restrictions (Routes API detoured on ~52–64% of turns Overture flags), no junction IDs, no grade separation, no ramp/link flag.
