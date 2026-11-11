@@ -18,6 +18,14 @@ street_view_insights/
 │       ├── analyze_utility_pole/              # Multi-view utility pole inspection & reconciliation
 │       ├── utility_pole_subclassification_using_full_frame_svi/ # Cataloged full-frame pole sub-classification & equipment audit
 │       └── vegetation_encroachment_detection_using_full_frame_svi/ # Multi-view vegetation hazard audit
+├── lidar/                                   # 3D LiDAR (.laz) spatial library & skills (Full-Frame & Panoramic)
+│   ├── svi_lidar/                           # Shared .laz streaming, 2964.42 fisheye, True Color RGB & 3D geometry
+│   └── skills/                              # Production 3D LiDAR & Image+LiDAR fusion skills
+│       ├── analyze_building_and_driveway_clearance_3d_lidar/ # Commercial frontage, 1st-floor height & truck pull-in clearance
+│       ├── fuse_image_and_3d_lidar/           # Bidirectional 3D->2D depth-masked Gemini crops & 2D->3D box casting
+│       ├── measure_roadside_assets_3d_lidar/  # Pure-3D pole height/lean, sign WxH, tree crown & facade flatness
+│       ├── project_and_colorize_3d_lidar/     # 2D front-surface overlay & Z-buffered True Color RGB 3D .ply draping
+│       └── slice_road_curb_and_sidewalk_3d_lidar/ # Perpendicular road width, curb step & sidewalk width/slope slices
 └── panoramic/                               # 360-degree panoramic scene analytics
     ├── notebooks/                           # Panoramic sequential & material analysis notebooks
     └── skills/                              # Production ADK skills for panoramic data
@@ -34,6 +42,7 @@ All notebooks and skills query directly from the canonical dataset views in BigQ
 *   **Dataset ID**: `imagery_insights___us`
 *   **Panoramic Views**: `imagery_insights___us.pano_observations_latest`
 *   **Full-Frame Views**: `imagery_insights___us.full_frame_observations_latest`
+*   **3D LiDAR Views (Full-Frame & Panoramic)**: `imagery_insights_lidar___us.full_frame_lidar_metadata_latest` and `imagery_insights_lidar___us.pano_lidar_metadata_latest` (see [`lidar/`](lidar/))
 *   **Cropped Views**: `imagery_insights___us.cropped_observations_latest`
 
 > **Note**: Do not reference legacy tables (`home_depot_full_scene`, `tracks_unnested`, `observations_view`, or `urls_view`).
@@ -96,6 +105,16 @@ Load skill at 'street_view_insights/full_frame/skills/utility_pole_subclassifica
 
 Load skill at 'street_view_insights/full_frame/skills/vegetation_encroachment_detection_using_full_frame_svi'
 
+Load skill at 'street_view_insights/lidar/skills/project_and_colorize_3d_lidar'
+
+Load skill at 'street_view_insights/lidar/skills/measure_roadside_assets_3d_lidar'
+
+Load skill at 'street_view_insights/lidar/skills/slice_road_curb_and_sidewalk_3d_lidar'
+
+Load skill at 'street_view_insights/lidar/skills/fuse_image_and_3d_lidar'
+
+Load skill at 'street_view_insights/lidar/skills/analyze_building_and_driveway_clearance_3d_lidar'
+
 Load skill at 'street_view_insights/panoramic/skills/surface_material_detection_using_panoramic_svi'
 
 Load skill at 'street_view_insights/panoramic/skills/utility_pole_subclassification_using_panoramic_svi'
@@ -121,6 +140,16 @@ Run the skill of your choice:
 /vegetation-encroachment-detection-using-full-frame-svi Audit a specific observation o1:...
 
 /vegetation-encroachment-detection-using-full-frame-svi Audit a direct image gs://...
+
+/project-and-colorize-3d-lidar Colorize 3D LiDAR point cloud in True Color RGB for observation o1:...
+
+/measure-roadside-assets-3d-lidar Measure 3D pole height, lean angle, and sign dimensions for observation o1:...
+
+/slice-road-curb-and-sidewalk-3d-lidar Slice roadway width, curb reveal, and sidewalk width/slope for observation o1:...
+
+/fuse-image-and-3d-lidar Run depth-masked 3D-to-2D Gemini crop check and 2D-to-3D box cast for observation o1:...
+
+/analyze-building-and-driveway-clearance-3d-lidar Analyze first-floor height, driveway width, and truck clearance for observation o1:...
 
 /surface-material-detection-using-panoramic-svi Audit observation o1:...
 

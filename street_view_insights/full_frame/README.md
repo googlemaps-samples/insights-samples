@@ -1,6 +1,8 @@
 # Full Frame
 
-This directory contains Jupyter notebooks and skills for full-frame street view insights analysis and processing.
+This directory contains Jupyter notebooks and 2D imagery skills for Full-Frame Street View Insights (`full_frame_observations_latest`) analysis and processing.
+
+> **3D LiDAR (`.laz`) Skills & Utilities:** For 3D point cloud projection, True Color RGB draping, pole/sign/tree/facade 3D measurements, sidewalk cross-sections, and `Image + 3D LiDAR` fusion (supporting both Full-Frame and Panoramic LiDAR), see top-level [`../lidar/`](../lidar/README.md).
 
 ## Notebooks
 
