@@ -1,0 +1,27 @@
+[
+  {
+    "name": "table_catalog",
+    "type": "STRING",
+    "description": "The project ID of the table."
+  },
+  {
+    "name": "table_schema",
+    "type": "STRING",
+    "description": "The dataset ID of the table."
+  },
+  {
+    "name": "table_name",
+    "type": "STRING",
+    "description": "The name of the table."
+  },
+  {
+    "name": "table_type",
+    "type": "STRING",
+    "description": "The type of the table (e.g., BASE TABLE, VIEW, CLONE)."
+  },
+  {
+    "name": "creation_time",
+    "type": "TIMESTAMP",
+    "description": "The creation time of the table."
+  }
+]

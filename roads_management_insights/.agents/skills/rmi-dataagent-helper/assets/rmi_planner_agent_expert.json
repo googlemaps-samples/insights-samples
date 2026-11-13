@@ -1,0 +1,66 @@
+{
+  "displayName": "RMI Planner Expert (High Fidelity)",
+  "description": "Expert agent template for TAM network coverage audits, commercial tier SLA optimization, compute growth forecasting, and customer ROI analysis.",
+  "dataAnalyticsAgent": {
+    "stagingContext": {
+      "systemInstruction": "### Role & Objective\nYou are an expert RMI Commercial Planner and Network Coverage Strategist. Your goal is to maximize network coverage (TAM), align route monitoring frequencies with SLA requirements, estimate segment densities, and project BigQuery compute budget growth.\n\n### Analytical Principles\n1. **TAM Coverage**: Measure the percentage of municipal road network monitored by RMI routes (Target: TAM $> 85\\%$ coverage of arterial corridors).\n2. **Monitoring Tiers**: Classify routes into Tier 1 (Critical: 1-min update), Tier 2 (Arterial: 5-min update), and Tier 3 (Secondary: 15-min update).\n3. **Compute & Storage Projections**: Model streaming ingestion rows, bytes, and query cost trajectories based on active route scale.\n4. **Segment Estimation**: Calculate total traversed road segments and evaluate coverage density across municipal boundaries.\n5. **Customer ROI**: Quantify operational cost savings and reliability ROI delivered to municipal transit authorities.\n6. **Job Traceability**: Every query you generate must include: '-- rmisqlfactory_rmip<N>_<timestamp>'.",
+      "glossaryTerms": [
+        {
+          "displayName": "TAM Coverage",
+          "description": "Total Addressable Monitoring: percentage of key highway and arterial network actively tracked."
+        },
+        {
+          "displayName": "Service Tier SLA",
+          "description": "Route update cadence tiering (Tier 1: 1 min, Tier 2: 5 min, Tier 3: 15 min)."
+        },
+        {
+          "displayName": "Compute Budget Growth",
+          "description": "Linear projection of BigQuery ingestion and storage spend based on active route scale."
+        },
+        {
+          "displayName": "Customer ROI",
+          "description": "Quantification of transit delay reduction and patrol staging efficiency."
+        }
+      ],
+      "exampleQueries": [
+        {
+          "naturalLanguageQuestion": "Based on current data, what is the rate of record creation, and how will it scale?",
+          "sqlQuery": "WITH daily_stats AS (\n  SELECT\n    DATE(record_time) as log_date,\n    selected_route_id,\n    COUNT(*) as records_per_day\n  FROM `my_project.src_boston_ga.historical_travel_time`\n  WHERE record_time BETWEEN '2026-06-01' AND '2026-06-30'\n  GROUP BY 1, 2\n),\navg_usage AS (\n  SELECT\n    AVG(records_per_day) as avg_daily_records_per_route\n  FROM daily_stats\n)\nSELECT\n  ROUND(avg_daily_records_per_route, 2) as avg_records_per_route_per_day,\n  -- Parameter: Target fleet size (e.g., 5,000 routes)\n  5000 as target_route_count,\n  ROUND(avg_daily_records_per_route * 5000, 0) as estimated_total_daily_records,\n  -- Extrapolate to monthly volume in millions of records\n  ROUND(avg_daily_records_per_route * 5000 * 30 / 1000000, 2) as estimated_monthly_millions\nFROM avg_usage;"
+        },
+        {
+          "naturalLanguageQuestion": "How much total time is lost to congestion across different customer service tiers?",
+          "sqlQuery": "SELECT\n  JSON_VALUE(route_attributes, '$.tier') as service_tier,\n  -- Aggregate total lost time (Actual - Free-flow) converted to hours\n  ROUND(SUM(duration_in_seconds - static_duration_in_seconds) / 3600, 1) as total_delay_hours,\n  COUNT(DISTINCT h.selected_route_id) as monitored_routes,\n  -- Average performance multiplier\n  ROUND(AVG(SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds)), 2) as avg_delay_index\nFROM `my_project.src_boston_ga.historical_travel_time` h\nJOIN `my_project.src_boston_ga.routes_status` s ON h.selected_route_id = s.selected_route_id\nWHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND h.record_time BETWEEN '2026-06-01' AND '2026-06-30'\n  -- Filter for records where actual was slower than free-flow\n  AND (duration_in_seconds - static_duration_in_seconds) > 0\n  AND duration_in_seconds IS NOT NULL\n  AND static_duration_in_seconds > 0\nGROUP BY 1\nHAVING service_tier IS NOT NULL\nORDER BY total_delay_hours DESC;"
+        },
+        {
+          "naturalLanguageQuestion": "How many physical road segments exist in our target study area, categorized by class?",
+          "sqlQuery": "WITH target_boundary AS (\n  SELECT geometry\n  FROM `bigquery-public-data.overture_maps.division_area`\n  WHERE names.primary = 'Boston' \n    AND country = 'US' \n    AND region = 'US-MA'\n    AND class = 'land'\n)\nSELECT\n  -- Group by physical road classification (e.g., motorway, primary, local)\n  class as road_class,\n  subtype,\n  COUNT(*) as segment_count,\n  ROUND(SUM(ST_LENGTH(s.geometry)) / 1000, 2) as total_length_km\nFROM `bigquery-public-data.overture_maps.segment` s\nJOIN target_boundary b ON ST_INTERSECTS(s.geometry, b.geometry)\nWHERE s.subtype = 'road'\nGROUP BY 1, 2\nORDER BY segment_count DESC;"
+        },
+        {
+          "naturalLanguageQuestion": "How can I create a reusable, open-source administrative boundary for my target study area?",
+          "sqlQuery": "CREATE OR REPLACE VIEW `my_project.src_boston_ga.target_area_boundary` \n(\n  division_id OPTIONS(description=\"Stable identifier for the administrative division from Overture Maps division_area.\"),\n  area_name OPTIONS(description=\"The primary display name of the administrative area (e.g., Boston).\"),\n  region OPTIONS(description=\"The ISO state/province code (e.g., US-MA).\"),\n  country OPTIONS(description=\"The ISO country code (e.g., US).\"),\n  geometry OPTIONS(description=\"The physical land boundary of the division as a GEOGRAPHY polygon.\")\n)\nOPTIONS(\n  description=\"A reusable administrative boundary view for geofencing RMI analytical assets and corridor spatial joins.\"\n) AS\nSELECT \n  id AS division_id,\n  names.primary AS area_name,\n  region,\n  country,\n  geometry\nFROM `bigquery-public-data.overture_maps.division_area`\nWHERE names.primary = 'Boston' \n  AND country = 'US' \n  AND region = 'US-MA'\n  AND class = 'land';"
+        }
+      ],
+      "datasourceReferences": {
+        "bq": {
+          "tableReferences": [
+            {
+              "projectId": "my_project",
+              "datasetId": "src_boston_ga",
+              "tableId": "recent_roads_data"
+            },
+            {
+              "projectId": "my_project",
+              "datasetId": "src_boston_ga",
+              "tableId": "historical_travel_time"
+            },
+            {
+              "projectId": "my_project",
+              "datasetId": "src_boston_ga",
+              "tableId": "routes_status"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

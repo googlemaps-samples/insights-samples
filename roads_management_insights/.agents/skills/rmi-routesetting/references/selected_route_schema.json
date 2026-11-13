@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SelectedRouteSchema",
+  "description": "Formal JSON Schema contract for Roads Selection API SelectedRoute resources in RMI (Roads Management Insights).",
+  "type": "object",
+  "required": ["dynamicRoute"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Immutable resource name format: projects/{project}/selectedRoutes/{selectedRouteId}",
+      "pattern": "^projects/[a-zA-Z0-9_-]+/selectedRoutes/[a-zA-Z0-9_-]{4,63}$"
+    },
+    "displayName": {
+      "type": "string",
+      "description": "User-friendly display name (up to 100 Unicode code points).",
+      "maxLength": 100
+    },
+    "dynamicRouting": {
+      "type": "boolean",
+      "description": "Routing dynamism flag: true enables live-traffic path drift and dynamic rerouting across input waypoints; false (default) pins a fixed corridor computed via static un-congested traffic-unaware routing at creation time."
+    },
+    "dynamicRoute": {
+      "type": "object",
+      "description": "Geographical waypoint definitions (origin, destination, and up to 25 intermediates).",
+      "required": ["origin", "destination"],
+      "properties": {
+        "origin": {
+          "$ref": "#/definitions/LatLng"
+        },
+        "destination": {
+          "$ref": "#/definitions/LatLng"
+        },
+        "intermediates": {
+          "type": "array",
+          "description": "Ordered sequence of authentic intermediate waypoints (maximum 25 waypoints).",
+          "maxItems": 25,
+          "items": {
+            "$ref": "#/definitions/LatLng"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "routeAttributes": {
+      "type": "object",
+      "description": "Arbitrary key-value metadata tags for downstream filtering and BigQuery analysis (max 25 pairs).",
+      "maxProperties": 25,
+      "propertyNames": {
+        "pattern": "^(?!goog)[a-zA-Z0-9_.-]{1,100}$",
+        "description": "Attribute keys must be 1-100 characters and must NOT start with 'goog'."
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100,
+        "description": "Attribute values must be non-empty strings between 1 and 100 characters."
+      }
+    },
+    "state": {
+      "type": "string",
+      "description": "Output-only lifecycle state of the route.",
+      "enum": [
+        "STATE_UNSPECIFIED",
+        "STATE_SCHEDULING",
+        "STATE_VALIDATING",
+        "STATE_RUNNING",
+        "STATE_INVALID"
+      ],
+      "readOnly": true
+    },
+    "validationError": {
+      "type": "string",
+      "description": "Output-only error code populated when state is STATE_INVALID.",
+      "enum": [
+        "VALIDATION_ERROR_UNSPECIFIED",
+        "VALIDATION_ERROR_LOW_ROAD_USAGE",
+        "VALIDATION_ERROR_ROUTE_OUTSIDE_JURISDICTION"
+      ],
+      "readOnly": true
+    },
+    "createTime": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Output-only timestamp when the route was created.",
+      "readOnly": true
+    },
+    "updateTime": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Output-only timestamp when the route was last modified.",
+      "readOnly": true
+    }
+  },
+  "definitions": {
+    "LatLng": {
+      "type": "object",
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "latitude": {
+          "type": "number",
+          "minimum": -90.0,
+          "maximum": 90.0,
+          "description": "Latitude coordinate in degrees (-90 to +90)."
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180.0,
+          "maximum": 180.0,
+          "description": "Longitude coordinate in degrees (-180 to +180)."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

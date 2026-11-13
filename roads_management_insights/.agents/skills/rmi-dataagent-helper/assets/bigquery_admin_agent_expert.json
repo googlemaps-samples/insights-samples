@@ -1,0 +1,82 @@
+{
+  "displayName": "RMI BigQuery Admin Expert (High Fidelity)",
+  "description": "Expert agent template for platform cost attribution, scan volume governance, slot contention monitoring, partition pruning enforcement, and zero-cost metadata audits.",
+  "dataAnalyticsAgent": {
+    "stagingContext": {
+      "systemInstruction": "### Role & Objective\nYou are an expert BigQuery Resource Administrator and FinOps Specialist for Roads Management Insights (RMI). Your goal is to monitor platform spend, enforce partition pruning guardrails, attribute compute costs by persona, audit heavy scan volumes, and maintain zero-cost metadata observability.\n\n### Analytical Principles\n1. **Telemetry Sources**: Your primary audit sources are `INFORMATION_SCHEMA.JOBS`, `INFORMATION_SCHEMA.TABLES`, and `INFORMATION_SCHEMA.VIEWS` in the deployment region (e.g., `region-us.INFORMATION_SCHEMA.JOBS`).\n2. **Job Traceability**: Group spend by `rmisqlfactory_` job ID prefixes (`tom`, `up`, `bqa`, `de`, `ds`, `rmip`) and query labels.\n3. **Partition Guardrails**: Flag queries on `historical_travel_time` lacking a `record_time` partition pruning filter as 'High Risk Scans'.\n4. **Cost Attribution**: Calculate billable TBs as `SAFE_DIVIDE(total_bytes_billed, POWER(10, 12))` and compute estimated On-Demand spend (using standard $6.25/TB).\n5. **Zero-Cost Metadata Audits**: Query storage sizes and row counts via `__TABLES__` and `INFORMATION_SCHEMA.TABLES` without reading data partitions.\n6. **Job Traceability**: Every query you generate must include: '-- rmisqlfactory_bqa<N>_<timestamp>'.",
+      "glossaryTerms": [
+        {
+          "displayName": "High Risk Scan",
+          "description": "Any query scanning > 10 GB of data or lacking mandatory partition pruning."
+        },
+        {
+          "displayName": "Cost Attribution",
+          "description": "Attributing total_bytes_billed to specific RMI personas or agent workflows."
+        },
+        {
+          "displayName": "Zero-Cost Audit",
+          "description": "Inspecting INFORMATION_SCHEMA storage metadata without incurring scan costs."
+        },
+        {
+          "displayName": "Scan Volume",
+          "description": "Total bytes billed attributed to a specific user, service account, or query pattern."
+        },
+        {
+          "displayName": "Lineage Audit",
+          "description": "Identifying views, clones, and downstream tables derived from core RMI datasets."
+        }
+      ],
+      "exampleQueries": [
+        {
+          "naturalLanguageQuestion": "How can I quickly check the row count and storage size of all RMI tables using zero-cost metadata queries?",
+          "sqlQuery": "SELECT\n  table_name,\n  CASE \n    WHEN partition_id IS NULL OR partition_id = '__UNPARTITIONED__' THEN 'UNPARTITIONED' \n    ELSE partition_id \n  END as partition_id,\n  total_rows,\n  ROUND(total_logical_bytes / POW(1024, 2), 2) as size_mb,\nFROM `my_project.src_boston_ga.INFORMATION_SCHEMA.PARTITIONS`\nWHERE table_name IN ('historical_travel_time', 'recent_roads_data', 'routes_status')\n  AND partition_id != '__NULL__'\nORDER BY table_name, partition_id DESC;"
+        },
+        {
+          "naturalLanguageQuestion": "Which users or service accounts are generating the highest scan volume against RMI tables this month?",
+          "sqlQuery": "SELECT\n  user_email,\n  -- Convert bytes to GB for readable billing analysis\n  SUM(total_bytes_billed) / POW(1024, 3) AS total_gb_billed,\n  COUNT(*) AS job_count,\n  -- Average scan size helps distinguish between 'many small queries' vs 'one massive scan'\n  AVG(total_bytes_billed) / POW(1024, 3) AS avg_gb_per_job\nFROM `region-us`.INFORMATION_SCHEMA.JOBS\n-- Fast audit default (7 days). Use 'BETWEEN TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), MONTH) AND CURRENT_TIMESTAMP()' for full-month billing audits.\nWHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)\n  AND job_type = 'QUERY'\n  -- Heuristic filter: Look for queries mentioning RMI core tables\n  AND (\n    query LIKE '%historical_travel_time%' \n    OR query LIKE '%recent_roads_data%' \n    OR query LIKE '%routes_status%'\n  )\nGROUP BY 1\nORDER BY total_gb_billed DESC\nLIMIT 10;"
+        },
+        {
+          "naturalLanguageQuestion": "Identify any BigQuery jobs missing the mandatory 'rmisqlfactory_' prefix in their job IDs.",
+          "sqlQuery": "SELECT\n  job_id,\n  user_email,\n  creation_time,\n  total_bytes_billed,\n  -- Provide the query text to help identify the source of the non-compliant job\n  query\nFROM `region-us`.INFORMATION_SCHEMA.JOBS\nWHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)\n  AND job_type = 'QUERY'\n  -- Filter for jobs that missed the mandatory prefix\n  AND NOT STARTS_WITH(job_id, 'rmisqlfactory_')\n  -- Only audit jobs that were targeting RMI core tables\n  AND (\n    query LIKE '%historical_travel_time%' \n    OR query LIKE '%recent_roads_data%' \n    OR query LIKE '%routes_status%'\n  )\nORDER BY creation_time DESC;"
+        },
+        {
+          "naturalLanguageQuestion": "What tables or views in my project are derived from the core RMI dataset?",
+          "sqlQuery": "SELECT\n  table_schema AS dataset_id,\n  table_name AS resource_name,\n  'VIEW' AS type,\n  -- view_definition allows the admin to see the exact transformation logic\n  view_definition as lineage_detail\nFROM `my_project.src_boston_ga.INFORMATION_SCHEMA.VIEWS`\nWHERE (\n    view_definition LIKE '%historical_travel_time%' \n    OR view_definition LIKE '%recent_roads_data%' \n    OR view_definition LIKE '%routes_status%'\n  )\n\nUNION ALL\n\n-- Also identify Clones and Snapshots (cost-effective analytical patterns)\nSELECT\n  table_schema AS dataset_id,\n  table_name AS resource_name,\n  table_type AS type,\n  'N/A (Check Table Metadata for Base Table Lineage)' AS lineage_detail\nFROM `my_project.src_boston_ga.INFORMATION_SCHEMA.TABLES`\nWHERE (table_name LIKE '%rmi%' OR table_name LIKE '%road%')\n  AND table_type IN ('BASE TABLE', 'CLONE', 'SNAPSHOT')\n  -- Exclude the raw source tables themselves\n  AND table_name NOT IN ('historical_travel_time', 'recent_roads_data', 'routes_status')\n\nORDER BY dataset_id, resource_name;"
+        },
+        {
+          "naturalLanguageQuestion": "What are the most frequent query patterns (joins, filters, JSON extractions) that could benefit from optimized downstream tables?",
+          "sqlQuery": "WITH job_history AS (\n  SELECT\n    query,\n    total_bytes_processed\n  FROM `region-us`.INFORMATION_SCHEMA.JOBS\n  -- Fast interactive audit default (7 days). Expand to INTERVAL 30 DAY for monthly governance reviews.\n  WHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)\n    AND job_type = 'QUERY'\n    AND statement_type = 'SELECT'\n    -- Heuristic: Focus on RMI-related queries\n    AND (\n      query LIKE '%historical_travel_time%' \n      OR query LIKE '%recent_roads_data%' \n      OR query LIKE '%routes_status%'\n    )\n),\npatterns AS (\n  SELECT\n    query,\n    -- Regex: Identify specific JSON attributes being extracted from 'route_attributes'\n    REGEXP_EXTRACT_ALL(query, r\"(?:JSON_EXTRACT_SCALAR|JSON_VALUE)\\(route_attributes, '([^']+)'\\)\") as extracted_attributes,\n    -- Regex: Detect if the query performs SRI flattening (expensive unnest)\n    REGEXP_CONTAINS(query, r\"UNNEST\\(speed_reading_intervals\\)\") as uses_sri_unnest,\n    -- Regex: Detect common join patterns\n    REGEXP_CONTAINS(query, r\"JOIN\\s+`[^`]+historical_travel_time`\") AND REGEXP_CONTAINS(query, r\"JOIN\\s+`[^`]+routes_status`\") as joins_hist_and_status\n  FROM job_history\n)\nSELECT\n  'Frequent Attribute Extraction' as pattern_type,\n  attr as detail,\n  COUNT(*) as frequency\nFROM patterns, UNNEST(extracted_attributes) as attr\nGROUP BY 1, 2\n\nUNION ALL\n\nSELECT\n  'Heavy SRI Processing' as pattern_type,\n  'Uses UNNEST(speed_reading_intervals)' as detail,\n  COUNT(*) as frequency\nFROM patterns\nWHERE uses_sri_unnest\nGROUP BY 1, 2\n\nUNION ALL\n\nSELECT\n  'Common Table Joins' as pattern_type,\n  'Joins historical_travel_time and routes_status' as detail,\n  COUNT(*) as frequency\nFROM patterns\nWHERE joins_hist_and_status\nGROUP BY 1, 2\n\nORDER BY frequency DESC;"
+        },
+        {
+          "naturalLanguageQuestion": "Are there queries performing full table scans on 'historical_travel_time' instead of using the 'record_time' partition filter?",
+          "sqlQuery": "SELECT\n  job_id,\n  user_email,\n  query,\n  -- Convert bytes to GB for readable performance auditing\n  total_bytes_processed / POW(1024, 3) AS gb_processed,\n  creation_time\nFROM `region-us`.INFORMATION_SCHEMA.JOBS\nWHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)\n  AND job_type = 'QUERY'\n  AND statement_type = 'SELECT'\n  AND query LIKE '%historical_travel_time%'\n  -- Heuristic: Trigger audit if scan volume exceeds 100 GB (adjustable baseline)\n  -- This suggests the user might have missed a partition pruning filter (record_time)\n  AND total_bytes_processed > 100 * POW(1024, 3) \nORDER BY gb_processed DESC\nLIMIT 10;"
+        },
+        {
+          "naturalLanguageQuestion": "What is the average spatial complexity (vertex count) and metadata size (routeAttributes) of my actual records?",
+          "sqlQuery": "SELECT\n  'historical_travel_time' as table_name,\n  COUNT(DISTINCT selected_route_id) as unique_routes,\n  AVG(BYTE_LENGTH(ST_ASBINARY(route_geometry))) as avg_geom_bytes,\n  AVG(ST_LENGTH(route_geometry) / 1000) as avg_route_length_km,\n  AVG(ST_NUMPOINTS(route_geometry)) as avg_num_points,\n  SAFE_CAST(NULL AS FLOAT64) as avg_attr_bytes\nFROM `my_project.src_boston_ga.historical_travel_time`\nWHERE ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString' AND record_time BETWEEN '2026-06-01' AND '2026-06-30'\n\nUNION ALL\n\n-- Recent Spatial Complexity (Enriched)\nSELECT\n  'recent_roads_data' as table_name,\n  COUNT(DISTINCT selected_route_id) as unique_routes,\n  AVG(BYTE_LENGTH(ST_ASBINARY(route_geometry))) as avg_geom_bytes,\n  AVG(ST_LENGTH(route_geometry) / 1000) as avg_route_length_km,\n  AVG(ST_NUMPOINTS(route_geometry)) as avg_num_points,\n  SAFE_CAST(NULL AS FLOAT64) as avg_attr_bytes\nFROM `my_project.src_boston_ga.recent_roads_data`\nWHERE record_time BETWEEN '2026-06-01' AND '2026-06-30'\n\nUNION ALL\n\n-- Status Metadata Complexity\nSELECT\n  'routes_status' as table_name,\n  COUNT(DISTINCT selected_route_id) as unique_routes,\n  SAFE_CAST(NULL AS FLOAT64) as avg_geom_bytes,\n  SAFE_CAST(NULL AS FLOAT64) as avg_route_length_km,\n  SAFE_CAST(NULL AS FLOAT64) as avg_num_points,\n  AVG(BYTE_LENGTH(route_attributes)) as avg_attr_bytes\nFROM `my_project.src_boston_ga.routes_status`;"
+        }
+      ],
+      "datasourceReferences": {
+        "bq": {
+          "tableReferences": [
+            {
+              "projectId": "my_project",
+              "datasetId": "src_boston_ga",
+              "tableId": "recent_roads_data"
+            },
+            {
+              "projectId": "my_project",
+              "datasetId": "src_boston_ga",
+              "tableId": "historical_travel_time"
+            },
+            {
+              "projectId": "my_project",
+              "datasetId": "src_boston_ga",
+              "tableId": "routes_status"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
