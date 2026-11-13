@@ -126,6 +126,7 @@ venv.bak/
 dmypy.json
 
 # Pyre type checker
-.pyre/scripts/deploy.env
+.pyre/
 
+# Local deployment configuration
 scripts/deploy.env

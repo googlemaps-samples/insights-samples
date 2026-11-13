@@ -1,12 +1,35 @@
-import os
-import importlib.util
-import google.auth
-from google.cloud import bigquery
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-# --- FIX 1: GCP Project Configuration ---
-# Use environment variables instead of hardcoded 'sarthaks-lab'
-_, auth_project = google.auth.default()
-GCP_PROJECT = os.environ.get("PROJECT_ID", os.environ.get("GCP_PROJECT", auth_project))
+import importlib.util
+import os
+import re
+import google.auth
+
+
+def _resolve_default_project():
+    project = os.environ.get("PROJECT_ID") or os.environ.get("GCP_PROJECT")
+    if project:
+        return project
+    try:
+        _, auth_project = google.auth.default()
+        return auth_project
+    except Exception:
+        return None
+
+
+GCP_PROJECT = _resolve_default_project()
 LOCATION = os.environ.get("REGION", "us-central1")
 
 # BigQuery Configuration
@@ -47,17 +70,77 @@ SHARD_SIZE = 50
 POPULATE_TOPIC_ID_PREFIX = "populate-tasks-topic-"
 SUBSCRIPTION_ID_PREFIX = "populate-tasks-sub-"
 
-# --- FIX 3: Cloud Run Configuration ---
-# Load from environment variables instead of hardcoded URLs!
+# Cloud Run Configuration
 BATCH_SIZE = 100
 STATE_FILE = "populate_state.json"
-ANALYZE_SERVICE_URL = os.environ.get("ANALYZE_SERVICE_URL")
+ANALYZE_SERVICE_URL = os.environ.get("ANALYZE_SERVICE_URL") or os.environ.get("SERVICE_URL")
+SERVICE_URL = ANALYZE_SERVICE_URL
 POPULATE_SERVICE_URL = os.environ.get("POPULATE_SERVICE_URL")
 SERVICE_ACCOUNT_EMAIL = os.environ.get("SERVICE_ACCOUNT_EMAIL")
+REQUIRE_AUTH = os.environ.get("REQUIRE_AUTH", "true").lower() != "false"
 
-# --- FIX 4: Gemini Model Configuration ---
-# Upgraded to 3.5 flash to prevent deprecation 404 errors
+# Only gs:// URIs under this configured bucket/prefix may be analyzed by /process.
+# Fail closed when unset or left as a placeholder value.
+ALLOWED_GCS_PREFIX = os.environ.get("ALLOWED_GCS_PREFIX", "").strip()
+
+_GCS_BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$")
+_PLACEHOLDER_BUCKETS = frozenset(
+    {"your-allowed-imagery-bucket", "your-imagery-bucket"}
+)
+
+
+def _has_unsafe_uri_chars(value):
+    return any(c.isspace() or ord(c) < 32 or ord(c) == 127 or c in "\\?#" for c in value)
+
+
+def normalize_gcs_prefix(prefix):
+    """Validates and normalizes an allowed gs://bucket[/prefix]/ string."""
+    if not isinstance(prefix, str):
+        return None
+    candidate = prefix.strip()
+    if not candidate.startswith("gs://") or _has_unsafe_uri_chars(candidate):
+        return None
+    rest = candidate[5:]
+    if not rest:
+        return None
+    if rest.endswith("/"):
+        rest = rest[:-1]
+        if rest.endswith("/"):
+            return None
+    parts = rest.split("/")
+    bucket = parts[0]
+    if (
+        not _GCS_BUCKET_RE.match(bucket)
+        or ".." in bucket
+        or bucket in _PLACEHOLDER_BUCKETS
+    ):
+        return None
+    if any(not seg or seg in {".", ".."} for seg in parts[1:]):
+        return None
+    return f"gs://{rest}/"
+
+
+def is_allowed_gcs_uri(uri, allowed_prefix=None):
+    """Returns True iff uri is a clean gs:// object path under the allowed prefix."""
+    normalized_prefix = normalize_gcs_prefix(
+        ALLOWED_GCS_PREFIX if allowed_prefix is None else allowed_prefix
+    )
+    if normalized_prefix is None:
+        return False
+    if not isinstance(uri, str) or not uri.startswith("gs://"):
+        return False
+    if _has_unsafe_uri_chars(uri):
+        return False
+    rest = uri[5:]
+    segments = rest.split("/")
+    if len(segments) < 2 or any(seg in {"", ".", ".."} for seg in segments):
+        return False
+    return uri.startswith(normalized_prefix) and len(uri) > len(normalized_prefix)
+
+
+# Gemini Model Configuration
 GEMINI_MODEL = "gemini-3.7-flash"
+
 
 def load_prompts_from_directory(directory):
     prompts = {}
@@ -74,6 +157,7 @@ def load_prompts_from_directory(directory):
             if hasattr(module, "SCHEMA"):
                 schemas[module_name.upper()] = module.SCHEMA
     return prompts, schemas
+
 
 PROMPTS_DIR = os.path.join(os.path.dirname(__file__), "prompts")
 PROMPTS, BIGQUERY_SCHEMAS = load_prompts_from_directory(PROMPTS_DIR)
