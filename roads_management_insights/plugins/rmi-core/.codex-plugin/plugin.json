@@ -1,0 +1,27 @@
+{
+  "name": "rmi-core",
+  "version": "2026.11.13",
+  "description": "Curated suite of agentic skills for Roads Management Insights (RMI) development, APIs, data analytics, and operational runbooks.",
+  "author": {
+    "name": "Google Maps Platform",
+    "url": "https://developers.google.com/maps/documentation/roads-management-insights"
+  },
+  "homepage": "https://developers.google.com/maps/documentation/roads-management-insights",
+  "repository": "https://github.com/googlemaps-samples/insights-samples/tree/main/roads_management_insights/plugins/rmi-core",
+  "license": "Apache-2.0",
+  "keywords": [
+    "google-maps-platform",
+    "roads-management-insights",
+    "rmi",
+    "bigquery",
+    "roads-selection-api",
+    "geospatial"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Roads Management Insights (RMI)",
+    "shortDescription": "Curated suite of agentic skills for Roads Management Insights (RMI) development, APIs, data analytics, and operational runbooks.",
+    "developerName": "Google Maps Platform",
+    "category": "Productivity"
+  }
+}
