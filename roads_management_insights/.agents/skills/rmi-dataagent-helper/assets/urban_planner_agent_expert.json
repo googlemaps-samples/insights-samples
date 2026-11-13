@@ -1,0 +1,70 @@
+{
+  "displayName": "RMI Urban Planner Expert (High Fidelity)",
+  "description": "Expert agent template for longitudinal infrastructure analysis, before-and-after capital audits, weekend vs weekday patterns, and geofenced congestion policy evaluation.",
+  "dataAnalyticsAgent": {
+    "stagingContext": {
+      "systemInstruction": "### Role & Objective\nYou are an expert Urban Planner and Transportation Policy Analyst. Your goal is to evaluate long-term infrastructure investments, transit reliability, before-and-after project milestones, and municipal congestion pricing policies using Roads Management Insights (RMI).\n\n### Analytical Principles\n1. **Temporal Aggregations**: Aggregate longitudinal trends by DAY or WEEK using `TIMESTAMP_TRUNC(record_time, DAY)` over `historical_travel_time`.\n2. **Timezone Conversion**: Convert UTC timestamps to the local municipal timezone (e.g., `DATETIME(record_time, 'America/New_York')`).\n3. **Reliability Indices**: Calculate Travel Time Index (TTI = peak_duration / static_duration) and Planning Time Index (PTI = p95_duration / static_duration).\n4. **Before-and-After Project Audits**: Segment longitudinal data by intervention milestone dates (e.g., `< milestone_date` as 'BEFORE', `>= milestone_date` as 'AFTER') to compute delta percentages.\n5. **Geofenced Analysis**: Perform spatial containment joins using `ST_CONTAINS(geofence_polygon, route_geometry)` to isolate arterial corridors.\n6. **Job Traceability**: Every query you generate must include: '-- rmisqlfactory_up<N>_<timestamp>'.",
+      "glossaryTerms": [
+        {
+          "displayName": "Travel Time Index (TTI)",
+          "description": "Ratio of peak period travel time to free-flow static duration (target < 1.30)."
+        },
+        {
+          "displayName": "Planning Time Index (PTI)",
+          "description": "95th percentile travel time divided by free-flow static duration (target < 1.50)."
+        },
+        {
+          "displayName": "Before-and-After Audit",
+          "description": "Longitudinal evaluation comparing traffic metrics before and after infrastructure capital intervention."
+        },
+        {
+          "displayName": "Geofenced Corridor",
+          "description": "Spatial polygon boundary used to isolate specific transit districts or downtown congestion zones."
+        }
+      ],
+      "exampleQueries": [
+        {
+          "naturalLanguageQuestion": "What has been the week-over-week trend in the average delay ratio for a specific corridor?",
+          "sqlQuery": "WITH weekly_trends AS (\n  SELECT\n    selected_route_id,\n    -- Truncate to the start of the week for consistent aggregation\n    TIMESTAMP_TRUNC(record_time, WEEK) AS week,\n    -- Calculate average delay (Actual / Free-flow baseline)\n    AVG(SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds)) AS avg_delay_ratio\n  FROM `my_project.src_boston_ga.historical_travel_time`\n  -- Filter for a specific corridor of interest (e.g., Storrow Drive)\n  WHERE selected_route_id = 'boston-v2--2rwshKeDrs'\n    AND record_time BETWEEN '2026-06-01' AND '2026-06-30'\n    AND duration_in_seconds IS NOT NULL\n    AND static_duration_in_seconds > 0\n  GROUP BY 1, 2\n)\nSELECT\n  selected_route_id,\n  -- Format for readable year-week reporting\n  FORMAT_TIMESTAMP(\"%Y-%W\", week) AS year_week,\n  ROUND(avg_delay_ratio, 3) AS avg_delay_ratio\nFROM weekly_trends\nORDER BY week;"
+        },
+        {
+          "naturalLanguageQuestion": "Has the average travel time on routes passing through a recent construction zone improved since the project's completion date?",
+          "sqlQuery": "DECLARE study_area GEOGRAPHY DEFAULT ST_GEOGFROMTEXT('POLYGON((-71.06 42.35, -71.05 42.35, -71.05 42.34, -71.06 42.34, -71.06 42.35))');\n-- Project Milestone: Date when construction was completed\nDECLARE completion_date DATE DEFAULT '2026-06-15';\n\nWITH impact_data AS (\n  SELECT\n    -- Split records into 'Before' and 'After' buckets\n    DATE(record_time) >= completion_date AS is_after_completion,\n    SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds) AS delay_ratio\n  FROM `my_project.src_boston_ga.historical_travel_time`\n  -- S2 SPATIAL INDEXING NOTE:\n  -- BigQuery leverages native S2 cell indexing for ST_INTERSECTS, performing\n  -- sub-second bounding box pruning across millions of polyline records.\n  WHERE ST_INTERSECTS(route_geometry, study_area)\n    AND record_time BETWEEN '2026-06-01' AND '2026-06-30'\n    AND duration_in_seconds IS NOT NULL\n    AND static_duration_in_seconds > 0\n)\nSELECT\n  is_after_completion,\n  ROUND(AVG(delay_ratio), 3) AS avg_delay_ratio,\n  COUNT(*) as sample_count\nFROM impact_data\nGROUP BY 1\nORDER BY 1;"
+        },
+        {
+          "naturalLanguageQuestion": "Which geographic areas show the highest concentration of RMI route monitoring?",
+          "sqlQuery": "WITH route_centroids AS (\n  SELECT \n    selected_route_id,\n    -- Use the centroid to represent the general location of the route polyline\n    ST_CENTROID(route_geometry) as centroid\n  FROM `my_project.src_boston_ga.historical_travel_time`\n  WHERE record_time BETWEEN '2026-06-01' AND '2026-06-30'\n)\nSELECT\n  -- Grid the coordinates to a precision of ~1.1km\n  ROUND(ST_Y(centroid), 3) AS lat_grid,\n  ROUND(ST_X(centroid), 3) AS lon_grid,\n  -- Count unique route definitions in this grid cell\n  COUNT(DISTINCT selected_route_id) AS unique_routes_monitored,\n  -- Count total traffic samples captured in this grid cell\n  COUNT(*) AS total_samples_collected\nFROM route_centroids\nGROUP BY 1, 2\nORDER BY unique_routes_monitored DESC\nLIMIT 20;"
+        },
+        {
+          "naturalLanguageQuestion": "How does average travel time in the afternoon (2-5 PM) differ between weekdays and weekends?",
+          "sqlQuery": "WITH afternoon_stats AS (\n  SELECT\n    -- Day segmentation: 1 = Sunday, 7 = Saturday\n    CASE \n      WHEN EXTRACT(DAYOFWEEK FROM DATETIME(record_time, 'America/New_York')) IN (1, 7) THEN 'Weekend'\n      ELSE 'Weekday'\n    END AS day_type,\n    duration_in_seconds,\n    static_duration_in_seconds\n  FROM `my_project.src_boston_ga.historical_travel_time`\n  WHERE record_time BETWEEN '2026-06-01' AND '2026-06-30'\n    -- Afternoon period: 2 PM to 5 PM Local Time (Boston)\n    AND EXTRACT(HOUR FROM DATETIME(record_time, 'America/New_York')) BETWEEN 14 AND 17\n    AND duration_in_seconds IS NOT NULL\n    AND static_duration_in_seconds > 0\n)\nSELECT\n  day_type,\n  -- Calculate Average Delay Index (Actual / Ideal)\n  ROUND(AVG(SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds)), 3) AS avg_delay_ratio,\n  ROUND(AVG(duration_in_seconds), 2) AS avg_duration_seconds,\n  COUNT(*) as sample_count\nFROM afternoon_stats\nGROUP BY 1\nORDER BY avg_delay_ratio DESC;"
+        },
+        {
+          "naturalLanguageQuestion": "Within a specific downtown polygon, which routes are currently seeing travel times more than 50% above their static baseline?",
+          "sqlQuery": "DECLARE downtown_zone GEOGRAPHY DEFAULT ST_GEOGFROMTEXT('POLYGON((-71.066 42.358, -71.052 42.358, -71.052 42.348, -71.066 42.348, -71.066 42.358))');\n\nWITH intersecting_routes AS (\n  SELECT\n    selected_route_id,\n    display_name,\n    SAFE_DIVIDE(duration_in_seconds, static_duration_in_seconds) AS delay_ratio\n  FROM `my_project.src_boston_ga.historical_travel_time`\n  -- S2 SPATIAL INDEXING NOTE:\n  -- BigQuery leverages native S2 cell spatial indexing for ST_INTERSECTS, performing\n  -- sub-second bounding box pruning across millions of polyline records.\n  WHERE ST_INTERSECTS(route_geometry, downtown_zone)\n    AND record_time BETWEEN '2026-06-01' AND '2026-06-30'\n    -- Quality filter: Exclude non-continuous geometries\n    AND ST_GEOMETRYTYPE(route_geometry) = 'ST_LineString'\n    AND duration_in_seconds IS NOT NULL\n    AND static_duration_in_seconds > 0\n)\nSELECT\n  selected_route_id,\n  display_name,\n  ROUND(AVG(delay_ratio), 3) AS avg_delay_ratio,\n  COUNT(*) as sample_count\nFROM intersecting_routes\nGROUP BY 1, 2\n-- Threshold: Filter for routes that are at least 1.5x slower than free-flow\nHAVING avg_delay_ratio > 1.5\nORDER BY avg_delay_ratio DESC;"
+        }
+      ],
+      "datasourceReferences": {
+        "bq": {
+          "tableReferences": [
+            {
+              "projectId": "my_project",
+              "datasetId": "src_boston_ga",
+              "tableId": "recent_roads_data"
+            },
+            {
+              "projectId": "my_project",
+              "datasetId": "src_boston_ga",
+              "tableId": "historical_travel_time"
+            },
+            {
+              "projectId": "my_project",
+              "datasetId": "src_boston_ga",
+              "tableId": "routes_status"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

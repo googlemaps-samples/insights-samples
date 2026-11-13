@@ -1,0 +1,174 @@
+[
+    {
+        "name": "selected_route_id",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Id for selected_route. Logical primary key. Format: ^[a-zA-Z0-9-]+$, length 4-63."
+    },
+    {
+        "name": "display_name",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "User provided name for the route. Non-unique; for human readability in reports."
+    },
+    {
+        "name": "speed_reading_intervals",
+        "type": "RECORD",
+        "mode": "REPEATED",
+        "description": "Legacy intervals representing road density across the route. Deprecated in favor of speed_reading_offsets; may stop being populated on or after Jan 13, 2027.",
+        "fields": [
+            {
+                "name": "interval_coordinates",
+                "type": "RECORD",
+                "mode": "REPEATED",
+                "description": "The coordinates on the polyline for the speed reading interval.",
+                "fields": [
+                    {
+                        "name": "latitude",
+                        "type": "FLOAT",
+                        "mode": "NULLABLE",
+                        "description": "Latitude coordinate of a coordinate within speed reading interval."
+                    },
+                    {
+                        "name": "longitude",
+                        "type": "FLOAT",
+                        "mode": "NULLABLE",
+                        "description": "Longitude coordinate of a coordinate within speed reading interval."
+                    }
+                ]
+            },
+            {
+                "name": "speed",
+                "type": "STRING",
+                "mode": "NULLABLE",
+                "description": "Describes the categorized current speed of road conditions. Possible values: NORMAL, SLOW, TRAFFIC_JAM."
+            }
+        ]
+    },
+    {
+        "name": "travel_duration",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "description": "Legacy travel time information message block. Deprecated in favor of top-level duration_in_seconds and static_duration_in_seconds; may stop being populated on or after Jan 13, 2027.",
+        "fields": [
+            {
+                "name": "duration_in_seconds",
+                "type": "FLOAT",
+                "mode": "NULLABLE",
+                "description": "The duration of travel through the route based on current road conditions. Bounded >= 0.0."
+            },
+            {
+                "name": "static_duration_in_seconds",
+                "type": "FLOAT",
+                "mode": "NULLABLE",
+                "description": "The duration of travel through the route without taking road conditions into consideration. Bounded > 0.0."
+            }
+        ]
+    },
+    {
+        "name": "retrieval_time",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "description": "Legacy time the road data was collected, represented as custom Timestamp (seconds/nanos). Deprecated in favor of retrieval_timestamp; may stop being populated on or after Jan 13, 2027.",
+        "fields": [
+            {
+                "name": "seconds",
+                "type": "INTEGER",
+                "mode": "NULLABLE",
+                "description": "Represents seconds of UTC time since Unix epoch."
+            },
+            {
+                "name": "nanos",
+                "type": "INTEGER",
+                "mode": "NULLABLE",
+                "description": "Non-negative fractions of a second at nanosecond resolution."
+            }
+        ]
+    },
+    {
+        "name": "route_geometry",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Contains a geojson polyline representing the optimal route determined based on user's input waypoints."
+    },
+    {
+        "name": "road_segment_ids",
+        "type": "STRING",
+        "mode": "REPEATED",
+        "description": "Place IDs along the route in topological order indicating connected road segments."
+    },
+    {
+        "name": "speed_reading_offsets",
+        "type": "RECORD",
+        "mode": "REPEATED",
+        "description": "Speed reading intervals defined by linear distance offsets along the route polyline. Omitted when has_road_closure is true.",
+        "fields": [
+            {
+                "name": "start_offset",
+                "type": "INTEGER",
+                "mode": "NULLABLE",
+                "description": "Starting offset in meters from the beginning of the route (inclusive)."
+            },
+            {
+                "name": "end_offset",
+                "type": "INTEGER",
+                "mode": "NULLABLE",
+                "description": "Ending offset in meters from the beginning of the route (exclusive; equals start_offset of subsequent interval)."
+            },
+            {
+                "name": "speed",
+                "type": "STRING",
+                "mode": "NULLABLE",
+                "description": "Categorized traffic speed condition. Possible values: NORMAL, SLOW, TRAFFIC_JAM, TRAFFIC_JAM_HEAVY."
+            }
+        ]
+    },
+    {
+        "name": "duration_in_seconds",
+        "type": "FLOAT",
+        "mode": "NULLABLE",
+        "description": "The duration of travel through the route based on current road conditions in seconds. Omitted when has_road_closure is true."
+    },
+    {
+        "name": "static_duration_in_seconds",
+        "type": "FLOAT",
+        "mode": "NULLABLE",
+        "description": "The duration of travel through the route without taking road conditions into consideration in seconds (free-flow baseline)."
+    },
+    {
+        "name": "retrieval_timestamp",
+        "type": "TIMESTAMP",
+        "mode": "NULLABLE",
+        "description": "RFC 3339 formatted UTC timestamp string indicating when the road data was retrieved (e.g. 2026-10-08T15:04:05+00:00)."
+    },
+    {
+        "name": "has_road_closure",
+        "type": "BOOLEAN",
+        "mode": "NULLABLE",
+        "description": "Indicates whether the route is currently subject to a full road closure. When true, duration_in_seconds and speed_reading_offsets are omitted."
+    },
+    {
+        "name": "subscription_name",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Pub/Sub subscription metadata: Name of the subscription that delivered the message."
+    },
+    {
+        "name": "message_id",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Pub/Sub subscription metadata: Unique identifier of the delivered message, useful for deduplication."
+    },
+    {
+        "name": "publish_time",
+        "type": "TIMESTAMP",
+        "mode": "NULLABLE",
+        "description": "Pub/Sub subscription metadata: UTC timestamp representing when the message was published to the topic. Highly recommended as a BigQuery partitioning column."
+    },
+    {
+        "name": "attributes",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Pub/Sub subscription metadata: JSON-formatted string of any user-defined message attributes."
+    }
+]

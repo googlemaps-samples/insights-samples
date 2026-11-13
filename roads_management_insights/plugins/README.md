@@ -10,7 +10,7 @@ This directory hosts modular, multi-platform Agent Plugins for **Google Maps Pla
 flowchart TD
   %% Status: Current State
   RMI_CORE["<b>rmi-core</b> (15 Skills)<br/><i>Roads Management Insights (RMI)</i>"]
-  AGENTS_LINK[".agents/skills<br/><i>Zero-copy relative symlink</i>"] -->|discovers| RMI_CORE
+  AGENTS_MIRROR[".agents/skills/<br/><i>Workspace auto-discovery mirror</i>"] -->|mirrors| RMI_CORE
 ```
 
 | Plugin ID | Stage | Version | Skills | Description |
@@ -21,11 +21,9 @@ flowchart TD
 
 ## 🚀 Installation Instructions
 
-### 1. Default Repository Clone Discovery (Zero-Copy GA Core)
+### 1. Default Repository Clone Discovery (`.agents/skills/`)
 
-When you clone this repository and open `roads_management_insights/`, `.agents/skills` is a relative symlink (`../plugins/rmi-core/skills`) that automatically activates all **15 GA Core skills**.
-
-> **Note for Windows Users:** `.agents/skills` is a symlink. Windows users should run `git config core.symlinks true` before cloning (requires Windows Developer Mode), or install the plugin directly using the commands below.
+`.agents/skills/` holds a copy of the `rmi-core` GA skills for workspace auto-discovery when the repo is cloned. `plugins/rmi-core/skills/` is the source, and both are kept identical by the publishing pipeline.
 
 ### 2. Installing via Agent Plugin CLIs
 

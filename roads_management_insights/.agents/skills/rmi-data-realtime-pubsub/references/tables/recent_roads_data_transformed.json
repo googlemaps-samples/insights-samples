@@ -1,0 +1,96 @@
+[
+    {
+        "name": "selected_route_id",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "The unique identifier for the SelectedRoute resource. Logical primary key. Pattern: '^[a-zA-Z0-9-]+$'."
+    },
+    {
+        "name": "display_name",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "User-provided descriptive name for the route. Intended for human readability."
+    },
+    {
+        "name": "record_time",
+        "type": "TIMESTAMP",
+        "mode": "NULLABLE",
+        "description": "The UTC timestamp representing when the road data was collected, fully reconstructed via COALESCE from retrieval_timestamp (RFC 3339) or legacy retrieval_time with microsecond precision."
+    },
+    {
+        "name": "duration_in_seconds",
+        "type": "FLOAT",
+        "mode": "NULLABLE",
+        "description": "The near real-time traffic-aware duration of the route in seconds, resolved via COALESCE from duration_in_seconds or legacy travel_duration. Omitted/NULL when has_road_closure is true."
+    },
+    {
+        "name": "static_duration_in_seconds",
+        "type": "FLOAT",
+        "mode": "NULLABLE",
+        "description": "The traffic-unaware (static) duration of the route in seconds, representing estimated travel time under free-flow conditions, resolved via COALESCE from static_duration_in_seconds or legacy travel_duration."
+    },
+    {
+        "name": "has_road_closure",
+        "type": "BOOLEAN",
+        "mode": "NULLABLE",
+        "description": "Indicates whether the route is subject to a full road closure. When true, duration_in_seconds and speed_reading_offsets are omitted."
+    },
+    {
+        "name": "route_geometry",
+        "type": "GEOGRAPHY",
+        "mode": "NULLABLE",
+        "description": "The actual optimal path determined by the routing engine as a native BigQuery GEOGRAPHY polyline object (EPSG:4326)."
+    },
+    {
+        "name": "road_segment_ids",
+        "type": "STRING",
+        "mode": "REPEATED",
+        "description": "Place IDs along the route in topological order indicating connected road segments."
+    },
+    {
+        "name": "speed_reading_offsets",
+        "type": "RECORD",
+        "mode": "REPEATED",
+        "description": "Speed reading intervals defined by linear distance offsets along the route polyline. Omitted when has_road_closure is true.",
+        "fields": [
+            {
+                "name": "start_offset",
+                "type": "INTEGER",
+                "mode": "NULLABLE",
+                "description": "Starting offset in meters from the beginning of the route (inclusive)."
+            },
+            {
+                "name": "end_offset",
+                "type": "INTEGER",
+                "mode": "NULLABLE",
+                "description": "Ending offset in meters from the beginning of the route (exclusive; equals start_offset of subsequent interval)."
+            },
+            {
+                "name": "speed",
+                "type": "STRING",
+                "mode": "NULLABLE",
+                "description": "The categorical classification of speed for this interval. Possible values: 'NORMAL', 'SLOW', 'TRAFFIC_JAM', 'TRAFFIC_JAM_HEAVY'."
+            }
+        ]
+    },
+    {
+        "name": "speed_reading_intervals",
+        "type": "RECORD",
+        "mode": "REPEATED",
+        "description": "Legacy repeated RECORD containing road sub-segments categorized by traffic speed boundaries (deprecated; retained for backward compatibility during transitional window).",
+        "fields": [
+            {
+                "name": "interval_coordinates",
+                "type": "GEOGRAPHY",
+                "mode": "REPEATED",
+                "description": "The native GEOGRAPHY representation of the specific road segment for this speed interval, constructed as a standard EPSG:4326 line string."
+            },
+            {
+                "name": "speed",
+                "type": "STRING",
+                "mode": "NULLABLE",
+                "description": "The categorical classification of speed for this interval. Possible values: 'NORMAL', 'SLOW', 'TRAFFIC_JAM'."
+            }
+        ]
+    }
+]

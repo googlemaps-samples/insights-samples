@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+// Contains the road information like travel duration and speed reading
+// intervals for a selected route.
+// Updated for the October 8, 2026 RMI schema evolution.
+// Deprecation notice: Fields 3, 4, 5 are deprecated in favor of fields 8-12
+// and may stop being populated on or after January 13, 2027.
+message RoadsInformation {
+  // Deprecated in favor of top-level duration_in_seconds and static_duration_in_seconds.
+  // May stop being populated on or after Jan 13, 2027.
+  message TravelDuration {
+    // The duration of travel through the route based on current road
+    // conditions.
+    float duration_in_seconds = 1;
+    // The duration of travel through the route without taking road
+    // conditions into consideration.
+    float static_duration_in_seconds = 2;
+  }
+
+  // Deprecated in favor of top-level RFC 3339 retrieval_timestamp.
+  // May stop being populated on or after Jan 13, 2027.
+  message Timestamp {
+    // Represents seconds of UTC time since Unix epoch
+    // 1970-01-01T00:00:00Z. Must be from 0001-01-01T00:00:00Z to
+    // 9999-12-31T23:59:59Z inclusive.
+    int64 seconds = 1;
+
+    // Non-negative fractions of a second at nanosecond resolution. Negative
+    // second values with fractions must still have non-negative nanos values
+    // that count forward in time. Must be from 0 to 999,999,999
+    // inclusive.
+    int32 nanos = 2;
+  }
+
+  // Deprecated alongside SpeedReadingInterval.
+  // Represents the latitude and longitude of a coordinate
+  // within speed reading interval.
+  message LatLng {
+    float latitude = 1;
+    float longitude = 2;
+  }
+
+  // Deprecated in favor of SpeedReadingOffset (linear distance offsets).
+  // May stop being populated on or after Jan 13, 2027.
+  message SpeedReadingInterval {
+    // The coordinates on the polyline for the speed reading interval
+    repeated LatLng interval_coordinates = 1;
+
+    // Describes the categorized current speed of road conditions.
+    // Possible values are:
+    // - "NORMAL": Road is flowing smoothly, no slowdown is detected.
+    // - "SLOW": Slowdown detected, but no congestion formed.
+    // - "TRAFFIC_JAM": Congestion detected.
+    string speed = 2;
+  }
+
+  // Represents speed reading intervals defined by linear distance offsets along the route polyline.
+  // Effective October 8, 2026.
+  message SpeedReadingOffset {
+    // Starting offset from the beginning of the route in meters (inclusive).
+    int32 start_offset = 1;
+    // Ending offset from the beginning of the route in meters (exclusive; equals start_offset of subsequent interval).
+    int32 end_offset = 2;
+    // Categorized traffic speed condition.
+    // Possible values are:
+    // - "NORMAL": Traffic is flowing smoothly (green).
+    // - "SLOW": Slowdown detected, but no congestion formed (yellow).
+    // - "TRAFFIC_JAM": Congestion detected (red).
+    // - "TRAFFIC_JAM_HEAVY": Severe congestion detected (dark red, new as of Oct 8, 2026).
+    string speed = 3;
+  }
+
+  // Id for selected_route.
+  string selected_route_id = 1;
+  // User provided name for the route.
+  string display_name = 2;
+  // Intervals representing the road density across the route.
+  // Deprecated in favor of speed_reading_offsets; may stop being populated on or after Jan 13, 2027.
+  repeated SpeedReadingInterval speed_reading_intervals = 3 [deprecated = true];
+  // Travel time information.
+  // Deprecated in favor of duration_in_seconds and static_duration_in_seconds; may stop being populated on or after Jan 13, 2027.
+  TravelDuration travel_duration = 4 [deprecated = true];
+  // The time the road data was collected.
+  // Deprecated in favor of retrieval_timestamp; may stop being populated on or after Jan 13, 2027.
+  Timestamp retrieval_time = 5 [deprecated = true];
+  // Contains a geojson polyline representing the optimal route determined
+  // based on user's input waypoints.
+  string route_geometry = 6;
+  // Place IDs along the route in topological order indicating connected road segments.
+  repeated string road_segment_ids = 7;
+
+  // --- New fields effective October 8, 2026 ---
+  // Speed reading intervals expressed as distance offsets (in meters) from route start.
+  // Omitted when has_road_closure is true.
+  repeated SpeedReadingOffset speed_reading_offsets = 8;
+  // The duration of travel through the route based on current road conditions in seconds.
+  // Omitted when has_road_closure is true.
+  float duration_in_seconds = 9;
+  // The duration of travel through the route without taking road conditions into consideration in seconds.
+  float static_duration_in_seconds = 10;
+  // RFC 3339 formatted UTC timestamp string indicating when data was retrieved (e.g. "2026-10-08T15:04:05+00:00").
+  string retrieval_timestamp = 11;
+  // Indicates if the route has a full road closure.
+  // When true, duration_in_seconds and speed_reading_offsets are omitted.
+  bool has_road_closure = 12;
+}
+
