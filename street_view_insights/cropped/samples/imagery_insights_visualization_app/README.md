@@ -48,26 +48,33 @@ To get the permissions that you need to complete this quickstart, ask your admin
 
 ## Deployment
 
-To build and deploy this application, you can use the following `gcloud` command from your terminal, after navigating into the `streetview_visualization_app` directory:
+To build and deploy this application with Cloud Run IAM authentication enabled by default, run the following `gcloud` command from the `imagery_insights_visualization_app` directory:
 
 ```bash
-MAPS_API_KEY=<your Google Maps API key>
+MAPS_API_KEY=<your restricted Google Maps API key>
 APP_NAME=svi-visualization-app
 REGION=us-central1
-gcloud run deploy $APP_NAME \
+gcloud run deploy "$APP_NAME" \
   --source=. \
-  --region=$REGION \
+  --region="$REGION" \
   --platform=managed \
-  --allow-unauthenticated \
+  --no-allow-unauthenticated \
   --port=8080 \
   --set-env-vars="MAPS_API_KEY=${MAPS_API_KEY}" \
-  --project=$PROJECT_ID
+  --project="$PROJECT_ID" \
+  --quiet
 ```
 
-> If your GCP project or organization does not allow unauthenticated applications, replace the `--allow-unauthenticated` flag above with `--no-allow-unauthenticated` when you deploy.  You can then use [gcloud run services proxy](https://docs.cloud.google.com/sdk/gcloud/reference/run/services/proxy) to connect from your local machine to the Cloud Run application.
+Connect from your local machine using `gcloud run services proxy`:
+
+```bash
+gcloud run services proxy "$APP_NAME" --region="$REGION" --project="$PROJECT_ID"
+```
+
+> **Security Note:** Always restrict your `MAPS_API_KEY` in Google Cloud Console by **HTTP referrers** (matching your Cloud Run domain or `http://localhost:8080/*`) and **API restrictions** (Maps JavaScript API and Street View Static API only).
 
 ## Cleanup
 
 ```bash
-gcloud run services delete $APP_NAME --region=$REGION
+gcloud run services delete "$APP_NAME" --region="$REGION" --project="$PROJECT_ID" --quiet
 ```

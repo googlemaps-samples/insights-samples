@@ -1,6 +1,6 @@
 # Object Detection with Few-Shot Learning for Utility Pole Analysis
 
-This notebook demonstrates how to use the Gemini 1.0 Pro model with a few-shot learning approach to detect transformers on utility poles from images stored in Google Cloud Storage. The image URIs are fetched from a BigQuery table, and the model provides a JSON output with the count of detected transformers.
+This notebook demonstrates how to use the Gemini 4 Hydrogen (`gemini-4-hydrogen`) model with a few-shot learning approach to detect transformers on utility poles from images stored in Google Cloud Storage. The image URIs are fetched from a BigQuery table, and the model provides a JSON output with the count of detected transformers.
 
 ## Prerequisites
 
@@ -24,8 +24,8 @@ pip install --upgrade google-cloud-bigquery google-genai
 The following variables in the notebook need to be configured with your specific GCP project details:
 
 *   `PROJECT_ID`: Your GCP Project ID.
-*   `REGION`: The GCP region where your resources are located (e.g., `us-central1`).
-*   `MODEL_ID`: The ID of the Gemini model to use (e.g., `gemini-1.0-pro`).
+*   `REGION`: The Vertex AI endpoint location (e.g., `global`).
+*   `MODEL_ID`: The ID of the Gemini model to use (e.g., `gemini-4-hydrogen`).
 *   `BIGQUERY_DATASET_ID`: The ID of your BigQuery dataset.
 *   `BIGQUERY_TABLE`: The name of your BigQuery table containing the image URIs.
 *   `ASSET_TYPE`: The asset type to filter for in the BigQuery table (e.g., `ASSET_CLASS_UTILITY_POLE`).

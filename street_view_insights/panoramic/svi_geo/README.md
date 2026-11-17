@@ -186,7 +186,7 @@ SELECT
     ORDER BY CAST(REGEXP_EXTRACT(observation_id, r'_(\d)(?::|$)') AS INT64)
   ) AS cams,
   COUNT(*) AS n_frames
-FROM `imagery-insights-sandbox.imagery_insights___us.pano_observations_latest`
+FROM `YOUR_PROJECT_ID.imagery_insights___us.pano_observations_latest`
 GROUP BY capture_id, snapshot_id;
 ```
 

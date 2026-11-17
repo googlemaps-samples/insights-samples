@@ -66,9 +66,19 @@ WHERE
 
 # Cloud Tasks Configuration
 TASK_QUEUE_PREFIX = "image-analysis-queue-"
+_TASK_QUEUE_ID_RE = re.compile(r"^image-analysis-queue-[A-Za-z0-9_-]{1,64}$")
 SHARD_SIZE = 50
 POPULATE_TOPIC_ID_PREFIX = "populate-tasks-topic-"
 SUBSCRIPTION_ID_PREFIX = "populate-tasks-sub-"
+
+
+def validate_task_queue_id(queue_id):
+    """Validates that queue_id belongs to the managed image-analysis-queue-* namespace."""
+    if not isinstance(queue_id, str) or not _TASK_QUEUE_ID_RE.fullmatch(queue_id.strip()):
+        raise ValueError(
+            f"task_queue_id must match '{TASK_QUEUE_PREFIX}<run-id>' with alphanumeric/hyphen characters."
+        )
+    return queue_id.strip()
 
 # Cloud Run Configuration
 BATCH_SIZE = 100
@@ -139,7 +149,17 @@ def is_allowed_gcs_uri(uri, allowed_prefix=None):
 
 
 # Gemini Model Configuration
-GEMINI_MODEL = "gemini-3.7-flash"
+# gemini-4-hydrogen is served on the "global", "us", and "eu" Vertex AI endpoints.
+ALLOWED_GEMINI_LOCATIONS = frozenset({"global", "us", "eu"})
+ALLOWED_GEMINI_MODELS = frozenset(
+    {"gemini-4-hydrogen", "gemini-4-carbon", "gemini-4-argon"}
+)
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-4-hydrogen").strip()
+GEMINI_LOCATION = os.environ.get("GEMINI_LOCATION", "global").strip().lower()
+if GEMINI_LOCATION not in ALLOWED_GEMINI_LOCATIONS:
+    raise ValueError(
+        f"GEMINI_LOCATION must be one of {sorted(ALLOWED_GEMINI_LOCATIONS)}, got {GEMINI_LOCATION!r}."
+    )
 
 
 def load_prompts_from_directory(directory):

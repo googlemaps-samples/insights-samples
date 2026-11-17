@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "streetview-imagery-insights": {
-      "url": "https://streetview-imagery-insights-mcp-769602582640.us-central1.run.app/sse",
+      "url": "http://127.0.0.1:8080/sse",
       "type": "sse"
     }
   }

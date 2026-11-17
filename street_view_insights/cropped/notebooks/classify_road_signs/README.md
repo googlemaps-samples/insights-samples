@@ -1,11 +1,11 @@
-# Road Sign Classification with Gemini
+# Road Sign Classification with Gemini 4 Hydrogen
 
-This notebooks demonstrate how to use the Gemini 2.5 Flash model through Vertex AI to classify road signs from images.
+These notebooks demonstrate how to use the Gemini 4 Hydrogen (`gemini-4-hydrogen`) model through Vertex AI to classify road signs from images.
 
 ## Available Notebooks
 
 1. **`Road_signs_classification.ipynb`**:
-   A lightweight demonstration that fetches image URIs from BigQuery, passes them to Gemini, and prints the classification findings in a structured JSON format.
+   A lightweight demonstration that fetches image URIs from BigQuery, passes them to Gemini 4 Hydrogen, and prints the classification findings in a structured JSON format.
 2. **`classify_road_signs_and_save_in_bq.ipynb`**:
    An end-to-end pipeline that performs the same classification but goes a step further. It extracts rich metadata (geographic coordinates, bounding boxes, capture times), creates a destination table in your personal BigQuery project, streams the generated insights into the table, and visualizes the dataset using a Pandas DataFrame.
 
@@ -13,9 +13,9 @@ This notebooks demonstrate how to use the Gemini 2.5 Flash model through Vertex 
 
 The notebook performs the following steps:
 
-1.  **Configuration**: Sets up the Google Cloud project, region, and BigQuery dataset details.
+1.  **Configuration**: Sets up the Google Cloud project, `global` Vertex AI endpoint location, and BigQuery dataset details.
 2.  **Data Fetching**: Queries a BigQuery table to retrieve Google Cloud Storage (GCS) URIs for images that are classified as road sign assets (`ASSET_CLASS_ROAD_SIGN`).
-3.  **Image Classification**: For each image URI, it calls the Gemini 2.5 Flash model.
+3.  **Image Classification**: For each image URI, it calls the Gemini 4 Hydrogen (`gemini-4-hydrogen`) model.
 4.  **Prompt Engineering**: A detailed prompt guides the model to act as an image analysis expert. The model is instructed to identify signs by their shape, color, and text, and then classify them into predefined categories:
     *   Stop
     *   Yield

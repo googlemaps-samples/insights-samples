@@ -11,13 +11,16 @@ from svi_geo import data
 from svi_geo import gemini_client as gc
 
 NOTEBOOK_DIR = Path(__file__).resolve().parents[2] / "notebooks"
-NOTEBOOKS = sorted(NOTEBOOK_DIR.glob("*.ipynb"))
+ALL_NOTEBOOKS = sorted(NOTEBOOK_DIR.glob("*.ipynb"))
 UC_STEMS = {
     "analyze_sequential_images",
     "house_image_discovery_with_cost",
     "roof_edge_tracing",
     "surface_material_detection",
 }
+SVI_GEO_STEMS = UC_STEMS | {"00_explore_coverage"}
+STANDALONE_STEMS = {"blind_corridor_house_triangulation_and_verification"}
+NOTEBOOKS = [p for p in ALL_NOTEBOOKS if p.stem in SVI_GEO_STEMS]
 UC_NOTEBOOKS = [p for p in NOTEBOOKS if p.stem in UC_STEMS]
 
 BANNED = ["from_uri", "file_uri", "urls_new", "all_observations", "all_assets", "sleep(15)"]
@@ -64,7 +67,25 @@ def _cell_concepts(c) -> list[str]:
 
 
 def test_there_are_five_notebooks():
-    assert {p.stem for p in NOTEBOOKS} == UC_STEMS | {"00_explore_coverage"}
+    assert {p.stem for p in NOTEBOOKS} == SVI_GEO_STEMS
+    assert {p.stem for p in ALL_NOTEBOOKS} == SVI_GEO_STEMS | STANDALONE_STEMS
+
+
+def test_standalone_blind_corridor_notebook_static_and_security_invariants():
+    path = NOTEBOOK_DIR / "blind_corridor_house_triangulation_and_verification.ipynb"
+    book = nbformat.read(path, as_version=4)
+    nbformat.validate(book)
+    raw = path.read_text(encoding="utf-8")
+    assert not re.search(r"AIza[0-9A-Za-z_\-]{30,}", raw)
+    assert "imagery-insights-sandbox" not in raw
+    assert "sarthaks-lab" not in raw
+    assert "svi-gemini-improvements" not in raw
+    code = _code(book)
+    assert "YOUR_PROJECT_ID" in code
+    assert 'GEMINI_MODEL = "gemini-4-hydrogen"' in code
+    assert "THINKING_BUDGET" not in code
+    for b in BANNED:
+        assert b not in _all(book), b
 
 
 @pytest.fixture(params=NOTEBOOKS, ids=lambda p: p.stem)

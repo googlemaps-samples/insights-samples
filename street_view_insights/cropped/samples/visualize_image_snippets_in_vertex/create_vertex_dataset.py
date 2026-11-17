@@ -1,7 +1,8 @@
-import os
-import json
 import argparse
+import json
+import os
 import random
+import re
 import string
 from google.cloud import bigquery
 from google.cloud import storage
@@ -11,17 +12,36 @@ DATASET_ID = "imagery_insights___us"
 TABLE_ID = "cropped_observations_latest"
 GCS_DESTINATION_FOLDER = "street_view_insights"
 LIMIT_URLS = 10
-PROJECT_ID = os.getenv('GOOGLE_CLOUD_PROJECT') 
-BUCKET_NAME = os.getenv('GCS_BUCKET_NAME')
+PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
+BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
 
-def export_to_vertex_jsonl(project_id, table_path, bucket_name, gcs_folder, output_filename, include_labels, limit):
+_BQ_PROJECT_RE = re.compile(r"^[a-z][a-z0-9-]{4,29}(?::[a-z0-9-]+)?$")
+_BQ_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]{1,128}$")
+_GCS_BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$")
+MAX_QUERY_BYTES_BILLED = 2 * 1024 * 1024 * 1024
+
+
+def _validate_identifier(value: str, pattern: re.Pattern[str], label: str) -> str:
+    cleaned = (value or "").strip()
+    if not pattern.fullmatch(cleaned):
+        raise ValueError(f"Invalid {label}: {value!r}")
+    return cleaned
+
+
+def export_to_vertex_jsonl(
+    project_id, table_path, bucket_name, gcs_folder, output_filename, include_labels, limit
+):
     """
     Queries BigQuery for image URLs and creates a JSONL file for Vertex AI Managed Datasets.
     """
     print(f"Querying BigQuery table: {table_path} with limit: {limit}")
     bq_client = bigquery.Client(project=project_id)
 
-    limit_clause = f"LIMIT {limit}" if limit and limit > 0 else ""
+    use_limit = bool(limit and limit > 0)
+    limit_clause = "LIMIT @limit" if use_limit else ""
+    query_params = (
+        [bigquery.ScalarQueryParameter("limit", "INT64", int(limit))] if use_limit else []
+    )
 
     if include_labels:
         # Group by gcs_uri and collect unique labels for multi-label image classification
@@ -45,7 +65,11 @@ def export_to_vertex_jsonl(project_id, table_path, bucket_name, gcs_folder, outp
         """
         print("Extracting only image URIs (unlabeled dataset format)...")
 
-    query_job = bq_client.query(query)
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=query_params,
+        maximum_bytes_billed=MAX_QUERY_BYTES_BILLED,
+    )
+    query_job = bq_client.query(query, job_config=job_config)
     results = query_job.result()
 
     print(f"Writing results to local file: {output_filename}")
@@ -100,18 +124,23 @@ if __name__ == "__main__":
     parser.add_argument("--include_labels", action="store_true", help="Include asset_class as labels in Vertex AI Multi-Label Classification format.")
 
     args = parser.parse_args()
+    safe_project = _validate_identifier(args.project_id, _BQ_PROJECT_RE, "project_id")
+    safe_dataset = _validate_identifier(args.dataset_id, _BQ_IDENTIFIER_RE, "dataset_id")
+    safe_table = _validate_identifier(args.table_id, _BQ_IDENTIFIER_RE, "table_id")
+    safe_bucket = _validate_identifier(args.bucket_name, _GCS_BUCKET_RE, "bucket_name")
+    safe_limit = max(0, int(args.limit))
 
     # Construct dynamic output filename: dataset_limit_random4.jsonl
-    random_suffix = ''.join(random.choices(string.ascii_lowercase, k=4))
-    table_path = f"`{args.project_id}`.`{args.dataset_id}`.`{args.table_id}`"
-    out_file = f"{args.dataset_id}_{args.limit}_{random_suffix}.jsonl"
+    random_suffix = "".join(random.choices(string.ascii_lowercase, k=4))
+    table_path = f"`{safe_project}`.`{safe_dataset}`.`{safe_table}`"
+    out_file = f"{safe_dataset}_{safe_limit}_{random_suffix}.jsonl"
 
     export_to_vertex_jsonl(
-        project_id=args.project_id,
+        project_id=safe_project,
         table_path=table_path,
-        bucket_name=args.bucket_name,
-        gcs_folder=args.gcs_folder,
+        bucket_name=safe_bucket,
+        gcs_folder=args.gcs_folder.strip("/"),
         output_filename=out_file,
         include_labels=args.include_labels,
-        limit=args.limit
+        limit=safe_limit,
     )

@@ -98,8 +98,8 @@ jupyter nbconvert --to notebook --execute --output-dir /tmp/nbrun \
 ```
 
 Outside a clone of this repository, the first code cell pip-installs `svi_geo` from GitHub at
-`SVI_GEO_REF` (pinned to a verified commit on the `svi-gemini-improvements` branch until merged to
-`main`). Inside a local repository clone, the local `svi_geo` package is discovered automatically.
+`SVI_GEO_REF` (pinned to a verified commit SHA). Inside a local repository clone, the local
+`svi_geo` package is discovered automatically.
 
 Required IAM roles (the notebooks do not modify IAM settings):
 `roles/bigquery.jobUser` on `PROJECT_ID`, `roles/bigquery.dataViewer` on the linked dataset,

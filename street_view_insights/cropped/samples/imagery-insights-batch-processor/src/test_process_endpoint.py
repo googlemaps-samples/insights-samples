@@ -81,7 +81,7 @@ class EndpointSecurityTests(unittest.TestCase):
         self.orig_sa_email = config.SERVICE_ACCOUNT_EMAIL
         self.orig_bq_client = main.bq_client
         self.orig_tasks_client = main.tasks_client
-        self.orig_model = main.model
+        self.orig_genai_client = main.genai_client
 
         config.GCP_PROJECT = "test-project"
         config.ALLOWED_GCS_PREFIX = "gs://geoai_published_test__us/"
@@ -92,14 +92,14 @@ class EndpointSecurityTests(unittest.TestCase):
         self.mock_bq = MagicMock()
         self.mock_bq.insert_rows_json.return_value = []
         self.mock_tasks = MagicMock()
-        self.mock_model = MagicMock()
-        self.mock_model.generate_content.return_value = MagicMock(
+        self.mock_genai = MagicMock()
+        self.mock_genai.models.generate_content.return_value = MagicMock(
             text='{"width": 640, "height": 480}'
         )
 
         main.bq_client = self.mock_bq
         main.tasks_client = self.mock_tasks
-        main.model = self.mock_model
+        main.genai_client = self.mock_genai
 
     def tearDown(self):
         config.GCP_PROJECT = self.orig_gcp_project
@@ -109,7 +109,7 @@ class EndpointSecurityTests(unittest.TestCase):
         config.SERVICE_ACCOUNT_EMAIL = self.orig_sa_email
         main.bq_client = self.orig_bq_client
         main.tasks_client = self.orig_tasks_client
-        main.model = self.orig_model
+        main.genai_client = self.orig_genai_client
 
     def _valid_claims(self):
         return {
@@ -117,6 +117,10 @@ class EndpointSecurityTests(unittest.TestCase):
             "email": "worker@test-project.iam.gserviceaccount.com",
             "email_verified": True,
         }
+
+    def test_default_model_and_location_are_gemini_4_hydrogen_global(self):
+        self.assertEqual(config.GEMINI_MODEL, "gemini-4-hydrogen")
+        self.assertEqual(config.GEMINI_LOCATION, "global")
 
     def test_process_requires_bearer_token(self):
         resp = self.client.post(
@@ -132,7 +136,7 @@ class EndpointSecurityTests(unittest.TestCase):
             },
         )
         self.assertEqual(resp.status_code, 401)
-        self.mock_model.generate_content.assert_not_called()
+        self.mock_genai.models.generate_content.assert_not_called()
         self.mock_bq.insert_rows_json.assert_not_called()
 
     def test_process_rejects_invalid_token_and_wrong_service_account(self):
@@ -161,14 +165,14 @@ class EndpointSecurityTests(unittest.TestCase):
                 json={"observations": []},
             )
             self.assertEqual(resp.status_code, 403)
-        self.mock_model.generate_content.assert_not_called()
+        self.mock_genai.models.generate_content.assert_not_called()
 
     def test_process_rejects_unlisted_gcs_uri_before_vertex_call(self):
         with (
             patch.object(
                 main.id_token, "verify_oauth2_token", return_value=self._valid_claims()
             ),
-            patch.object(main.Part, "from_uri") as mock_part_from_uri,
+            patch.object(main.types.Part, "from_uri") as mock_part_from_uri,
         ):
             resp = self.client.post(
                 "/process",
@@ -185,7 +189,7 @@ class EndpointSecurityTests(unittest.TestCase):
             )
             self.assertEqual(resp.status_code, 400)
             mock_part_from_uri.assert_not_called()
-            self.mock_model.generate_content.assert_not_called()
+            self.mock_genai.models.generate_content.assert_not_called()
             self.mock_bq.insert_rows_json.assert_not_called()
 
     def test_process_fails_closed_when_allowlist_unset(self):
@@ -207,7 +211,7 @@ class EndpointSecurityTests(unittest.TestCase):
                 },
             )
             self.assertEqual(resp.status_code, 500)
-            self.mock_model.generate_content.assert_not_called()
+            self.mock_genai.models.generate_content.assert_not_called()
 
     def test_process_accepts_allowlisted_uri_with_valid_oidc(self):
         with (
@@ -215,7 +219,7 @@ class EndpointSecurityTests(unittest.TestCase):
                 main.id_token, "verify_oauth2_token", return_value=self._valid_claims()
             ),
             patch.object(
-                main.Part, "from_uri", return_value="mock-part"
+                main.types.Part, "from_uri", return_value="mock-part"
             ) as mock_part_from_uri,
         ):
             resp = self.client.post(
@@ -235,13 +239,17 @@ class EndpointSecurityTests(unittest.TestCase):
             )
             self.assertEqual(resp.status_code, 200)
             mock_part_from_uri.assert_called_once_with(
-                "gs://geoai_published_test__us/snap1/v0/obs1.jpg",
+                file_uri="gs://geoai_published_test__us/snap1/v0/obs1.jpg",
                 mime_type="image/jpeg",
             )
-            self.mock_model.generate_content.assert_called_once()
+            self.mock_genai.models.generate_content.assert_called_once()
+            self.assertEqual(
+                self.mock_genai.models.generate_content.call_args.kwargs["model"],
+                "gemini-4-hydrogen",
+            )
             self.mock_bq.insert_rows_json.assert_called_once()
 
-    def test_populate_rejects_sqli_and_negative_offset(self):
+    def test_populate_rejects_sqli_negative_offset_and_unprefixed_queue(self):
         with patch.object(
             main.id_token, "verify_oauth2_token", return_value=self._valid_claims()
         ):
@@ -249,7 +257,7 @@ class EndpointSecurityTests(unittest.TestCase):
                 "/populate",
                 headers={"Authorization": "Bearer valid-token"},
                 json={
-                    "task_queue_id": "q1",
+                    "task_queue_id": "image-analysis-queue-run1",
                     "offset": "0 UNION ALL SELECT 1",
                 },
             )
@@ -258,23 +266,56 @@ class EndpointSecurityTests(unittest.TestCase):
             resp_neg = self.client.post(
                 "/populate",
                 headers={"Authorization": "Bearer valid-token"},
-                json={"task_queue_id": "q1", "offset": -5},
+                json={"task_queue_id": "image-analysis-queue-run1", "offset": -5},
             )
             self.assertEqual(resp_neg.status_code, 400)
 
+            resp_bad_queue = self.client.post(
+                "/populate",
+                headers={"Authorization": "Bearer valid-token"},
+                json={"task_queue_id": "unrelated-billing-queue", "offset": 0},
+            )
+            self.assertEqual(resp_bad_queue.status_code, 400)
+
         self.mock_bq.query.assert_not_called()
 
-    def test_teardown_requires_auth_and_accepts_post(self):
-        unauth_resp = self.client.post("/teardown", json={"task_queue_id": "q1"})
+    def test_teardown_enforces_auth_audience_and_queue_prefix(self):
+        unauth_resp = self.client.post(
+            "/teardown", json={"task_queue_id": "image-analysis-queue-run1"}
+        )
         self.assertEqual(unauth_resp.status_code, 401)
+
+        with patch.object(
+            main.id_token,
+            "verify_oauth2_token",
+            return_value={
+                "aud": "https://other-service.run.app",
+                "email": "worker@test-project.iam.gserviceaccount.com",
+                "email_verified": True,
+            },
+        ):
+            wrong_aud_resp = self.client.post(
+                "/teardown",
+                headers={"Authorization": "Bearer wrong-aud-token"},
+                json={"task_queue_id": "image-analysis-queue-run1"},
+            )
+            self.assertEqual(wrong_aud_resp.status_code, 403)
 
         with patch.object(
             main.id_token, "verify_oauth2_token", return_value=self._valid_claims()
         ):
+            bad_queue_resp = self.client.post(
+                "/teardown",
+                headers={"Authorization": "Bearer valid-token"},
+                json={"task_queue_id": "production-payments-queue"},
+            )
+            self.assertEqual(bad_queue_resp.status_code, 400)
+            self.mock_tasks.delete_queue.assert_not_called()
+
             auth_resp = self.client.post(
                 "/teardown",
                 headers={"Authorization": "Bearer valid-token"},
-                json={"task_queue_id": "q1"},
+                json={"task_queue_id": "image-analysis-queue-run1"},
             )
             self.assertEqual(auth_resp.status_code, 200)
             self.mock_bq.delete_table.assert_called_once()

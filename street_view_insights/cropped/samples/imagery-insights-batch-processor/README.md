@@ -1,6 +1,6 @@
 # Image Analysis Batch Processor
 
-This application provides a scalable, task-based architecture for analyzing a large volume of images using Google Cloud Run, Cloud Tasks, BigQuery, and Vertex AI's Gemini Pro Vision model.
+This application provides a scalable, task-based architecture for analyzing a large volume of Street View Insights images using Google Cloud Run, Cloud Tasks, BigQuery, and Gemini 4 Hydrogen (`gemini-4-hydrogen`).
 
 ## Architecture
 
@@ -25,8 +25,10 @@ This guide provides a single, cohesive set of instructions to get the applicatio
     ```
 2.  Open `scripts/deploy.env` and replace the placeholder values with your specific GCP project information:
     *   `PROJECT_ID`: Your Google Cloud project ID.
-    *   `REGION`: The GCP region where you want to deploy the services (e.g., `us-central1`).
-    *   `SERVICE_ACCOUNT_EMAIL`: The email of the service account that the Cloud Run services will use.
+    *   `REGION`: The GCP region where you want to deploy the Cloud Run services (e.g., `us-central1`).
+    *   `SERVICE_ACCOUNT_EMAIL`: The email of the dedicated service account that the Cloud Run services and OIDC task pushers will use.
+    *   `ALLOWED_GCS_PREFIX`: Required `gs://bucket[/prefix]/` allowlist restricting which Cloud Storage objects `/process` is allowed to read (prevents confused-deputy bucket reads).
+    *   `GEMINI_MODEL` / `GEMINI_LOCATION`: Defaults to `gemini-4-hydrogen` on the `global` endpoint (`global`, `us`, or `eu`).
 
 ### Step 3: Deploy the Services
 

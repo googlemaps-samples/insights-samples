@@ -149,11 +149,29 @@ function displayCurrentItem() {
     }
 
     const mapUrlElement = document.getElementById('infoMapUrl');
-    if (item.mapUrl) {
-        mapUrlElement.href = item.mapUrl;
-        mapUrlElement.textContent = item.mapUrl;
+    let safeMapUrl = null;
+    if (typeof item.mapUrl === 'string' && item.mapUrl) {
+        try {
+            const parsedUrl = new URL(item.mapUrl);
+            if (
+                parsedUrl.protocol === 'https:' &&
+                (parsedUrl.hostname === 'www.google.com' ||
+                    parsedUrl.hostname === 'maps.google.com' ||
+                    parsedUrl.hostname.endsWith('.google.com'))
+            ) {
+                safeMapUrl = parsedUrl.toString();
+            }
+        } catch (_) {
+            safeMapUrl = null;
+        }
+    }
+    if (safeMapUrl) {
+        mapUrlElement.href = safeMapUrl;
+        mapUrlElement.textContent = safeMapUrl;
         mapUrlElement.parentElement.style.display = 'block';
     } else {
+        mapUrlElement.removeAttribute('href');
+        mapUrlElement.textContent = '';
         mapUrlElement.parentElement.style.display = 'none';
     }
 }

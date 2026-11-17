@@ -129,14 +129,14 @@ python3 -m venv .venv
 ```
 
 ### Step 3: Fetch Calibration Panoramas from BigQuery & GCS (Optional Full Re-Fit)
-To re-run the calibration from scratch against `imagery-insights-sandbox.imagery_insights___us.pano_observations_latest` (the default paths below are relative to `svi_geo/`):
+To re-run the calibration from scratch against `YOUR_PROJECT_ID.imagery_insights___us.pano_observations_latest` (the default paths below are relative to `svi_geo/`):
 
 ```bash
 cd street_view_insights/panoramic/svi_geo
 
 # 1. Sample training and whole-sequence held-out panoramas (dry-run checked before querying)
 ../../../.venv/bin/python scripts/fetch_calibration_panos.py \
-    --project imagery-insights-sandbox \
+    --project YOUR_PROJECT_ID \
     --out data/calib_panos.parquet
 
 # 2. Extract SIFT matches, fit KB4 intrinsics, and evaluate on the held-out sequences

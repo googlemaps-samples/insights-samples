@@ -1,6 +1,6 @@
 # Street View Insights (SVI) Framework
 
-Welcome to the **Street View Insights (SVI)** sample library and skills framework. This directory provides production-ready Jupyter notebooks, CLI skills, and microservices for performing multimodal visual analysis on Google Street View imagery using **Gemini 3.5 Flash** and **Google Cloud BigQuery**.
+Welcome to the **Street View Insights (SVI)** sample library and skills framework. This directory provides production-ready Jupyter notebooks, CLI skills, and microservices for performing multimodal visual analysis on Google Street View imagery using **Gemini 4 Hydrogen** (`gemini-4-hydrogen`) and **Google Cloud BigQuery**.
 
 ---
 
@@ -58,7 +58,7 @@ All notebooks and skills query directly from the canonical dataset views in BigQ
 
 1. Install the [Antigravity CLI](https://antigravity.google/product/antigravity-cli).
 
-2. Set up your [Application Default Credentials](http://https://docs.cloud.google.com/docs/authentication/provide-credentials-adc) (ADC):
+2. Set up your [Application Default Credentials](https://docs.cloud.google.com/docs/authentication/provide-credentials-adc) (ADC):
 
 ```sh
 gcloud auth application-default login
