@@ -356,7 +356,7 @@ def _default_model() -> str:
 
         return gemini_client.DEFAULT_MODEL
     except ImportError:
-        return os.environ.get("SVI_GEMINI_MODEL") or "-".join(("gemini", "3", "flash", "preview"))
+        return os.environ.get("SVI_GEMINI_MODEL") or "-".join(("gemini", "4", "hydrogen"))
 
 
 def parse_args(argv=None, env=None):

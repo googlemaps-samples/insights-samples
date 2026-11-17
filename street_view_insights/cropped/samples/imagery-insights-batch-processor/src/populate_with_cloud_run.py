@@ -108,6 +108,16 @@ def require_auth(func):
         except Exception:
             return jsonify({"error": "Invalid authentication token."}), 401
 
+        pop_url = (
+            os.getenv("POPULATE_SERVICE_URL")
+            or POPULATE_SERVICE_URL
+            or config.POPULATE_SERVICE_URL
+        )
+        if pop_url:
+            pop_base = pop_url.rstrip("/")
+            if claims.get("aud") not in {pop_base, f"{pop_base}/"}:
+                return jsonify({"error": "Forbidden: invalid token audience."}), 403
+
         if config.SERVICE_ACCOUNT_EMAIL:
             if (
                 claims.get("email") != config.SERVICE_ACCOUNT_EMAIL
@@ -182,7 +192,8 @@ def setup_and_shard(source_project_id=None):
     push_config = pubsub_v1.types.PushConfig(
         push_endpoint=POPULATE_SERVICE_URL,
         oidc_token=pubsub_v1.types.PushConfig.OidcToken(
-            service_account_email=config.SERVICE_ACCOUNT_EMAIL
+            service_account_email=config.SERVICE_ACCOUNT_EMAIL,
+            audience=POPULATE_SERVICE_URL.rstrip("/") if POPULATE_SERVICE_URL else "",
         ),
     )
     sub.create_subscription(
@@ -237,9 +248,7 @@ def process_shard():
         data = json.loads(base64.b64decode(pubsub_message["data"]).decode("utf-8"))
         limit = _parse_int(data.get("limit"), "limit", min_value=1, max_value=1000)
         offset = _parse_int(data.get("offset"), "offset", min_value=0)
-        task_queue_id = data.get("task_queue_id")
-        if not isinstance(task_queue_id, str) or not task_queue_id.strip():
-            raise ValueError("task_queue_id must be a non-empty string.")
+        task_queue_id = config.validate_task_queue_id(data.get("task_queue_id"))
 
         project_id = _validate_bq_identifier(config.GCP_PROJECT, "GCP_PROJECT")
         source_dataset = _validate_bq_identifier(

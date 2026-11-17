@@ -37,8 +37,10 @@ PROMPT_VERSIONS: dict[str, str] = {
 
 
 def _default_teacher_model() -> str:
-    # Select the highest-priced Pro Preview entry from gemini_client.PRICES_BY_MODEL without a literal ID
-    candidates = [m for m in gemini_client.PRICES_BY_MODEL if "3.1" in m and "pro" in m]
+    # Select the highest-capability Gemini 4 Carbon entry from gemini_client.PRICES_BY_MODEL without a literal ID
+    candidates = [m for m in gemini_client.PRICES_BY_MODEL if "4" in m and "carbon" in m]
+    if not candidates:
+        candidates = [m for m in gemini_client.PRICES_BY_MODEL if "3.1" in m and "pro" in m]
     return candidates[0] if candidates else gemini_client.DEFAULT_MODEL
 
 

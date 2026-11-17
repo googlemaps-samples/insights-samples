@@ -42,17 +42,20 @@ def _m(suffix: str) -> str:
     return f"gemini-{suffix}"
 
 
-DEFAULT_MODEL = "gemini-3.5-flash"
+DEFAULT_MODEL = "gemini-4-hydrogen"
 DEFAULT_LOCATION = "global"
 DEFAULT_MAX_CALLS = 500
 DEFAULT_CONCURRENCY = 8
 MAX_IMAGE_SIDE = 1536
 # USD per 1M tokens, prompts <=200k tokens, global endpoint.
-# Source: https://cloud.google.com/vertex-ai/generative-ai/pricing (fetched 2026-09-30).
+# Source: https://cloud.google.com/vertex-ai/generative-ai/pricing (Gemini 4 Hydrogen global: $1.50/$7.50).
 # Check current Vertex AI pricing for your model/region and pass your own `prices=` to CostTracker.
-DEFAULT_PRICES = {"input_per_m": 1.50, "output_per_m": 9.00}
+DEFAULT_PRICES = {"input_per_m": 1.50, "output_per_m": 7.50}
 PRICES_BY_MODEL: dict[str, dict[str, float]] = {
     DEFAULT_MODEL: dict(DEFAULT_PRICES),
+    _m("4-carbon"): {"input_per_m": 4.00, "output_per_m": 20.00},
+    _m("4-argon"): {"input_per_m": 4.00, "output_per_m": 20.00},
+    _m("3.5-flash"): {"input_per_m": 1.50, "output_per_m": 9.00},
     _m("3.1-pro-preview"): {"input_per_m": 2.00, "output_per_m": 12.00},
     _m("3.5-flash-lite"): {"input_per_m": 0.30, "output_per_m": 2.50},
     _m("3-flash-preview"): {"input_per_m": 0.50, "output_per_m": 3.00},
@@ -60,9 +63,12 @@ PRICES_BY_MODEL: dict[str, dict[str, float]] = {
     "gemini-2.5-flash-lite": {"input_per_m": 0.10, "output_per_m": 0.40},
     "gemini-2.5-pro": {"input_per_m": 1.25, "output_per_m": 10.00},
 }
-# Regional (non-global) endpoints carry a 10% premium for Gemini 3.5 Flash on Vertex AI.
+# Regional (non-global, e.g. "us" or "eu") endpoints carry a 10% premium on Vertex AI.
 PRICES_NON_GLOBAL_BY_MODEL: dict[str, dict[str, float]] = {
-    DEFAULT_MODEL: {"input_per_m": 1.65, "output_per_m": 9.90},
+    DEFAULT_MODEL: {"input_per_m": 1.65, "output_per_m": 8.25},
+    _m("4-carbon"): {"input_per_m": 4.40, "output_per_m": 22.00},
+    _m("4-argon"): {"input_per_m": 4.40, "output_per_m": 22.00},
+    _m("3.5-flash"): {"input_per_m": 1.65, "output_per_m": 9.90},
 }
 MAX_FAILURE_MESSAGES = 5
 CACHED_INPUT_DISCOUNT = 0.25  # 75% discount on cached tokens -> billed at 0.25x input rate

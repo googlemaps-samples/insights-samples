@@ -36,8 +36,8 @@ accuracy against ground truth; their old result tables were removed from the REA
 ### Reproducing the label-free evaluation
 
 ```sh
-export PROJECT_ID=imagery-insights-sandbox
-export GCS_BUCKET=geoai_published_337c66da-39c4-4aed-8d89-61492ec39eb0__us
+export PROJECT_ID=YOUR_PROJECT_ID
+export GCS_BUCKET=YOUR_FRAME_BUCKET
 .venv/bin/python street_view_insights/panoramic/svi_geo/scripts/run_labelfree_eval.py \
     --uc all --aoi heldout --variant final \
     --out street_view_insights/panoramic/svi_geo/data/labelfree/20261001/heldout_final

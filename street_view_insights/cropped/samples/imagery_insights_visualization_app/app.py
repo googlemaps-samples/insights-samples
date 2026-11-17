@@ -12,28 +12,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from flask import Flask, render_template, send_from_directory
+from flask import Flask, abort, render_template, send_from_directory
 import os
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
-app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.config['TEMPLATES_AUTO_RELOAD'] = False
+
+ALLOWED_DATA_FILES = frozenset({'ga_sample.json'})
 
 _CONTEXT = {
-    'maps_api_key': os.getenv('MAPS_API_KEY')
+    'maps_api_key': os.getenv('MAPS_API_KEY', '')
 }
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    return response
+
 
 @app.route('/')
 def index():
     return render_template('index.html', **_CONTEXT)
 
+
 @app.route('/3d_view')
 def three_d_view():
     return render_template('3d_view.html', **_CONTEXT)
 
+
 @app.route('/data/<filename>')
 def get_data(filename):
+    if filename not in ALLOWED_DATA_FILES:
+        abort(404)
     return send_from_directory('data', filename)
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+    app.run(
+        debug=False,
+        host=os.environ.get('HOST', '127.0.0.1'),
+        port=int(os.environ.get('PORT', '8080')),
+    )

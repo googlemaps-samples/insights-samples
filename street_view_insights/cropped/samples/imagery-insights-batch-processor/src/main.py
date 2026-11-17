@@ -14,17 +14,18 @@
 
 from functools import wraps
 import json
+import os
 import re
 import time
 import uuid
 
 from flask import Flask, jsonify, request
+from google import genai
 from google.api_core import exceptions
 from google.auth.transport import requests as google_auth_requests
 from google.cloud import bigquery, tasks_v2
+from google.genai import types
 from google.oauth2 import id_token
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part
 
 import config
 
@@ -33,9 +34,13 @@ app = Flask(__name__)
 # Lazily initialized clients so importing the module does not require live ADC.
 bq_client = None
 tasks_client = None
-model = None
+genai_client = None
 
 _BQ_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+MAX_OBSERVATIONS_PER_TASK = 25
+MAX_QUERY_BYTES_BILLED = int(
+    os.environ.get("MAX_QUERY_BYTES_BILLED", str(2 * 1024 * 1024 * 1024))
+)
 
 
 def _get_bq_client():
@@ -52,12 +57,15 @@ def _get_tasks_client():
     return tasks_client
 
 
-def _get_model():
-    global model
-    if model is None:
-        vertexai.init(project=config.GCP_PROJECT, location=config.LOCATION)
-        model = GenerativeModel(config.GEMINI_MODEL)
-    return model
+def _get_genai_client():
+    global genai_client
+    if genai_client is None:
+        genai_client = genai.Client(
+            vertexai=True,
+            project=config.GCP_PROJECT,
+            location=config.GEMINI_LOCATION,
+        )
+    return genai_client
 
 
 def _validate_bq_identifier(value, field_name):
@@ -100,14 +108,30 @@ def verify_bearer_token(require_service_account=False):
     except Exception:
         return jsonify({"error": "Invalid authentication token."}), 401
 
+    email = str(claims.get("email") or "")
+    is_service_account_token = email.endswith(".gserviceaccount.com")
+    if config.ANALYZE_SERVICE_URL and (
+        require_service_account or is_service_account_token
+    ):
+        base_url = config.ANALYZE_SERVICE_URL.rstrip("/")
+        allowed_audiences = (
+            {base_url, f"{base_url}/process"}
+            if require_service_account
+            else {
+                base_url,
+                f"{base_url}/setup",
+                f"{base_url}/populate",
+                f"{base_url}/teardown",
+                f"{base_url}/process",
+            }
+        )
+        if claims.get("aud") not in allowed_audiences:
+            return jsonify({"error": "Forbidden: invalid token audience."}), 403
+
     if require_service_account:
-        if config.ANALYZE_SERVICE_URL:
-            base_url = config.ANALYZE_SERVICE_URL.rstrip("/")
-            if claims.get("aud") not in {base_url, f"{base_url}/process"}:
-                return jsonify({"error": "Forbidden: invalid token audience."}), 403
         if config.SERVICE_ACCOUNT_EMAIL:
             if (
-                claims.get("email") != config.SERVICE_ACCOUNT_EMAIL
+                email != config.SERVICE_ACCOUNT_EMAIL
                 or not claims.get("email_verified")
             ):
                 return (
@@ -190,11 +214,8 @@ def populate_tasks():
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid or empty JSON request body."}), 400
 
-    task_queue_id = data.get("task_queue_id")
-    if not isinstance(task_queue_id, str) or not task_queue_id.strip():
-        return jsonify({"error": "task_queue_id not provided."}), 400
-
     try:
+        task_queue_id = config.validate_task_queue_id(data.get("task_queue_id"))
         offset = _parse_non_negative_int(data.get("offset", 0), "offset")
         project_id = _validate_bq_identifier(config.GCP_PROJECT, "GCP_PROJECT")
         source_dataset = _validate_bq_identifier(
@@ -216,7 +237,8 @@ def populate_tasks():
             query_parameters=[
                 bigquery.ScalarQueryParameter("limit", "INT64", config.BATCH_SIZE),
                 bigquery.ScalarQueryParameter("offset", "INT64", offset),
-            ]
+            ],
+            maximum_bytes_billed=MAX_QUERY_BYTES_BILLED,
         )
         rows = _get_bq_client().query(query, job_config=job_config).result()
         tasks_created = 0
@@ -285,8 +307,22 @@ def process_image():
         return jsonify({"error": "Invalid or empty JSON request body."}), 400
 
     observations = data.get("observations")
-    if not isinstance(observations, list) or not observations:
-        return jsonify({"error": "observations must be a non-empty list."}), 400
+    if (
+        not isinstance(observations, list)
+        or not observations
+        or len(observations) > MAX_OBSERVATIONS_PER_TASK
+    ):
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "observations must be a list of 1 to "
+                        f"{MAX_OBSERVATIONS_PER_TASK} items."
+                    )
+                }
+            ),
+            400,
+        )
 
     for obs in observations:
         if (
@@ -311,6 +347,9 @@ def process_image():
                 400,
             )
 
+    if config.GEMINI_MODEL not in config.ALLOWED_GEMINI_MODELS:
+        return jsonify({"error": "Configured GEMINI_MODEL is not allowlisted."}), 500
+
     try:
         asset_id = data.get("asset_id")
         location = data.get("location")
@@ -318,10 +357,15 @@ def process_image():
         print(f"Processing task for asset_id: {asset_id}")
 
         image_parts = [
-            Part.from_uri(o["gcs_uri"], mime_type="image/jpeg") for o in observations
+            types.Part.from_uri(file_uri=o["gcs_uri"], mime_type="image/jpeg")
+            for o in observations
         ]
         gemini_prompt = config.PROMPTS[config.SELECTED_PROMPT_KEY]
-        response = _get_model().generate_content([*image_parts, gemini_prompt])
+        response = _get_genai_client().models.generate_content(
+            model=config.GEMINI_MODEL,
+            contents=[*image_parts, gemini_prompt],
+            config=types.GenerateContentConfig(response_mime_type="application/json"),
+        )
 
         print(f"Raw Gemini response for {asset_id}: {response.text}")
         try:
@@ -373,9 +417,10 @@ def teardown():
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid or empty JSON request body."}), 400
 
-    task_queue_id = data.get("task_queue_id")
-    if not isinstance(task_queue_id, str) or not task_queue_id.strip():
-        return jsonify({"error": "task_queue_id not provided."}), 400
+    try:
+        task_queue_id = config.validate_task_queue_id(data.get("task_queue_id"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
     try:
         # Delete BigQuery table
@@ -399,4 +444,8 @@ def teardown():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    app.run(
+        debug=False,
+        host=os.environ.get("HOST", "127.0.0.1"),
+        port=int(os.environ.get("PORT", "8080")),
+    )

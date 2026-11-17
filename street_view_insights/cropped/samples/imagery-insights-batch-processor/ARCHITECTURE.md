@@ -21,7 +21,7 @@ This project orchestrates several key Google Cloud services to create a powerful
     *   **Source:** It holds the initial table of image metadata, including GCS URIs.
     *   **Destination:** It stores the final, structured results from the Gemini model's analysis.
 
-*   **Vertex AI (Gemini Pro Vision):** This is the machine learning platform that provides the powerful Gemini model for multimodal analysis. The `main` service sends image data to the Gemini API and receives a structured JSON object containing the analysis.
+*   **Gemini (`gemini-4-hydrogen` on the `global` endpoint):** Performs multimodal analysis over allowlisted Cloud Storage URIs via the `google-genai` SDK and returns a structured JSON object containing the analysis.
 
 ## 3. Architecture Diagrams & Workflow
 

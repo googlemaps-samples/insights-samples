@@ -1,11 +1,11 @@
 # Evaluating Utility Pole Image Classification with an LLM Judge
 
-This notebook demonstrates a pipeline for evaluating and comparing the performance of two different Gemini models (Gemini 2.5 Flash and Gemini 2.5 Pro) on an image classification task. The goal is to classify the material and type of utility poles from images stored in Google Cloud Storage.
+This notebook demonstrates a pipeline for evaluating and comparing the performance of two different Gemini models (Gemini 4 Hydrogen and Gemini 4 Carbon) on an image classification task. The goal is to classify the material and type of utility poles from images stored in Google Cloud Storage.
 
 ## Workflow
 
 1.  **Data Fetching**: The notebook queries a BigQuery table to get a list of GCS URIs for utility pole images.
-2.  **Image Classification**: For each image, it uses both the `gemini-3.7-flash` and `gemini-2.5-pro` models to identify:
+2.  **Image Classification**: For each image, it uses both the `gemini-4-hydrogen` and `gemini-4-carbon` models to identify:
     *   The pole's material (e.g., "wood", "metal", "concrete").
     *   The pole's type (e.g., "Street light", "High tension power transmission", "electricity pole").
 3.  **LLM as a Judge**: A separate function (`judge_outputs`) is implemented where a Gemini model acts as a "judge." It takes the JSON outputs from the two classification models and determines if they are semantically the same.

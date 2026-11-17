@@ -47,7 +47,7 @@ except ImportError:  # pragma: no cover
 DEFAULT_DATASET = "imagery_insights___us"
 ALLOWED_DATASETS = frozenset({"imagery_insights___us", "imagery_insights___eu"})
 DEFAULT_LOCATION = "global"
-DEFAULT_MODEL = getattr(_svi_gc, "DEFAULT_MODEL", "gemini-3-flash-preview")
+DEFAULT_MODEL = getattr(_svi_gc, "DEFAULT_MODEL", "gemini-4-hydrogen")
 DEFAULT_RADIUS_M = 60.0
 MAX_POLES = 10
 MAX_VIEWS_PER_POLE = 2

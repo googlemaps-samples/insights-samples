@@ -17,7 +17,8 @@
 # It enables the necessary APIs, grants IAM permissions, and deploys both
 # Cloud Run services.
 
-set -e
+set -euo pipefail
+export CLOUDSDK_CORE_INTERACTIVE_UX_STYLE=OFF
 
 # Change to the parent directory of the script
 cd "$(dirname "$0")/.."
@@ -61,6 +62,9 @@ if ! gcloud config get-value project | grep -q .; then
     exit 1
 fi
 
+GEMINI_LOCATION="${GEMINI_LOCATION:-global}"
+GEMINI_MODEL="${GEMINI_MODEL:-gemini-4-hydrogen}"
+
 # --- API Enablement ---
 echo "Enabling necessary APIs..."
 gcloud services enable \
@@ -68,7 +72,9 @@ gcloud services enable \
     cloudtasks.googleapis.com \
     aiplatform.googleapis.com \
     bigquery.googleapis.com \
-    pubsub.googleapis.com
+    pubsub.googleapis.com \
+    --project="$PROJECT_ID" \
+    --quiet
 
 # Preventative wait since IAM policies are eventually consistent.
 # See https://cloud.google.com/iam/docs/service-accounts-create#creating
@@ -78,42 +84,56 @@ sleep 60
 echo "Granting IAM permissions..."
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:$SERVICE_ACCOUNT_EMAIL" \
-    --role="roles/cloudtasks.enqueuer"
+    --role="roles/cloudtasks.enqueuer" \
+    --quiet
 
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:$SERVICE_ACCOUNT_EMAIL" \
-    --role="roles/bigquery.dataEditor"
+    --role="roles/bigquery.dataEditor" \
+    --quiet
 
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:$SERVICE_ACCOUNT_EMAIL" \
-    --role="roles/aiplatform.user"
+    --role="roles/aiplatform.user" \
+    --quiet
 
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:$SERVICE_ACCOUNT_EMAIL" \
-    --role="roles/cloudtasks.queueAdmin"
+    --role="roles/cloudtasks.queueAdmin" \
+    --quiet
 
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:$SERVICE_ACCOUNT_EMAIL" \
-    --role="roles/run.invoker"
+    --role="roles/run.invoker" \
+    --quiet
 
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:$SERVICE_ACCOUNT_EMAIL" \
-    --role="roles/pubsub.publisher"
+    --role="roles/pubsub.publisher" \
+    --quiet
 
 # --- Deployment ---
 echo "Deploying 'analyze-volume-images' service..."
 gcloud run deploy analyze-volume-images \
     --source . \
+    --project "$PROJECT_ID" \
     --command="gunicorn","--workers=1","--threads=80","--timeout=0","main:app" \
     --region "$REGION" \
     --no-allow-unauthenticated \
-    --set-env-vars="PROJECT_ID=${PROJECT_ID},REGION=${REGION},SERVICE_ACCOUNT_EMAIL=${SERVICE_ACCOUNT_EMAIL},ALLOWED_GCS_PREFIX=${ALLOWED_GCS_PREFIX}" \
+    --set-env-vars="PROJECT_ID=${PROJECT_ID},REGION=${REGION},GEMINI_LOCATION=${GEMINI_LOCATION},GEMINI_MODEL=${GEMINI_MODEL},SERVICE_ACCOUNT_EMAIL=${SERVICE_ACCOUNT_EMAIL},ALLOWED_GCS_PREFIX=${ALLOWED_GCS_PREFIX}" \
     --max-instances=100 \
     --memory=2Gi \
     --timeout=3600 \
-    --service-account="$SERVICE_ACCOUNT_EMAIL"
+    --service-account="$SERVICE_ACCOUNT_EMAIL" \
+    --quiet
 
-ANALYZE_SERVICE_URL=$(gcloud run services describe analyze-volume-images --region "$REGION" --format='value(status.url)')
+ANALYZE_SERVICE_URL=$(gcloud run services describe analyze-volume-images --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')
+gcloud run services update analyze-volume-images \
+    --project "$PROJECT_ID" \
+    --region "$REGION" \
+    --update-env-vars="ANALYZE_SERVICE_URL=${ANALYZE_SERVICE_URL},SERVICE_URL=${ANALYZE_SERVICE_URL}" \
+    --quiet
+
 cat > .env << EOF
 ANALYZE_SERVICE_URL=${ANALYZE_SERVICE_URL}
 SERVICE_URL=${ANALYZE_SERVICE_URL}
@@ -123,6 +143,7 @@ EOF
 echo "Deploying 'populate-tasks' service..."
 gcloud run deploy populate-tasks \
     --source . \
+    --project "$PROJECT_ID" \
     --command="gunicorn","--workers=1","--threads=80","--timeout=0","populate_with_cloud_run:gunicorn_app" \
     --region "$REGION" \
     --no-allow-unauthenticated \
@@ -130,9 +151,15 @@ gcloud run deploy populate-tasks \
     --max-instances=100 \
     --memory=2Gi \
     --timeout=3600 \
-    --service-account="$SERVICE_ACCOUNT_EMAIL"
+    --service-account="$SERVICE_ACCOUNT_EMAIL" \
+    --quiet
 
-POPULATE_SERVICE_URL=$(gcloud run services describe populate-tasks --region "$REGION" --format='value(status.url)')
+POPULATE_SERVICE_URL=$(gcloud run services describe populate-tasks --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')
+gcloud run services update populate-tasks \
+    --project "$PROJECT_ID" \
+    --region "$REGION" \
+    --update-env-vars="POPULATE_SERVICE_URL=${POPULATE_SERVICE_URL}" \
+    --quiet
 cat >> .env << EOF
 POPULATE_SERVICE_URL=${POPULATE_SERVICE_URL}
 REGION=${REGION}

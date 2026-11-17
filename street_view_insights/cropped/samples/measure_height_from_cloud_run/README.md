@@ -1,55 +1,64 @@
-# Image Classification Service with Gemini 2.5 Flash
+# Utility Pole Height Estimation Service with Gemini 4 Hydrogen
 
-This project provides a web service for classifying images from GCS URIs using the Gemini 2.5 Flash model via Google Cloud's Vertex AI. It is designed to be deployed as a container on Google Cloud Run.
+This sample provides an authenticated Google Cloud Run web service for estimating utility pole heights from Street View Insights GCS URIs (`full_frame_observations_latest`) using **`gemini-4-hydrogen`** (`location="global"`).
 
 ## Prerequisites
 
-*   Google Cloud SDK installed and authenticated.
-*   A GCP project with Vertex AI and BigQuery APIs enabled.
-*   A BigQuery table with a `gcs_uri` column containing the URIs of the images to be classified.
+*   Google Cloud SDK (`gcloud`) installed and authenticated.
+*   A GCP project with Cloud Run, BigQuery, and Vertex AI APIs enabled.
+*   A dedicated service account granted `roles/bigquery.jobUser`, `roles/bigquery.dataViewer` (on your subscribed Street View Insights dataset), `roles/storage.objectViewer` (on your Street View Insights imagery bucket), and `roles/aiplatform.user`.
 
 ## Configuration
 
-Before deploying the service, make sure to update the following variables in `analyze_images.py`:
+Configure the service through environment variables at deployment time:
 
-*   `PROJECT_ID`: Your GCP Project ID.
-*   `REGION`: The GCP region where Vertex AI is enabled.
-*   `BIGQUERY_SQL_QUERY`: The BigQuery query to retrieve the GCS URIs.
+*   `PROJECT_ID`: Your GCP billing project ID.
+*   `GEMINI_LOCATION`: Model endpoint location (`global` default; supports `global`, `us`, or `eu`).
+*   `GEMINI_MODEL`: Defaults to `gemini-4-hydrogen`.
+*   `BIGQUERY_DATASET`: Allowlisted Street View Insights dataset (`imagery_insights___us` or `imagery_insights___eu`).
+*   `BIGQUERY_TABLE`: Allowlisted observations view (`full_frame_observations_latest` or `cropped_observations_latest`).
+*   `ALLOWED_GCS_PREFIX`: Required `gs://<your-imagery-bucket>/` allowlist prefix enforced before calling Gemini.
 
 ## Deployment to Cloud Run
 
-To deploy the service to Cloud Run, follow these steps:
-
-1.  **Navigate to the project directory:**
+1.  **Navigate to the sample directory:**
 
     ```bash
-    cd analyze_images_from_cloud_run
+    cd street_view_insights/cropped/samples/measure_height_from_cloud_run
     ```
 
-2.  **Deploy to Cloud Run using gcloud:**
+2.  **Deploy with authentication enforced (`--no-allow-unauthenticated`):**
 
     ```bash
-    gcloud run deploy analyze-images-cloud-run \
-        --project=sarthaks-lab \
-        --region=us-central1 \
-        --source . \
-        --allow-unauthenticated \
-        --platform managed \
-        --max-instances=1
-    ```
+    export PROJECT_ID="YOUR_PROJECT_ID"
+    export REGION="us-central1"
+    export SERVICE_ACCOUNT_EMAIL="svi-height-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+    export ALLOWED_GCS_PREFIX="gs://YOUR_SVI_IMAGERY_BUCKET/"
 
-    **Note:** The `--source .` command will build the container image from the `Dockerfile` in the current directory and deploy it to Cloud Run.
+    CLOUDSDK_CORE_INTERACTIVE_UX_STYLE=OFF gcloud run deploy analyze-images-cloud-run \
+        --project="${PROJECT_ID}" \
+        --region="${REGION}" \
+        --source=. \
+        --no-allow-unauthenticated \
+        --service-account="${SERVICE_ACCOUNT_EMAIL}" \
+        --set-env-vars="PROJECT_ID=${PROJECT_ID},GEMINI_LOCATION=global,GEMINI_MODEL=gemini-4-hydrogen,ALLOWED_GCS_PREFIX=${ALLOWED_GCS_PREFIX}" \
+        --max-instances=2 \
+        --quiet
+    ```
 
 ## Usage
 
-Once the service is deployed, you can send a POST request to the service URL with a JSON payload to trigger the image classification.
-
-**Example using `curl`:**
+Send an authenticated `POST` request with a Google OIDC identity token:
 
 ```bash
-curl -X POST -H "Content-Type: application/json" \
--d '{"prompt": "What is in this image?"}' \
-YOUR_CLOUD_RUN_SERVICE_URL
-```
+SERVICE_URL=$(gcloud run services describe analyze-images-cloud-run \
+    --project="${PROJECT_ID}" \
+    --region="${REGION}" \
+    --format="value(status.url)" \
+    --quiet)
 
-The service will then execute the BigQuery query, classify the images, and return the results as a JSON response.
+curl -fsS -X POST "${SERVICE_URL}/" \
+    -H "Authorization: Bearer $(gcloud auth print-identity-token --audiences="${SERVICE_URL}")" \
+    -H "Content-Type: application/json" \
+    -d '{}'
+```

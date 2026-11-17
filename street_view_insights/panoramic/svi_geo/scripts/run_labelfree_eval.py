@@ -1656,9 +1656,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--variant", choices=tuple(VARIANTS.keys()), default="baseline")
     ap.add_argument(
         "--thinking-level",
-        choices=("MINIMAL", "LOW", "MEDIUM", "HIGH"),
+        choices=("LOW", "MEDIUM", "HIGH", "XHIGH"),
         default=None,
-        help="Override Variant.thinking_level (e.g., MINIMAL, LOW, MEDIUM, HIGH)",
+        help="Override Variant.thinking_level (LOW, MEDIUM, HIGH, XHIGH)",
     )
     ap.add_argument(
         "--media-resolution",

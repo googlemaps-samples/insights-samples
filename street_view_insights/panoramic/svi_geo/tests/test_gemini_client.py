@@ -345,31 +345,34 @@ def test_prices_by_model_and_warning_fallback():
 
 
 def test_prices_for_vertex_list_prices_and_location():
-    # §0.2 Vertex list prices (cloud.google.com/vertex-ai/generative-ai/pricing, 2026-09-30)
-    assert gc.prices_for(gc.DEFAULT_MODEL) == {"input_per_m": 1.50, "output_per_m": 9.00}
+    # §0.2 Vertex list prices (Gemini 4 Hydrogen global $1.50/$7.50, regional $1.65/$8.25)
+    assert gc.DEFAULT_MODEL == "gemini-4-hydrogen"
+    assert gc.prices_for(gc.DEFAULT_MODEL) == {"input_per_m": 1.50, "output_per_m": 7.50}
     assert gc.prices_for(gc.DEFAULT_MODEL, location="global") == {
         "input_per_m": 1.50,
-        "output_per_m": 9.00,
+        "output_per_m": 7.50,
     }
-    assert gc.prices_for(gc.DEFAULT_MODEL, location="us-central1") == {
+    assert gc.prices_for(gc.DEFAULT_MODEL, location="us") == {
         "input_per_m": 1.65,
-        "output_per_m": 9.90,
+        "output_per_m": 8.25,
     }
+    assert gc.prices_for(_m("4-carbon")) == {"input_per_m": 4.00, "output_per_m": 20.00}
+    assert gc.prices_for(_m("3.5-flash")) == {"input_per_m": 1.50, "output_per_m": 9.00}
     assert gc.prices_for(_m("3.1-pro-preview")) == {"input_per_m": 2.00, "output_per_m": 12.00}
     assert gc.prices_for(_m("3.5-flash-lite")) == {"input_per_m": 0.30, "output_per_m": 2.50}
     assert gc.prices_for(_m("2.5-pro")) == {"input_per_m": 1.25, "output_per_m": 10.00}
     assert gc.prices_for(_m("2.5-flash")) == {"input_per_m": 0.30, "output_per_m": 2.50}
 
-    # Re-pricing nbverify token logs (§0.2): UC2 ≈ $0.79, UC3 ≈ $0.29, UC1 ≈ $0.11, UC4 ≈ $0.022
+    # Re-pricing nbverify token logs under Gemini 4 Hydrogen ($1.50/$7.50): UC2 ≈ $0.69, UC3 ≈ $0.27, UC1 ≈ $0.10, UC4 ≈ $0.019
     def reprice(inp: int, out: int) -> float:
         ct = gc.CostTracker(prices=gc.prices_for(gc.DEFAULT_MODEL))
         ct.add({"prompt_token_count": inp, "candidates_token_count": out})
         return ct.usd
 
-    assert round(reprice(128_312, 66_643), 2) == 0.79
-    assert round(reprice(86_540, 18_213), 2) == 0.29
-    assert round(reprice(17_844, 9_292), 2) == 0.11
-    assert round(reprice(2_772, 2_000), 3) == 0.022
+    assert round(reprice(128_312, 66_643), 2) == 0.69
+    assert round(reprice(86_540, 18_213), 2) == 0.27
+    assert round(reprice(17_844, 9_292), 2) == 0.10
+    assert round(reprice(2_772, 2_000), 3) == 0.019
 
 
 def test_build_config_disables_afc():
@@ -705,5 +708,5 @@ def test_preview_tokens_and_estimate_cost_with_preview():
     assert seen_calls[0][0] == gc.DEFAULT_MODEL
 
     est = gc.estimate_cost(10, preview=tok, output_tokens_per_call=200)
-    expected = 10 * (1234 / 1e6 * 1.50 + 200 / 1e6 * 9.00)
+    expected = 10 * (1234 / 1e6 * 1.50 + 200 / 1e6 * 7.50)
     assert est == pytest.approx(expected)

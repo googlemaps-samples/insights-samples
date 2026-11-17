@@ -1,15 +1,31 @@
 #!/usr/bin/env python3
-import os
-import sys
 import argparse
-import urllib.parse
-import json
-import time
 from io import BytesIO
+import json
+import os
+import re
+import sys
+import time
+import urllib.parse
 from PIL import Image
 from google import genai
 from google.cloud import bigquery
 from google.genai import types
+
+_BQ_PROJECT_RE = re.compile(r"^[a-z][a-z0-9-]{4,29}(?::[a-z0-9-]+)?$")
+_BQ_DATASET_RE = re.compile(r"^[A-Za-z0-9_]{1,128}$")
+ALLOWED_DATASETS = frozenset(
+    {
+        "imagery_insights___us",
+        "imagery_insights___eu",
+        *(
+            x.strip()
+            for x in os.getenv("SVI_ALLOWED_DATASETS", "").split(",")
+            if x.strip()
+        ),
+    }
+)
+MAX_QUERY_BYTES_BILLED = 2_000_000_000
 
 
 CROPPED_INSPECTION_PROMPT = """You are an expert utility inspection engineer. Analyze the provided cropped/focused image of a utility pole:
@@ -84,36 +100,53 @@ def parse_args():
                         help="BigQuery dataset name.")
     
     # Gemini model arguments
-    parser.add_argument("--location", default="global", help="Google Cloud location/region.")
-    parser.add_argument("--model", default="gemini-3.7-flash", help="Model to use (e.g. gemini-3.7-flash).")
+    parser.add_argument("--location", default="global", help="Google Cloud location/region (global, us, or eu).")
+    parser.add_argument("--model", default="gemini-4-hydrogen", help="Model to use (defaults to gemini-4-hydrogen).")
     return parser.parse_args()
+
+
+def _validate_bq_target(project_id: str, dataset_id: str) -> tuple[str, str]:
+    clean_proj = (project_id or "").strip()
+    clean_ds = (dataset_id or "").strip()
+    if not _BQ_PROJECT_RE.fullmatch(clean_proj):
+        raise ValueError(f"Invalid Google Cloud project ID: {project_id!r}")
+    if not _BQ_DATASET_RE.fullmatch(clean_ds) or clean_ds not in ALLOWED_DATASETS:
+        raise ValueError(
+            f"Dataset {dataset_id!r} must match an allowlisted dataset {sorted(ALLOWED_DATASETS)}"
+        )
+    return clean_proj, clean_ds
+
 
 def convert_to_gs_uri(image_url: str) -> str:
     if image_url.startswith("gs://"):
         return image_url
     try:
-        clean_url = image_url.replace("https://", "")
-        domain, path = clean_url.split("/", 1)
-        if "storage" in domain or "googleapis" in domain:
-            path = urllib.parse.unquote(path)
-            return f"gs://{path}"
+        parsed = urllib.parse.urlparse(image_url)
+        if parsed.scheme == "https" and parsed.netloc in {
+            "storage.googleapis.com",
+            "storage.cloud.google.com",
+        }:
+            path = urllib.parse.unquote(parsed.path.lstrip("/"))
+            if path and "/" in path:
+                return f"gs://{path}"
     except Exception as e:
         print(f"Warning: failed to convert URL to GCS URI: {e}", file=sys.stderr)
     return image_url
 
 def query_image_from_bq(args, table_name):
-    client_bq = bigquery.Client(project=args.project)
-    project_id = client_bq.project or args.project
+    client_bq = bigquery.Client(project=args.project if args.project != "YOUR_PROJECT_ID" else None)
+    project_id, dataset_id = _validate_bq_target(client_bq.project or args.project, args.dataset)
         
-    print(f"Querying BQ table `{project_id}.{args.dataset}.{table_name}` for: {args.asset_id}...", file=sys.stderr)
+    print(f"Querying BQ table `{project_id}.{dataset_id}.{table_name}` for: {args.asset_id}...", file=sys.stderr)
     query = f"""
     SELECT gcs_uri, bbox, asset_type
-    FROM `{project_id}.{args.dataset}.{table_name}`
+    FROM `{project_id}.{dataset_id}.{table_name}`
     WHERE observation_id = @id OR asset_id = @id OR pano_id = @id
     LIMIT 1
     """
     job_config = bigquery.QueryJobConfig(
-        query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", args.asset_id)]
+        query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", args.asset_id)],
+        maximum_bytes_billed=MAX_QUERY_BYTES_BILLED,
     )
     rows = list(client_bq.query(query, job_config=job_config).result())
     if not rows:
@@ -121,17 +154,18 @@ def query_image_from_bq(args, table_name):
     return rows[0].gcs_uri, rows[0].bbox, rows[0].asset_type, project_id
 
 def query_asset_observations(args, table_name):
-    client_bq = bigquery.Client(project=args.project)
-    project_id = client_bq.project or args.project
+    client_bq = bigquery.Client(project=args.project if args.project != "YOUR_PROJECT_ID" else None)
+    project_id, dataset_id = _validate_bq_target(client_bq.project or args.project, args.dataset)
         
     query = f"""
     SELECT gcs_uri, detection_time, camera_pose.heading as heading, camera_pose.pitch as pitch
-    FROM `{project_id}.{args.dataset}.{table_name}`
+    FROM `{project_id}.{dataset_id}.{table_name}`
     WHERE asset_id = @id OR observation_id = @id
     ORDER BY detection_time ASC
     """
     job_config = bigquery.QueryJobConfig(
-        query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", args.asset_id)]
+        query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", args.asset_id)],
+        maximum_bytes_billed=MAX_QUERY_BYTES_BILLED,
     )
     rows = list(client_bq.query(query, job_config=job_config).result())
     return rows, project_id
@@ -193,7 +227,6 @@ def main():
                 contents=[image_part, system_prompt],
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    temperature=0.1
                 )
             )
             print(response.text)
@@ -244,7 +277,6 @@ def main():
                 contents=contents,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    temperature=0.1
                 )
             )
             print(response.text)

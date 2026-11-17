@@ -1,11 +1,28 @@
 #!/usr/bin/env python3
-import os
-import sys
-import json
 import argparse
+import json
+import os
+import re
+import sys
 import urllib.parse
 from google import genai
 from google.genai import types
+
+_BQ_PROJECT_RE = re.compile(r"^[a-z][a-z0-9-]{4,29}(?::[a-z0-9-]+)?$")
+_BQ_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_]{1,128}$")
+ALLOWED_DATASETS = frozenset(
+    {
+        "imagery_insights___us",
+        "imagery_insights___eu",
+        *(
+            x.strip()
+            for x in os.getenv("SVI_ALLOWED_DATASETS", "").split(",")
+            if x.strip()
+        ),
+    }
+)
+ALLOWED_TABLES = frozenset({"full_frame_observations_latest", "cropped_observations_latest"})
+MAX_QUERY_BYTES_BILLED = 2_000_000_000
 
 PROMPT = """You are an expert utility vegetation management & asset inspection engineer.
 You are provided with full-frame street view images from Google Cloud Storage along with target asset bounding box coordinates from BigQuery.
@@ -55,19 +72,22 @@ def parse_args():
                         help="BigQuery full-frame observations table name.")
     
     # Gemini model arguments
-    parser.add_argument("--location", default="global", help="Google Cloud location/region.")
-    parser.add_argument("--model", default="gemini-3.7-flash", help="Model to use (e.g. gemini-3.7-flash).")
+    parser.add_argument("--location", default="global", help="Google Cloud location/region (global, us, or eu).")
+    parser.add_argument("--model", default="gemini-4-hydrogen", help="Model to use (defaults to gemini-4-hydrogen).")
     return parser.parse_args()
 
 def convert_to_gs_uri(image_url: str) -> str:
     if image_url.startswith("gs://"):
         return image_url
     try:
-        clean_url = image_url.replace("https://", "")
-        domain, path = clean_url.split("/", 1)
-        if "storage" in domain or "googleapis" in domain:
-            path = urllib.parse.unquote(path)
-            return f"gs://{path}"
+        parsed = urllib.parse.urlparse(image_url)
+        if parsed.scheme == "https" and parsed.netloc in {
+            "storage.googleapis.com",
+            "storage.cloud.google.com",
+        }:
+            path = urllib.parse.unquote(parsed.path.lstrip("/"))
+            if path and "/" in path:
+                return f"gs://{path}"
     except Exception as e:
         print(f"Warning: failed to convert URL to GCS URI: {e}", file=sys.stderr)
     return image_url
@@ -75,10 +95,22 @@ def convert_to_gs_uri(image_url: str) -> str:
 def query_observations_from_bq(args):
     from google.cloud import bigquery
     client_bq = bigquery.Client(project=args.project if args.project != "YOUR_PROJECT_ID" else None)
-    project_id = client_bq.project or args.project
+    project_id = (client_bq.project or args.project or "").strip()
+    dataset_id = (args.dataset or "").strip()
+    table_id = (args.table or "").strip()
+    if not _BQ_PROJECT_RE.fullmatch(project_id):
+        raise ValueError(f"Invalid Google Cloud project ID: {project_id!r}")
+    if not _BQ_IDENTIFIER_RE.fullmatch(dataset_id) or dataset_id not in ALLOWED_DATASETS:
+        raise ValueError(
+            f"Dataset {dataset_id!r} must match an allowlisted dataset {sorted(ALLOWED_DATASETS)}"
+        )
+    if not _BQ_IDENTIFIER_RE.fullmatch(table_id) or table_id not in ALLOWED_TABLES:
+        raise ValueError(
+            f"Table {table_id!r} must be one of {sorted(ALLOWED_TABLES)}"
+        )
     
     target_id = args.asset_id or args.observation_id
-    print(f"Querying BigQuery table `{project_id}.{args.dataset}.{args.table}` for ID: {target_id}...", file=sys.stderr)
+    print(f"Querying BigQuery table `{project_id}.{dataset_id}.{table_id}` for ID: {target_id}...", file=sys.stderr)
     
     query = f"""
     SELECT
@@ -87,13 +119,14 @@ def query_observations_from_bq(args):
         gcs_uri,
         bbox,
         detection_time
-    FROM `{project_id}`.`{args.dataset}`.`{args.table}`
+    FROM `{project_id}`.`{dataset_id}`.`{table_id}`
     WHERE asset_id = @id OR observation_id = @id
     ORDER BY detection_time ASC
     LIMIT 5
     """
     job_config = bigquery.QueryJobConfig(
-        query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", target_id)]
+        query_parameters=[bigquery.ScalarQueryParameter("id", "STRING", target_id)],
+        maximum_bytes_billed=MAX_QUERY_BYTES_BILLED,
     )
     rows = list(client_bq.query(query, job_config=job_config).result())
     if not rows:
@@ -159,7 +192,6 @@ def main():
             contents=contents,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                temperature=0.1
             )
         )
         output_text_parts = [part.text for part in response.candidates[0].content.parts if part.text]

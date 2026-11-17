@@ -1,14 +1,14 @@
-# Identify Lamp Make and Model using Gemini 2.5 Flash and RAG
+# Identify Lamp Make and Model using Gemini 4 Hydrogen and RAG
 
-This notebook demonstrates how to identify the make and model of a lamp using the Gemini 2.5 Flash model with a Retrieval Augmented Generation (RAG) approach.
+This notebook demonstrates how to identify the make and model of a lamp using the Gemini 4 Hydrogen (`gemini-4-hydrogen`) model with a Retrieval Augmented Generation (RAG) approach.
 
 ## Notebook Description
 
-The primary goal of this notebook is to leverage the advanced multimodal capabilities of Gemini 2.5 Flash to analyze images of lamps and extract specific information about their make and model. It employs a RAG strategy, which involves:
+The primary goal of this notebook is to leverage the advanced multimodal capabilities of Gemini 4 Hydrogen to analyze images of lamps and extract specific information about their make and model. It employs a RAG strategy, which involves:
 
 1.  **Image Input:** You'll provide images of lamps as input.
 2.  **Information Retrieval (RAG):** The notebook will access an external knowledge base or a set of documents containing information about various lamp makes and models. This could be a local dataset, a cloud-hosted database, or even web search results.
-3.  **Gemini 2.5 Flash Integration:** The Gemini 2.5 Flash model will process the input image and the retrieved information to identify the most probable make and model of the lamp.
+3.  **Gemini 4 Hydrogen Integration:** The Gemini 4 Hydrogen model will process the input image and the retrieved information to identify the most probable make and model of the lamp.
 4.  **Output:** The notebook will output the identified make and model, potentially with a confidence score or additional descriptive details.
 
 ## What is RAG?
@@ -17,11 +17,11 @@ Retrieval-Augmented Generation (RAG) is a technique for improving the accuracy a
 
 ## How is the RAG Corpus Created in Vertex AI?
 
-The RAG corpus in this notebook is created using Vertex AI Search. The process involves:
+The RAG corpus in this notebook is created using Vertex AI Search / RAG Engine. The process involves:
 
-1.  **Creating a Datastore:** A datastore is created in Vertex AI Search to hold the knowledge base.
-2.  **Ingesting Data:** The knowledge base, which in this case is a collection of JSON files containing information about lamp makes and models, is ingested into the datastore.
-3.  **Linking the Datastore to the Model:** The datastore is then linked to the Gemini 2.5 Flash model, allowing the model to retrieve information from it during the generation process.
+1.  **Creating a Datastore / Corpus:** A corpus is created in Vertex AI to hold the knowledge base.
+2.  **Ingesting Data:** The knowledge base, which in this case is a collection of JSON files containing information about lamp makes and models, is ingested into the corpus.
+3.  **Linking the Corpus to the Model:** The corpus is then linked to the Gemini 4 Hydrogen (`gemini-4-hydrogen`) model via `VertexRagStore`, allowing the model to retrieve information from it during generation.
 
 ## What the Notebook Does
 
@@ -47,4 +47,4 @@ To successfully run this notebook, please ensure the following:
     *   **RAG Data Source:** If the RAG component relies on a specific data source (e.g., a CSV file, a database, or a collection of documents), ensure this data is accessible and in the correct format.
 5.  **Required Libraries:** The notebook will likely import several libraries. Ensure they are installed.
 
-By following these steps, you should be well-equipped to run this notebook and explore the capabilities of Gemini 2.5 Flash for lamp identification.
+By following these steps, you should be well-equipped to run this notebook and explore the capabilities of Gemini 4 Hydrogen for lamp identification.
