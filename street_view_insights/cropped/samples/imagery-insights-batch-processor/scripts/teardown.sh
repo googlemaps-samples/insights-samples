@@ -1,4 +1,18 @@
 #!/bin/bash
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # This script calls the /teardown endpoint of the main service
 # to clean up the BigQuery table and the Cloud Tasks queue.
 
@@ -12,15 +26,17 @@ fi
 # Load variables from .env file
 source .env
 
+TARGET_URL="${ANALYZE_SERVICE_URL:-$SERVICE_URL}"
+
 # Check if TASK_QUEUE_ID exists and call teardown endpoint for the main service resources
-if [ -n "$TASK_QUEUE_ID" ]; then
+if [ -n "$TASK_QUEUE_ID" ] && [ -n "$TARGET_URL" ]; then
     echo "Calling /teardown endpoint for queue: $TASK_QUEUE_ID..."
-    curl -X POST -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+    curl -fsS -X POST -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
         -H "Content-Type: application/json" \
         -d "{\"task_queue_id\": \"$TASK_QUEUE_ID\"}" \
-        "${SERVICE_URL}/teardown"
+        "${TARGET_URL%/}/teardown"
 else
-    echo "TASK_QUEUE_ID not found in .env, skipping Cloud Tasks and BigQuery teardown."
+    echo "TASK_QUEUE_ID or service URL not found in .env, skipping Cloud Tasks and BigQuery teardown."
 fi
 
 # Check if RUN_ID exists and delete Pub/Sub resources
@@ -35,8 +51,8 @@ fi
 
 # Delete Cloud Run services
 echo "Deleting Cloud Run services..."
-gcloud run services delete analyze-volume-images --region $REGION --quiet || true
-gcloud run services delete populate-tasks --region $REGION --quiet || true
+gcloud run services delete analyze-volume-images --region "$REGION" --quiet || true
+gcloud run services delete populate-tasks --region "$REGION" --quiet || true
 
 echo "Teardown complete. Removing .env file."
 rm .env
