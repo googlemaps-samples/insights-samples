@@ -98,7 +98,7 @@ jupyter nbconvert --to notebook --execute --output-dir /tmp/nbrun \
 ```
 
 Outside a clone of this repository, the first code cell pip-installs `svi_geo` from GitHub at
-`SVI_GEO_REF` (pinned to a verified commit SHA). Inside a local repository clone, the local
+`SVI_GEO_REF` (defaulting to `main`, or overrideable via `$SVI_GEO_REF`). Inside a local repository clone, the local
 `svi_geo` package is discovered automatically.
 
 Required IAM roles (the notebooks do not modify IAM settings):
