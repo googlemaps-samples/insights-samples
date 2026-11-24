@@ -180,8 +180,10 @@ def test_install_ref_is_a_single_pinned_parameter(nb):
     code = _code(nb)
     assert len(re.findall(r"^SVI_GEO_REF\s*=", code, re.M)) == 1
     assert "@{SVI_GEO_REF}#subdirectory=street_view_insights/panoramic/svi_geo" in code
-    assert 'TODO(after-merge): set to "main"' in code
-    assert not re.search(r"^SVI_GEO_REF\s*=\s*[\"']main[\"']", code, re.M)
+    assert re.search(
+        r'^SVI_GEO_REF\s*=\s*os\.environ\.get\("SVI_GEO_REF",\s*"main"\)', code, re.M
+    )
+    assert "TODO(after-merge)" not in code
 
 
 def test_local_svi_geo_is_found_by_env_or_path_check_not_bare_cwd(nb):
